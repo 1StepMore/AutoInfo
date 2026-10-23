@@ -8352,6 +8352,242 @@ def _envelope_result(
     )
 
 
+# #581 phase 2: data-driven dispatch.  Handler + invocation mode, in the
+# same category order as the former if/elif chain (149 tools).  Keep this
+# table in lock-step with ``_full_tool_list`` (enforced by
+# tests/mcp/test_tool_dispatch_registry.py).
+_TOOL_DISPATCH: dict[str, tuple[str, str]] = {
+    # -- System (3) ---------------------------------------------------
+    "health_check": ("_handle_health_check", "noargs"),
+    "get_tool_count": ("_handle_get_tool_count", "noargs"),
+    "diagnose_system": ("_handle_diagnose_system", "noargs"),
+    # -- Discovery (7) ------------------------------------------------
+    "list_domains": ("_handle_list_domains", "noargs"),
+    "list_available_platforms": ("_handle_list_available_platforms", "noargs"),
+    "get_domain_schema": ("_handle_get_domain_schema", "kwargs"),
+    "list_available_models": ("_handle_list_available_models", "noargs"),
+    "get_effective_llm_config": ("_handle_get_effective_llm_config", "kwargs"),
+    "activate_domain": ("_handle_activate_domain", "kwargs"),
+    "deactivate_domain": ("_handle_deactivate_domain", "kwargs"),
+    "add_domain": ("_handle_add_domain", "kwargs"),
+    "remove_domain": ("_handle_remove_domain", "kwargs"),
+    "get_domain_config": ("_handle_get_domain_config", "kwargs"),
+    # -- Source Management (5) ----------------------------------------
+    "add_source": ("_handle_add_source", "kwargs"),
+    "add_sources": ("_handle_add_sources", "kwargs"),
+    "remove_source": ("_handle_remove_source", "kwargs"),
+    "test_source": ("_handle_test_source", "kwargs"),
+    "list_sources": ("_handle_list_sources", "kwargs"),
+    # -- Topic Management (6) -----------------------------------------
+    "add_topic": ("_handle_add_topic", "kwargs"),
+    "remove_topic": ("_handle_remove_topic", "kwargs"),
+    "list_topics": ("_handle_list_topics", "kwargs"),
+    "list_keywords": ("_handle_list_keywords", "kwargs"),
+    "topic_group_add": ("_handle_topic_group_add", "kwargs"),
+    "topic_group_remove": ("_handle_topic_group_remove", "kwargs"),
+    # -- Keywords Management (3) --------------------------------------
+    "approve_keyword": ("_handle_approve_keyword", "kwargs"),
+    "reject_keyword": ("_handle_reject_keyword", "kwargs"),
+    "suggest_keywords": ("_handle_suggest_keywords", "thread"),
+    # -- Collection / Processing (5) ----------------------------------
+    # collect/process/batch_run are long-running sync handlers; offload
+    # them so the asyncio event loop stays responsive and the progress
+    # tools (get_collection_progress / get_processing_progress) keep
+    # answering while a run is in flight (issue #136).
+    "collect_sources": ("_handle_collect_sources", "thread"),
+    "get_collection_progress": ("_handle_get_collection_progress", "kwargs"),
+    "get_collection_status": ("_handle_get_collection_status", "kwargs"),
+    "process_collection": ("_handle_process_collection", "thread"),
+    "get_processing_progress": ("_handle_get_processing_progress", "kwargs"),
+    # -- Knowledge Base (4) -------------------------------------------
+    "list_summaries": ("_handle_list_summaries", "kwargs"),
+    "get_kb_entry": ("_handle_get_kb_entry", "kwargs"),
+    "search_knowledge_base": ("_handle_search_knowledge_base", "kwargs"),
+    "query_knowledge_graph": ("_handle_query_knowledge_graph", "kwargs"),
+    "knowledge_graph_export": ("_handle_knowledge_graph_export", "kwargs"),
+    "flag_for_knowledge_base": ("_handle_flag_for_knowledge_base", "kwargs"),
+    "get_summary": ("_handle_get_summary", "kwargs"),
+    "link_items": ("_handle_link_items", "kwargs"),
+    "get_item_relations": ("_handle_get_item_relations", "kwargs"),
+    "get_entry_history": ("_handle_get_entry_history", "kwargs"),
+    "restore_entry_version": ("_handle_restore_entry_version", "kwargs"),
+    "compare_versions": ("_handle_compare_versions", "kwargs"),
+    "get_collection_stats": ("_handle_get_collection_stats", "kwargs"),
+    "get_collection_diff": ("_handle_get_collection_diff", "kwargs"),
+    "get_domain_decay": ("_handle_get_domain_decay", "kwargs"),
+    # -- KB: Draft tools (4) ------------------------------------------
+    "create_kb_draft": ("_handle_create_kb_draft", "kwargs"),
+    "reject_kb_draft": ("_handle_reject_kb_draft", "kwargs"),
+    "list_kb_tier": ("_handle_list_kb_tier", "kwargs"),
+    "promote_kb_draft": ("_handle_promote_kb_draft", "thread"),
+    "demote_kb_wiki": ("_handle_demote_kb_wiki", "kwargs"),
+    "force_promote": ("_handle_force_promote", "kwargs"),
+    "promote_pending": ("_handle_promote_pending", "kwargs"),
+    "reindex_kb": ("_handle_reindex_kb", "kwargs"),
+    "create_kb_entry": ("_handle_create_kb_entry", "kwargs"),
+    # -- Audit (1) -------------------------------------------------------
+    "query_audit_log": ("_handle_query_audit_log", "kwargs"),
+    # -- CEFR Classification (1) ----------------------------------------
+    "classify_cefr": ("_handle_classify_cefr", "thread"),
+    "cefr_batch": ("_handle_cefr_batch", "thread"),
+    # -- Output (6) ---------------------------------------------------
+    "list_output_templates": ("_handle_list_output_templates", "kwargs"),
+    "generate_digest": ("_handle_generate_digest", "thread"),
+    "generate_report": ("_handle_generate_report", "thread"),
+    "generate_cross_domain_report": ("_handle_generate_cross_domain_report", "thread"),
+    "generate_tutorial": ("_handle_generate_tutorial", "thread"),
+    "generate_presentation": ("_handle_generate_presentation", "thread"),
+    "localize_content": ("_handle_localize_content", "thread"),
+    # -- Export / Import (2) -----------------------------------------------
+    "export_kb": ("_handle_export_kb", "kwargs"),
+    "import_kb": ("_handle_import_kb", "kwargs"),
+    # -- Email (1) --------------------------------------------------------
+    "send_email_digest": ("_handle_send_email_digest", "kwargs"),
+    "email_config": ("_handle_email_config", "kwargs"),
+    # -- Custom Extraction (2) ----------------------------------------
+    "extract_fields": ("_handle_extract_fields", "thread"),
+    "get_extraction": ("_handle_get_extraction", "kwargs"),
+    # -- Schedule Management (5) ---------------------------------------
+    "list_schedules": ("_handle_list_schedules", "noargs"),
+    "add_schedule": ("_handle_add_schedule", "kwargs"),
+    "remove_schedule": ("_handle_remove_schedule", "kwargs"),
+    "run_schedules": ("_handle_run_schedules", "kwargs"),
+    "get_schedule_status": ("_handle_get_schedule_status", "kwargs"),
+    # -- Delivery Schedule Management (3) --------------------------------
+    "add_delivery_schedule": ("_handle_add_delivery_schedule", "kwargs"),
+    "list_delivery_schedules": ("_handle_list_delivery_schedules", "noargs"),
+    "remove_delivery_schedule": ("_handle_remove_delivery_schedule", "kwargs"),
+    # -- Q&A (1) -------------------------------------------------------
+    "query_collected": ("_handle_query_collected", "thread"),
+    # -- Source Health / Feedback (2) ----------------------------------
+    "get_source_health": ("_handle_get_source_health", "kwargs"),
+    "rate_item": ("_handle_rate_item", "kwargs"),
+    # -- Webhooks (2) -------------------------------------------------
+    "set_domain_webhooks": ("_handle_set_domain_webhooks", "kwargs"),
+    "get_domain_webhooks": ("_handle_get_domain_webhooks", "kwargs"),
+    # -- Init / Project / Batch / Config (8) --------------------------
+    "init_project": ("_handle_init_project", "kwargs"),
+    "configure_llm": ("_handle_configure_llm", "kwargs"),
+    "test_llm_connection": ("_handle_test_llm_connection", "thread"),
+    "list_projects": ("_handle_list_projects", "noargs"),
+    "get_project_assets": ("_handle_get_project_assets", "noargs"),
+    "archive_project": ("_handle_archive_project", "kwargs"),
+    "batch_run": ("_handle_batch_run", "thread"),
+    "get_feeds": ("_handle_get_feeds", "kwargs"),
+    "list_active_collections": ("_handle_list_active_collections", "noargs"),
+    "get_config": ("_handle_get_config", "kwargs"),
+    # -- Gate Config (2) ------------------------------------------------
+    "get_gate_config": ("_handle_get_gate_config", "kwargs"),
+    "set_gate_config": ("_handle_set_gate_config", "kwargs"),
+    # -- Product (2) ----------------------------------------------------
+    "get_product": ("_handle_get_product", "kwargs"),
+    "list_products": ("_handle_list_products", "kwargs"),
+    # -- End User Delivery (1) -------------------------------------------
+    "send_to_enduser": ("_handle_send_to_enduser", "kwargs"),
+    # -- Alert Rules (3) ------------------------------------------------
+    "get_alert_rules": ("_handle_get_alert_rules", "kwargs"),
+    "add_alert_rule": ("_handle_add_alert_rule", "kwargs"),
+    "remove_alert_rule": ("_handle_remove_alert_rule", "kwargs"),
+    # -- Budget Thresholds (2) -------------------------------------------
+    "get_budget_thresholds": ("_handle_get_budget_thresholds", "noargs"),
+    "set_budget_thresholds": ("_handle_set_budget_thresholds", "kwargs"),
+    "cost_dashboard": ("_handle_cost_dashboard", "kwargs"),
+    "cost_allocation": ("_handle_cost_allocation", "kwargs"),
+    # -- Metrics (2) --------------------------------------------------
+    "get_metrics": ("_handle_get_metrics", "raw"),
+    "get_prometheus_metrics": ("_handle_get_prometheus_metrics", "raw"),
+    # -- Trace (1) ----------------------------------------------------
+    "trace_item": ("_handle_trace_item", "raw"),
+    # -- Soft-delete & GDPR (4) -----------------------------------------
+    "soft_delete_entry": ("_handle_soft_delete_entry", "raw"),
+    "mark_stale": ("_handle_mark_stale", "raw"),
+    "restore_entry": ("_handle_restore_entry", "raw"),
+    "export_user_data": ("_handle_export_user_data", "raw"),
+    "delete_user_data": ("_handle_delete_user_data", "raw"),
+    # -- Portal / End-user Self-service (2) ------------------------------
+    "get_enduser_history": ("_handle_get_enduser_history", "kwargs"),
+    "get_enduser_products": ("_handle_get_enduser_products", "kwargs"),
+    # -- Delivery Log (1) ------------------------------------------------
+    "query_delivery_log": ("_handle_query_delivery_log", "raw"),
+    # -- Delivery Monitor (2) ------------------------------------------
+    "list_active_deliveries": ("_handle_list_active_deliveries", "noargs"),
+    "get_delivery_log": ("_handle_get_delivery_log", "kwargs"),
+    # -- Clean Cache (1) -------------------------------------------------
+    "clean_cache": ("_handle_clean_cache", "kwargs"),
+    # -- Channel Health (1) ------------------------------------------
+    "get_channel_health": ("_handle_get_channel_health", "kwargs"),
+    # -- Merge / Find Similar (2) ---------------------------------
+    "merge_items": ("_handle_merge_items", "kwargs"),
+    "find_similar_items": ("_handle_find_similar_items", "kwargs"),
+    # -- KB Freshness (1) ---------------------------------------------
+    "calculate_freshness_score": ("_handle_calculate_freshness_score", "raw"),
+    # -- End-User Trial (2) ----------------------------------------------
+    "activate_trial": ("_handle_activate_trial", "kwargs"),
+    "check_trial_expiry": ("_handle_check_trial_expiry", "kwargs"),
+    # -- End-User Preferences (2) ----------------------------------------
+    "update_preferences": ("_handle_update_preferences", "kwargs"),
+    "get_preferences": ("_handle_get_preferences", "kwargs"),
+    # -- End-User CRUD (5) --------------------------------------------------
+    "enduser_create": ("_handle_enduser_create", "kwargs"),
+    "enduser_get": ("_handle_enduser_get", "kwargs"),
+    "enduser_update": ("_handle_enduser_update", "kwargs"),
+    "enduser_delete": ("_handle_enduser_delete", "kwargs"),
+    "enduser_list": ("_handle_enduser_list", "noargs"),
+    # -- Stripe Billing (3) ------------------------------------------------
+    "create_checkout_session": ("_handle_create_checkout_session", "kwargs"),
+    "get_subscription_status": ("_handle_get_subscription_status", "kwargs"),
+    "get_billing_summary": ("_handle_get_billing_summary", "kwargs"),
+    # -- Usage-based Billing (G16 — 2) -----------------------------------
+    "get_enduser_usage": ("_handle_get_enduser_usage", "kwargs"),
+    "get_enduser_invoice": ("_handle_get_enduser_invoice", "kwargs"),
+    # -- Agent Callbacks (3) --------------------------------------------
+    "set_agent_callback": ("_handle_set_agent_callback", "kwargs"),
+    "list_agent_callbacks": ("_handle_list_agent_callbacks", "noargs"),
+    "remove_agent_callback": ("_handle_remove_agent_callback", "kwargs"),
+    # -- Recommendation (1) --------------------------------------------
+    "recommend_content": ("_handle_recommend_content", "thread"),
+    # -- Simplification (1) --------------------------------------------
+    "simplify_content": ("_handle_simplify_content", "thread"),
+    # -- Validation (5) ------------------------------------------------
+    "list_validation_scenarios": ("_handle_list_validation_scenarios", "noargs"),
+    "run_validation_scenario": ("_handle_run_validation_scenario", "async"),
+    "run_all_validation_scenarios": ("_handle_run_all_validation_scenarios", "async"),
+    "get_coverage_report": ("_handle_get_coverage_report", "thread_noargs"),
+    "get_run_decisions": ("_handle_get_run_decisions", "thread"),
+}
+
+
+async def _invoke_tool(
+    spec: tuple[str, str],
+    name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any] | list[dict[str, Any]]:
+    """Invoke one dispatched handler using its registered call shape.
+
+    The registry stores the handler *name*, resolved through module globals at
+    call time: tests monkeypatch ``autoinfo.mcp.server._handle_*`` and that
+    seam must keep working after the dispatch chain became a table.
+    """
+    handler_name, mode = spec
+    handler = cast(Callable[..., Any], globals()[handler_name])
+    result: dict[str, Any] | list[dict[str, Any]]
+    if mode == "kwargs":
+        result = handler(**arguments)
+    elif mode == "thread":
+        result = await asyncio.to_thread(handler, **arguments)
+    elif mode == "noargs":
+        result = handler()
+    elif mode == "raw":
+        result = handler(name, arguments)
+    elif mode == "thread_noargs":
+        result = await asyncio.to_thread(handler)
+    elif mode == "async":
+        result = await handler(**arguments)
+    else:
+        raise RuntimeError(f"unknown dispatch mode {mode!r} for tool {name!r}")
+    return result
+
+
 @app.call_tool()  # type: ignore[untyped-decorator]
 async def call_tool(
     name: str, arguments: dict[str, Any]
@@ -8408,402 +8644,8 @@ async def call_tool(
                     )
                 )
 
-        # -- System (3) ---------------------------------------------------
-        if name == "health_check":
-            result = _handle_health_check()
-        elif name == "get_tool_count":
-            result = _handle_get_tool_count()
-        elif name == "diagnose_system":
-            result = _handle_diagnose_system()
-
-        # -- Discovery (7) ------------------------------------------------
-        elif name == "list_domains":
-            result = _handle_list_domains()
-        elif name == "list_available_platforms":
-            result = _handle_list_available_platforms()
-        elif name == "get_domain_schema":
-            result = _handle_get_domain_schema(**arguments)
-        elif name == "list_available_models":
-            result = _handle_list_available_models()
-        elif name == "get_effective_llm_config":
-            result = _handle_get_effective_llm_config(**arguments)
-        elif name == "activate_domain":
-            result = _handle_activate_domain(**arguments)
-        elif name == "deactivate_domain":
-            result = _handle_deactivate_domain(**arguments)
-        elif name == "add_domain":
-            result = _handle_add_domain(**arguments)
-        elif name == "remove_domain":
-            result = _handle_remove_domain(**arguments)
-        elif name == "get_domain_config":
-            result = _handle_get_domain_config(**arguments)
-
-        # -- Source Management (5) ----------------------------------------
-        elif name == "add_source":
-            result = _handle_add_source(**arguments)
-        elif name == "add_sources":
-            result = _handle_add_sources(**arguments)
-        elif name == "remove_source":
-            result = _handle_remove_source(**arguments)
-        elif name == "test_source":
-            result = _handle_test_source(**arguments)
-        elif name == "list_sources":
-            result = _handle_list_sources(**arguments)
-
-        # -- Topic Management (6) -----------------------------------------
-        elif name == "add_topic":
-            result = _handle_add_topic(**arguments)
-        elif name == "remove_topic":
-            result = _handle_remove_topic(**arguments)
-        elif name == "list_topics":
-            result = _handle_list_topics(**arguments)
-        elif name == "list_keywords":
-            result = _handle_list_keywords(**arguments)
-        elif name == "topic_group_add":
-            result = _handle_topic_group_add(**arguments)
-        elif name == "topic_group_remove":
-            result = _handle_topic_group_remove(**arguments)
-
-        # -- Keywords Management (3) --------------------------------------
-        elif name == "approve_keyword":
-            result = _handle_approve_keyword(**arguments)
-        elif name == "reject_keyword":
-            result = _handle_reject_keyword(**arguments)
-        elif name == "suggest_keywords":
-            result = await asyncio.to_thread(_handle_suggest_keywords, **arguments)
-
-        # -- Collection / Processing (5) ----------------------------------
-        # collect/process/batch_run are long-running sync handlers; offload
-        # them so the asyncio event loop stays responsive and the progress
-        # tools (get_collection_progress / get_processing_progress) keep
-        # answering while a run is in flight (issue #136).
-        elif name == "collect_sources":
-            result = await asyncio.to_thread(_handle_collect_sources, **arguments)
-        elif name == "get_collection_progress":
-            result = _handle_get_collection_progress(**arguments)
-        elif name == "get_collection_status":
-            result = _handle_get_collection_status(**arguments)
-        elif name == "process_collection":
-            result = await asyncio.to_thread(_handle_process_collection, **arguments)
-        elif name == "get_processing_progress":
-            result = _handle_get_processing_progress(**arguments)
-
-        # -- Knowledge Base (4) -------------------------------------------
-        elif name == "list_summaries":
-            result = _handle_list_summaries(**arguments)
-        elif name == "get_kb_entry":
-            result = _handle_get_kb_entry(**arguments)
-        elif name == "search_knowledge_base":
-            result = _handle_search_knowledge_base(**arguments)
-        elif name == "query_knowledge_graph":
-            result = _handle_query_knowledge_graph(**arguments)
-        elif name == "knowledge_graph_export":
-            result = _handle_knowledge_graph_export(**arguments)
-        elif name == "flag_for_knowledge_base":
-            result = _handle_flag_for_knowledge_base(**arguments)
-        elif name == "get_summary":
-            result = _handle_get_summary(**arguments)
-
-        elif name == "link_items":
-            result = _handle_link_items(**arguments)
-        elif name == "get_item_relations":
-            result = _handle_get_item_relations(**arguments)
-
-        elif name == "get_entry_history":
-            result = _handle_get_entry_history(**arguments)
-        elif name == "restore_entry_version":
-            result = _handle_restore_entry_version(**arguments)
-        elif name == "compare_versions":
-            result = _handle_compare_versions(**arguments)
-
-        elif name == "get_collection_stats":
-            result = _handle_get_collection_stats(**arguments)
-        elif name == "get_collection_diff":
-            result = _handle_get_collection_diff(**arguments)
-
-        elif name == "get_domain_decay":
-            result = _handle_get_domain_decay(**arguments)
-
-        # -- KB: Draft tools (4) ------------------------------------------
-        elif name == "create_kb_draft":
-            result = _handle_create_kb_draft(**arguments)
-        elif name == "reject_kb_draft":
-            result = _handle_reject_kb_draft(**arguments)
-        elif name == "list_kb_tier":
-            result = _handle_list_kb_tier(**arguments)
-        elif name == "promote_kb_draft":
-            result = await asyncio.to_thread(_handle_promote_kb_draft, **arguments)
-        elif name == "demote_kb_wiki":
-            result = _handle_demote_kb_wiki(**arguments)
-        elif name == "force_promote":
-            result = _handle_force_promote(**arguments)
-        elif name == "promote_pending":
-            result = _handle_promote_pending(**arguments)
-        elif name == "reindex_kb":
-            result = _handle_reindex_kb(**arguments)
-        elif name == "create_kb_entry":
-            result = _handle_create_kb_entry(**arguments)
-
-        # -- Audit (1) -------------------------------------------------------
-        elif name == "query_audit_log":
-            qa_kwargs = arguments
-            result = _handle_query_audit_log(**qa_kwargs)
-
-        # -- CEFR Classification (1) ----------------------------------------
-        elif name == "classify_cefr":
-            result = await asyncio.to_thread(_handle_classify_cefr, **arguments)
-        elif name == "cefr_batch":
-            result = await asyncio.to_thread(_handle_cefr_batch, **arguments)
-
-        # -- Output (6) ---------------------------------------------------
-        elif name == "list_output_templates":
-            result = _handle_list_output_templates(**arguments)
-        elif name == "generate_digest":
-            result = await asyncio.to_thread(_handle_generate_digest, **arguments)
-        elif name == "generate_report":
-            result = await asyncio.to_thread(_handle_generate_report, **arguments)
-        elif name == "generate_cross_domain_report":
-            result = await asyncio.to_thread(_handle_generate_cross_domain_report, **arguments)
-        elif name == "generate_tutorial":
-            result = await asyncio.to_thread(_handle_generate_tutorial, **arguments)
-        elif name == "generate_presentation":
-            result = await asyncio.to_thread(_handle_generate_presentation, **arguments)
-        elif name == "localize_content":
-            result = await asyncio.to_thread(_handle_localize_content, **arguments)
-
-        # -- Export / Import (2) -----------------------------------------------
-        elif name == "export_kb":
-            result = _handle_export_kb(**arguments)
-        elif name == "import_kb":
-            result = _handle_import_kb(**arguments)
-
-        # -- Email (1) --------------------------------------------------------
-        elif name == "send_email_digest":
-            result = _handle_send_email_digest(**arguments)
-        elif name == "email_config":
-            result = _handle_email_config(**arguments)
-
-        # -- Custom Extraction (2) ----------------------------------------
-        elif name == "extract_fields":
-            result = await asyncio.to_thread(_handle_extract_fields, **arguments)
-        elif name == "get_extraction":
-            result = _handle_get_extraction(**arguments)
-
-        # -- Schedule Management (5) ---------------------------------------
-        elif name == "list_schedules":
-            result = _handle_list_schedules()
-        elif name == "add_schedule":
-            result = _handle_add_schedule(**arguments)
-        elif name == "remove_schedule":
-            result = _handle_remove_schedule(**arguments)
-        elif name == "run_schedules":
-            result = _handle_run_schedules(**arguments)
-        elif name == "get_schedule_status":
-            result = _handle_get_schedule_status(**arguments)
-
-        # -- Delivery Schedule Management (3) --------------------------------
-        elif name == "add_delivery_schedule":
-            result = _handle_add_delivery_schedule(**arguments)
-        elif name == "list_delivery_schedules":
-            result = _handle_list_delivery_schedules()
-        elif name == "remove_delivery_schedule":
-            result = _handle_remove_delivery_schedule(**arguments)
-
-        # -- Q&A (1) -------------------------------------------------------
-        elif name == "query_collected":
-            result = await asyncio.to_thread(_handle_query_collected, **arguments)
-
-        # -- Source Health / Feedback (2) ----------------------------------
-        elif name == "get_source_health":
-            result = _handle_get_source_health(**arguments)
-        elif name == "rate_item":
-            result = _handle_rate_item(**arguments)
-
-        # -- Webhooks (2) -------------------------------------------------
-        elif name == "set_domain_webhooks":
-            result = _handle_set_domain_webhooks(**arguments)
-        elif name == "get_domain_webhooks":
-            result = _handle_get_domain_webhooks(**arguments)
-
-        # -- Init / Project / Batch / Config (8) --------------------------
-        elif name == "init_project":
-            result = _handle_init_project(**arguments)
-        elif name == "configure_llm":
-            result = _handle_configure_llm(**arguments)
-        elif name == "test_llm_connection":
-            result = await asyncio.to_thread(_handle_test_llm_connection, **arguments)
-        elif name == "list_projects":
-            result = _handle_list_projects()
-        elif name == "get_project_assets":
-            result = _handle_get_project_assets()
-        elif name == "archive_project":
-            result = _handle_archive_project(**arguments)
-        elif name == "batch_run":
-            result = await asyncio.to_thread(_handle_batch_run, **arguments)
-        elif name == "get_feeds":
-            result = _handle_get_feeds(**arguments)
-        elif name == "list_active_collections":
-            result = _handle_list_active_collections()
-        elif name == "get_config":
-            result = _handle_get_config(**arguments)
-
-        # -- Gate Config (2) ------------------------------------------------
-        elif name == "get_gate_config":
-            result = _handle_get_gate_config(**arguments)
-        elif name == "set_gate_config":
-            result = _handle_set_gate_config(**arguments)
-
-        # -- Product (2) ----------------------------------------------------
-        elif name == "get_product":
-            result = _handle_get_product(**arguments)
-        elif name == "list_products":
-            result = _handle_list_products(**arguments)
-
-        # -- End User Delivery (1) -------------------------------------------
-        elif name == "send_to_enduser":
-            result = _handle_send_to_enduser(**arguments)
-
-        # -- Alert Rules (3) ------------------------------------------------
-        elif name == "get_alert_rules":
-            result = _handle_get_alert_rules(**arguments)
-        elif name == "add_alert_rule":
-            result = _handle_add_alert_rule(**arguments)
-        elif name == "remove_alert_rule":
-            result = _handle_remove_alert_rule(**arguments)
-
-        # -- Budget Thresholds (2) -------------------------------------------
-        elif name == "get_budget_thresholds":
-            result = _handle_get_budget_thresholds()
-        elif name == "set_budget_thresholds":
-            result = _handle_set_budget_thresholds(**arguments)
-        elif name == "cost_dashboard":
-            result = _handle_cost_dashboard(**arguments)
-        elif name == "cost_allocation":
-            result = _handle_cost_allocation(**arguments)
-
-        # -- Metrics (2) --------------------------------------------------
-        elif name == "get_metrics":
-            result = _handle_get_metrics(name, arguments)
-        elif name == "get_prometheus_metrics":
-            result = _handle_get_prometheus_metrics(name, arguments)
-
-        # -- Trace (1) ----------------------------------------------------
-        elif name == "trace_item":
-            result = _handle_trace_item(name, arguments)
-
-        # -- Soft-delete & GDPR (4) -----------------------------------------
-        elif name == "soft_delete_entry":
-            result = _handle_soft_delete_entry(name, arguments)
-        elif name == "mark_stale":
-            result = _handle_mark_stale(name, arguments)
-        elif name == "restore_entry":
-            result = _handle_restore_entry(name, arguments)
-        elif name == "export_user_data":
-            result = _handle_export_user_data(name, arguments)
-        elif name == "delete_user_data":
-            result = _handle_delete_user_data(name, arguments)
-
-        # -- Portal / End-user Self-service (2) ------------------------------
-        elif name == "get_enduser_history":
-            result = _handle_get_enduser_history(**arguments)
-        elif name == "get_enduser_products":
-            result = _handle_get_enduser_products(**arguments)
-
-        # -- Delivery Log (1) ------------------------------------------------
-        elif name == "query_delivery_log":
-            result = _handle_query_delivery_log(name, arguments)
-
-        # -- Delivery Monitor (2) ------------------------------------------
-        elif name == "list_active_deliveries":
-            result = _handle_list_active_deliveries()
-        elif name == "get_delivery_log":
-            result = _handle_get_delivery_log(**arguments)
-
-        # -- Clean Cache (1) -------------------------------------------------
-        elif name == "clean_cache":
-            result = _handle_clean_cache(**arguments)
-
-        # -- Channel Health (1) ------------------------------------------
-        elif name == "get_channel_health":
-            result = _handle_get_channel_health(**arguments)
-
-        # -- Merge / Find Similar (2) ---------------------------------
-        elif name == "merge_items":
-            result = _handle_merge_items(**arguments)
-        elif name == "find_similar_items":
-            result = _handle_find_similar_items(**arguments)
-
-        # -- KB Freshness (1) ---------------------------------------------
-        elif name == "calculate_freshness_score":
-            result = _handle_calculate_freshness_score(name, arguments)
-
-        # -- End-User Trial (2) ----------------------------------------------
-        elif name == "activate_trial":
-            result = _handle_activate_trial(**arguments)
-        elif name == "check_trial_expiry":
-            result = _handle_check_trial_expiry(**arguments)
-
-        # -- End-User Preferences (2) ----------------------------------------
-        elif name == "update_preferences":
-            result = _handle_update_preferences(**arguments)
-        elif name == "get_preferences":
-            result = _handle_get_preferences(**arguments)
-
-        # -- End-User CRUD (5) --------------------------------------------------
-        elif name == "enduser_create":
-            result = _handle_enduser_create(**arguments)
-        elif name == "enduser_get":
-            result = _handle_enduser_get(**arguments)
-        elif name == "enduser_update":
-            result = _handle_enduser_update(**arguments)
-        elif name == "enduser_delete":
-            result = _handle_enduser_delete(**arguments)
-        elif name == "enduser_list":
-            result = _handle_enduser_list()
-
-        # -- Stripe Billing (3) ------------------------------------------------
-        elif name == "create_checkout_session":
-            result = _handle_create_checkout_session(**arguments)
-        elif name == "get_subscription_status":
-            result = _handle_get_subscription_status(**arguments)
-        elif name == "get_billing_summary":
-            result = _handle_get_billing_summary(**arguments)
-
-        # -- Usage-based Billing (G16 — 2) -----------------------------------
-        elif name == "get_enduser_usage":
-            result = _handle_get_enduser_usage(**arguments)
-        elif name == "get_enduser_invoice":
-            result = _handle_get_enduser_invoice(**arguments)
-
-        # -- Agent Callbacks (3) --------------------------------------------
-        elif name == "set_agent_callback":
-            result = _handle_set_agent_callback(**arguments)
-        elif name == "list_agent_callbacks":
-            result = _handle_list_agent_callbacks()
-        elif name == "remove_agent_callback":
-            result = _handle_remove_agent_callback(**arguments)
-
-        # -- Recommendation (1) --------------------------------------------
-        elif name == "recommend_content":
-            result = await asyncio.to_thread(_handle_recommend_content, **arguments)
-
-        # -- Simplification (1) --------------------------------------------
-        elif name == "simplify_content":
-            result = await asyncio.to_thread(_handle_simplify_content, **arguments)
-
-        # -- Validation (5) ------------------------------------------------
-        elif name == "list_validation_scenarios":
-            result = _handle_list_validation_scenarios()
-        elif name == "run_validation_scenario":
-            result = await _handle_run_validation_scenario(**arguments)
-        elif name == "run_all_validation_scenarios":
-            result = await _handle_run_all_validation_scenarios(**arguments)
-        elif name == "get_coverage_report":
-            result = await asyncio.to_thread(_handle_get_coverage_report)
-        elif name == "get_run_decisions":
-            result = await asyncio.to_thread(_handle_get_run_decisions, **arguments)
-
-        else:
+        spec = _TOOL_DISPATCH.get(name)
+        if spec is None:
             _dispatch_audit["code"] = "unknown_tool"
             return _envelope_result(
                 error_response(
@@ -8812,6 +8654,7 @@ async def call_tool(
                     actionable=False,
                 )
             )
+        result = await _invoke_tool(spec, name, arguments)
 
         # Canonical envelope only: handlers return either the success envelope
         # or the error envelope; flat success payloads are wrapped here.

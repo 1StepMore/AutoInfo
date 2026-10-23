@@ -73,7 +73,9 @@ class QuandlHandler(BaseHandler):
             )
             return []
         settings = ctx.settings or (
-            dict(ctx.source_config.settings or {}) if ctx.source_config else {}
+            dict(ctx.source_config.settings or {})
+            if ctx.source_config is not None
+            else dict(self._settings or {})
         )
         query = ctx.topic or ctx.query or settings.get("query", "") or ""
         if not query.strip():

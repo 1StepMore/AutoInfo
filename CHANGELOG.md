@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.39](https://github.com/1StepMore/AutoInfo/compare/v1.17.38...v1.17.39) (2026-10-23)
+
+
+### Refactoring
+
+* **core:** 统一采集/质量/MCP/输出模块边界（[#580](https://github.com/1StepMore/AutoInfo/issues/580)-[#583](https://github.com/1StepMore/AutoInfo/issues/583) phase 1） ([#597](https://github.com/1StepMore/AutoInfo/issues/597)) ([a75661d](https://github.com/1StepMore/AutoInfo/commit/a75661d45829f311beaa45b4fd42e0194e931979))
+
 ## [1.17.38](https://github.com/1StepMore/AutoInfo/compare/v1.17.37...v1.17.38) (2026-10-22)
 
 

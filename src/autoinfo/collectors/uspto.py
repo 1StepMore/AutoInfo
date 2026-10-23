@@ -26,7 +26,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler, SourceFailure
+from autoinfo.collectors.base import BaseHandler, CollectorContext, SourceFailure
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,12 @@ class USPTOHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch USPTO patents for the topic query."""
+        query = ctx.topic if ctx.topic else ""
+        patents = self.fetch(query, limit=ctx.resolved_limit(10))
+        return [self.to_item(p) for p in patents]
+
     def fetch(
         self,
         query: str = "",
@@ -297,8 +303,7 @@ class USPTOHandler(BaseHandler):
             resp = self._request(url)
         except httpx.HTTPStatusError as exc:
             raise SourceFailure(
-                f"USPTO RSS feed unavailable (HTTP {exc.response.status_code}): "
-                f"{USPTO_RSS_URL}"
+                f"USPTO RSS feed unavailable (HTTP {exc.response.status_code}): {USPTO_RSS_URL}"
             ) from exc
         root = ET.fromstring(resp.text)
 
@@ -328,16 +333,18 @@ class USPTOHandler(BaseHandler):
                 if ql not in title.lower() and ql not in description.lower():
                     continue
 
-            patents.append({
-                "id": patent_number,
-                "title": title,
-                "abstract": description,
-                "authors": [],  # RSS does not include inventor info
-                "filed_date": "",
-                "published_date": published,
-                "patent_number": patent_number,
-                "source_type": "rss",
-            })
+            patents.append(
+                {
+                    "id": patent_number,
+                    "title": title,
+                    "abstract": description,
+                    "authors": [],  # RSS does not include inventor info
+                    "filed_date": "",
+                    "published_date": published,
+                    "patent_number": patent_number,
+                    "source_type": "rss",
+                }
+            )
             items_found += 1
 
         return patents
@@ -428,9 +435,7 @@ class USPTOHandler(BaseHandler):
             source_type=patent.get("source_type", "api"),
             source_platform="uspto",
             source_url=(
-                f"https://patents.google.com/patent/{patent_number}/en"
-                if patent_number
-                else ""
+                f"https://patents.google.com/patent/{patent_number}/en" if patent_number else ""
             ),
             title=title,
             content=patent.get("abstract") or "",

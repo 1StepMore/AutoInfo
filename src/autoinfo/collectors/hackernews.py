@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 from autoinfo.textutil import clean_feed_text
 
@@ -90,6 +90,11 @@ class HackerNewsHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch HackerNews stories and convert them to ``Item``."""
+        stories = self.fetch(limit=ctx.resolved_limit(20))
+        return [self.to_item(s) for s in stories]
 
     def fetch(self, query: str = "", limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:
         """Fetch top stories from Hacker News.

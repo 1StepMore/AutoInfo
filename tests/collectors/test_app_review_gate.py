@@ -122,7 +122,7 @@ def test_base_handler_declares_false_by_default() -> None:
     """所有 handler 都该能统一被问 —— 基类默认 False。"""
 
     class _H(BaseHandler):
-        def fetch(self, *a: object, **k: object) -> list:  # type: ignore[override]
+        def fetch_items(self, ctx: object) -> list:  # type: ignore[override]
             return []
 
     assert _H().requires_app_review() is False

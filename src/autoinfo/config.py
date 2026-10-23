@@ -399,6 +399,10 @@ class QualityGateConfig:
 
     name: str = ""
     category: str = "soft"  # "hard" | "soft"
+    #: Number of EXTRA attempts after the first one.  Total attempts =
+    #: ``1 + max(retries, 0)`` — so ``0`` means a single attempt and ``3``
+    #: means four.  This is the unified semantics enforced by
+    #: :func:`autoinfo.quality.retry_with_escalation` (issue #583).
     retries: int = 0
     retry_models: list[str] = field(default_factory=list)
     action: str = "flag"  # hard: block | retry; soft: retry | flag | skip | archive
@@ -1155,7 +1159,8 @@ def validate_config(config: Config) -> list[str]:
 # systematically rejects multilingual/weak-keyword-hit content.  Mirrors the
 # quality_gates block create_default_config writes for `init`.
 _DEFAULT_QUALITY_GATES: Final[dict[str, dict[str, Any]]] = {
-    "G0": {"category": "hard", "retries": 1, "action": "block"},
+    # Issue #583 / #565: G0 is deterministic — one attempt, no retry.
+    "G0": {"category": "hard", "retries": 0, "action": "block"},
     "G1": {"category": "soft", "action": "flag"},
     "G1-TosCompliance": {"category": "soft", "action": "flag"},
     "G2": {"category": "soft", "action": "flag", "window_days": 30},

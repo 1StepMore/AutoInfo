@@ -19,8 +19,6 @@ Dispatch rules (from ``collect.py`` ``_build_handler()``):
 from __future__ import annotations
 
 import ast
-import inspect
-import re
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +27,14 @@ import yaml
 
 from autoinfo.collect import _build_handler
 from autoinfo.collectors.gdelt import GDELTHandler
+from autoinfo.collectors.registry import (
+    NON_BUILDABLE_SOURCE_TYPES,
+    CollectorRegistration,
+    register_collector,
+    registered_source_types,
+    registrations_for,
+    unregister_collector,
+)
 from autoinfo.collectors.rss import RSSHandler
 from autoinfo.collectors.unpaywall import UnpaywallHandler
 from autoinfo.collectors.youtube import YouTubeHandler
@@ -302,65 +308,123 @@ def test_source_dispatch_pass_fail() -> None:
 
 
 # ---------------------------------------------------------------------------
-# VALID_SOURCE_TYPES parity with _build_handler dispatch
+# VALID_SOURCE_TYPES parity with the collector registry
 # ---------------------------------------------------------------------------
-
-# Source types accepted by add_source but not dispatched by _build_handler:
-# * webhook — inbound push, delivered via the webhook receiver
-# * ssrn/gdelt/huggingface/kaggle/unpaywall/core — forward-declared types
-#   whose collectors land in later implementation tasks (T7-T10)
-_NON_DISPATCH_TYPES: frozenset[str] = frozenset(
-    {
-        "webhook",
-        "ssrn",
-        "gdelt",
-        "unpaywall",
-        "core",
-    }
-)
-
-# Matches `stype == "x"` and `stype in ("a", "b")` in _build_handler source.
-_DISPATCH_STYPE_RE = re.compile(
-    r'stype\s*==\s*["\']([a-z_0-9]+)["\']|stype\s*in\s*\(\s*([^)]*?)\s*\)'
-)
+# The registry (``autoinfo.collectors.registry``) is now the single source of
+# truth for "which source types can be built for pull collection".  Types that
+# are accepted as configuration values but have no pull collector are listed
+# explicitly by the registry itself (``NON_BUILDABLE_SOURCE_TYPES``) so a
+# forgotten registration cannot hide behind a hand-maintained test allowlist.
 
 
-def _build_handler_dispatch_types() -> set[str]:
-    """Extract every source type string compared against ``stype`` from the
-    live ``_build_handler`` source, so this test can never silently drift
-    from the real dispatch logic."""
-    src = inspect.getsource(_build_handler)
-    types: set[str] = set()
-    for match in _DISPATCH_STYPE_RE.finditer(src):
-        if match.group(1) is not None:
-            types.add(match.group(1))
-        else:
-            types.update(re.findall(r'["\']([a-z_0-9]+)["\']', match.group(2)))
-    return types
+def test_valid_source_types_parity_with_registry() -> None:
+    """VALID_SOURCE_TYPES == registered types + documented non-buildable types.
 
+    Catches single-place drift in either direction: registering a collector
+    for a type that ``add_source`` rejects, or accepting a config type that
+    silently lost its registration.
+    """
+    registered = registered_source_types()
+    expected = registered | set(NON_BUILDABLE_SOURCE_TYPES)
 
-def test_valid_source_types_parity_with_build_handler() -> None:
-    """VALID_SOURCE_TYPES must match every _build_handler dispatch type plus
-    the documented non-dispatch types. Catches single-place drift: adding a
-    branch to _build_handler without extending VALID_SOURCE_TYPES (or vice
-    versa) fails this test."""
-    dispatch_types = _build_handler_dispatch_types()
-    expected = dispatch_types | set(_NON_DISPATCH_TYPES)
-
-    # Direction 1: every type _build_handler can dispatch must be addable.
-    missing = dispatch_types - set(VALID_SOURCE_TYPES)
-    assert not missing, (
-        "Types dispatchable in _build_handler but missing from VALID_SOURCE_TYPES: "
-        f"{sorted(missing)}"
+    missing_from_config = registered - set(VALID_SOURCE_TYPES)
+    assert not missing_from_config, (
+        "Types registered in the collector registry but missing from "
+        f"VALID_SOURCE_TYPES: {sorted(missing_from_config)}"
     )
 
-    # Direction 2: VALID_SOURCE_TYPES must equal dispatch + documented extras.
-    extra = set(VALID_SOURCE_TYPES) - expected
-    assert set(VALID_SOURCE_TYPES) == expected, (
-        f"VALID_SOURCE_TYPES drifted from _build_handler dispatch.\n"
-        f"  In VALID_SOURCE_TYPES but not in _build_handler or _NON_DISPATCH_TYPES: "
-        f"{sorted(extra)}"
+    unclassified = set(VALID_SOURCE_TYPES) - expected
+    assert not unclassified, (
+        "VALID_SOURCE_TYPES contains types that are neither registered nor "
+        "declared non-buildable in NON_BUILDABLE_SOURCE_TYPES: "
+        f"{sorted(unclassified)}"
     )
+
+    stale_non_buildable = set(NON_BUILDABLE_SOURCE_TYPES) - set(VALID_SOURCE_TYPES)
+    assert not stale_non_buildable, (
+        "NON_BUILDABLE_SOURCE_TYPES lists types outside VALID_SOURCE_TYPES: "
+        f"{sorted(stale_non_buildable)}"
+    )
+
+    assert set(VALID_SOURCE_TYPES) == expected
+
+
+def test_non_buildable_types_are_exactly_the_known_ones() -> None:
+    """``webhook`` is push-only and ``core`` is forward-declared — nothing else."""
+    assert set(NON_BUILDABLE_SOURCE_TYPES) == {"webhook", "core"}
+
+
+def test_every_non_buildable_type_raises_value_error() -> None:
+    """A config may carry these types, but pull collection cannot build them."""
+    for stype in sorted(NON_BUILDABLE_SOURCE_TYPES):
+        with pytest.raises(ValueError, match="Unknown source type"):
+            _build_handler(SourceConfig(name=f"x-{stype}", type=stype, url="https://e.com"))
+
+
+def test_every_registered_type_builds_a_collector() -> None:
+    """Every registry entry produces a Collector with the uniform contract."""
+    from autoinfo.collectors.base import Collector
+
+    for stype in sorted(registered_source_types()):
+        handler = _build_handler(
+            SourceConfig(name=f"test-{stype}", type=stype, url="https://example.com/x")
+        )
+        assert isinstance(handler, Collector), f"{stype} did not build a Collector"
+        assert callable(handler.fetch_items), f"{stype} has no fetch_items"
+
+
+def test_registry_has_no_dangling_predicate_entries() -> None:
+    """Predicate entries resolve to a wildcard fallback for their type."""
+    for stype in sorted(registered_source_types()):
+        entries = registrations_for(stype)
+        assert entries, f"{stype} registered with zero entries"
+        assert any(e.name_contains is None for e in entries), (
+            f"{stype} has only name-predicate entries — a source whose name "
+            "matches none of them would resolve to no collector"
+        )
+
+
+def test_new_collector_needs_one_class_and_one_registration() -> None:
+    """Boundary: a new collector = one class + one registry registration.
+
+    Nothing in ``collect.py`` changes.  This is the acceptance test for the
+    registry refactor (#580): it fails if adding a collector ever requires
+    touching a dispatch chain again.
+    """
+    from autoinfo.collectors.base import Collector, CollectorContext
+
+    class _BoundaryCollector(Collector):
+        def __init__(self, source_config: SourceConfig) -> None:
+            self.source_config = source_config
+            self.seen: CollectorContext | None = None
+
+        def fetch_items(self, ctx: CollectorContext) -> list[Any]:
+            self.seen = ctx
+            return []
+
+    registration = CollectorRegistration("__boundary__", _BoundaryCollector)
+    register_collector(registration)
+    try:
+        handler = _build_handler(
+            SourceConfig(name="boundary", type="__boundary__", url="https://example.com/x")
+        )
+        assert isinstance(handler, _BoundaryCollector)
+
+        ctx = CollectorContext(
+            topic="boundary-topic",
+            keywords=["alpha"],
+            limit=0,
+            url="https://example.com/x",
+            query="q",
+        )
+        assert handler.fetch_items(ctx) == []
+        assert handler.seen is ctx
+        assert handler.seen.limit == 0, "limit=0 must survive as an explicit empty request"
+        assert handler.seen.topic == "boundary-topic"
+    finally:
+        unregister_collector(registration)
+
+    assert "__boundary__" not in registered_source_types()
 
 
 # ---------------------------------------------------------------------------

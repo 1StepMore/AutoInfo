@@ -13,18 +13,18 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 113 |
-| Total lines | 36824 |
-| Active files | 84 |
+| Total files | 114 |
+| Total lines | 36900 |
+| Active files | 85 |
 | Archived files | 29 |
 | Category — archive | 29 files / 8944 lines |
 | Category — known-limitations | 2 files / 350 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
-| Category — adr | 12 files / 702 lines |
+| Category — adr | 13 files / 775 lines |
 | Category — specs | 12 files / 9767 lines |
 | Category — validation-reports | 15 files / 3788 lines |
-| Category — docs/dev | 31 files / 11108 lines |
+| Category — docs/dev | 31 files / 11111 lines |
 | Category — docs/root | 5 files / 983 lines |
 
 ## Inventory
@@ -41,7 +41,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0008-dependency-version-policy.md` | 82 | adr | active | adr |
 | `adr/0009-dco-squash-merge-signoff.md` | 103 | adr | active | adr |
 | `adr/0010-mcp-tools-list-omits-output-schema.md` | 47 | adr | active | — |
-| `adr/README.md` | 56 | adr | active | adr-index |
+| `adr/0011-quality-gate-attempt-semantics.md` | 72 | adr | active | adr |
+| `adr/README.md` | 57 | adr | active | adr-index |
 | `adr/TEMPLATE.md` | 32 | adr | active | adr |
 | `archive/ac4-gap-key-acquisition.md` | 81 | archive | archived | — |
 | `archive/acceptance-2026-08-08.md` | 166 | archive | archived | — |
@@ -78,7 +79,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/AutoInfo-development-brief-v3.md` | 247 | docs/dev | active | — |
 | `dev/AutoInfo-development-brief-v4.md` | 310 | docs/dev | active | — |
 | `dev/AutoInfo开发简报.md` | 104 | docs/dev | active | — |
-| `dev/acceptance-framework.md` | 505 | docs/dev | active | — |
+| `dev/acceptance-framework.md` | 508 | docs/dev | active | — |
 | `dev/agent-era-doc-architecture-autoinfo.md` | 94 | docs/dev | active | reference |
 | `dev/agent-era-doc-architecture.md` | 280 | docs/dev | active | instruction |
 | `dev/autoinfo-business-validation-20260902.md` | 293 | docs/dev | active | — |

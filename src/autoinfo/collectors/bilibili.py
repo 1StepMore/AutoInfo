@@ -24,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -144,6 +144,14 @@ class BilibiliHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch Bilibili videos, applying the topic as an unset query."""
+        if ctx.topic and not self.config.get("query"):
+            self.query = ctx.topic
+            self.config["query"] = ctx.topic
+        videos = self.fetch(limit=ctx.resolved_limit(10))
+        return [self.to_item(v) for v in videos]
 
     def fetch(self, limit: int = 10) -> list[dict[str, Any]]:
         """Search Bilibili and return parsed video dicts.

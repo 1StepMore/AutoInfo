@@ -31,7 +31,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -144,6 +144,11 @@ class AKShareHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch AKShare market rows and convert them to ``Item``."""
+        rows = self.fetch(limit=ctx.resolved_limit(20))
+        return [self.to_item(r) for r in rows]
 
     def fetch(self, limit: int = DEFAULT_LIMIT) -> list[dict[str, Any]]:
         """Fetch market data rows from AKShare.

@@ -23,6 +23,7 @@ from typing import Any
 
 import trafilatura
 
+from autoinfo.collectors.base import CollectorContext
 from autoinfo.collectors.robots import RobotsDisallowed, check_url_allowed
 from autoinfo.collectors.web import USER_AGENT, WebHandler
 from autoinfo.models import Item
@@ -84,6 +85,16 @@ class PlaywrightWebHandler:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch and extract the page at ``ctx.url`` (uniform contract)."""
+        url = ctx.url or (ctx.source_config.url if ctx.source_config else "")
+        if not url:
+            return []
+        items = self.fetch(url)
+        if ctx.limit is None:
+            return items
+        return items[: ctx.limit]
 
     def fetch(self, url: str) -> list[Item]:
         """Fetch *url* and extract content, falling back to Playwright.

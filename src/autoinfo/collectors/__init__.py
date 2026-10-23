@@ -13,6 +13,15 @@ from autoinfo.collectors.nyt import NYTHandler
 from autoinfo.collectors.pdf import PDFHandler
 from autoinfo.collectors.quandl import QuandlHandler
 from autoinfo.collectors.reddit import RedditHandler
+from autoinfo.collectors.registry import (
+    NON_BUILDABLE_SOURCE_TYPES,
+    CollectorRegistration,
+    build_collector,
+    register_collector,
+    registered_source_types,
+    registrations_for,
+    unregister_collector,
+)
 from autoinfo.collectors.reuters_mcp import ReutersMCPHandler
 from autoinfo.collectors.sec_edgar import SecEdgarHandler
 from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
@@ -48,4 +57,11 @@ __all__ = [
     "USPTOHandler",
     "YahooFinanceHandler",
     "YouTubeHandler",
+    "NON_BUILDABLE_SOURCE_TYPES",
+    "CollectorRegistration",
+    "build_collector",
+    "register_collector",
+    "registered_source_types",
+    "registrations_for",
+    "unregister_collector",
 ]

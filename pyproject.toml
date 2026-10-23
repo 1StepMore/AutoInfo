@@ -147,6 +147,11 @@ select = ["E", "F", "I", "N", "W"]
 # 2026-08-08 bypassing PR gates; never lint-cleaned.
 [tool.ruff.lint.per-file-ignores]
 "src/autoinfo/mcp/server.py" = ["E501", "F841", "N806"]
+# mcp/tools/*.py: the 149 Tool schemas extracted verbatim from server.py
+# (#581 phase 1). The long description literals inherit server.py's E501
+# exemption (`ruff format` cannot split a string); reflowing them would break
+# the byte-identical tools/list surface this extraction is required to keep.
+"src/autoinfo/mcp/tools/*.py" = ["E501"]
 # video.py: added 2026-08-13 (64daae5) with 37 pre-existing E501 long lines
 # (re-measured 2026-10-20); never lint-cleaned. Suppressing here so the
 # changed-files gate catches NEW errors without blocking legacy file touches

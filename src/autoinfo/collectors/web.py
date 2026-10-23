@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 import trafilatura
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.collectors.robots import RobotsDisallowed, check_url_allowed
 from autoinfo.models import Item
 
@@ -72,6 +72,20 @@ class WebHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch and extract the page at ``ctx.url`` (uniform contract)."""
+        url = ctx.url or (ctx.source_config.url if ctx.source_config else "")
+        if not url:
+            logger.warning(
+                "RSS source has no URL configured",
+                extra={"source_name": ctx.source_name},
+            )
+            return []
+        items = self.fetch(url)
+        if ctx.limit is None:
+            return items
+        return items[: ctx.limit]
 
     def fetch(self, url: str) -> list[Item]:
         """Fetch a URL and extract its content as a single Item.

@@ -22,6 +22,7 @@ summary to stdout. Pure static analysis — no server imports. The AST
 parsing helpers mirror ``scripts/tool_desc_audit.py`` (kept self-contained
 so each audit script is hermetic).
 """
+
 from __future__ import annotations
 
 import ast
@@ -33,37 +34,125 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "autoinfo" / "mcp" / "server.py"
+TOOLS_DIR = ROOT / "src" / "autoinfo" / "mcp" / "tools"
 OUT_DIR = ROOT / "validation-runs" / "coverage"
 
 DESC_OVERLAP_THRESHOLD = 0.5
-STOPWORDS: frozenset[str] = frozenset({
-    "a", "an", "the", "of", "to", "for", "and", "or", "in", "on", "with",
-    "from", "by", "as", "at", "is", "are", "was", "were", "be", "been",
-    "it", "its", "this", "that", "these", "those", "returns", "return",
-    "the", "if", "when", "via", "using", "use", "used", "provide",
-    "provides", "can", "will", "all", "any", "per", "into", "over", "not",
-    "no", "see", "e.g.", "eg", "i.e.", "ie",
-})
+STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "to",
+        "for",
+        "and",
+        "or",
+        "in",
+        "on",
+        "with",
+        "from",
+        "by",
+        "as",
+        "at",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "it",
+        "its",
+        "this",
+        "that",
+        "these",
+        "those",
+        "returns",
+        "return",
+        "the",
+        "if",
+        "when",
+        "via",
+        "using",
+        "use",
+        "used",
+        "provide",
+        "provides",
+        "can",
+        "will",
+        "all",
+        "any",
+        "per",
+        "into",
+        "over",
+        "not",
+        "no",
+        "see",
+        "e.g.",
+        "eg",
+        "i.e.",
+        "ie",
+    }
+)
 
 # Verb segments — distinguishing verb = healthy; identical verb+stem = risk.
-VERB_SEGMENTS: frozenset[str] = frozenset({
-    "add", "approve", "archive", "calculate", "check", "classify", "clean",
-    "collect", "compare", "configure", "create", "deactivate", "delete",
-    "diagnose", "export", "extract", "find", "flag", "generate", "get",
-    "import", "init", "link", "list", "localize", "mark", "merge",
-    "process", "promote", "query", "rate", "recommend", "reindex", "reject",
-    "remove", "restore", "run", "search", "send", "set", "simplify",
-    "suggest", "test", "trace", "update",
-})
+VERB_SEGMENTS: frozenset[str] = frozenset(
+    {
+        "add",
+        "approve",
+        "archive",
+        "calculate",
+        "check",
+        "classify",
+        "clean",
+        "collect",
+        "compare",
+        "configure",
+        "create",
+        "deactivate",
+        "delete",
+        "diagnose",
+        "export",
+        "extract",
+        "find",
+        "flag",
+        "generate",
+        "get",
+        "import",
+        "init",
+        "link",
+        "list",
+        "localize",
+        "mark",
+        "merge",
+        "process",
+        "promote",
+        "query",
+        "rate",
+        "recommend",
+        "reindex",
+        "reject",
+        "remove",
+        "restore",
+        "run",
+        "search",
+        "send",
+        "set",
+        "simplify",
+        "suggest",
+        "test",
+        "trace",
+        "update",
+    }
+)
 
 
 def _tool_calls(server_src: str) -> list[ast.Call]:
     tree = ast.parse(server_src)
     return [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "Tool"
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Tool"
     ]
 
 
@@ -79,8 +168,7 @@ def _str_literal(node: ast.AST | None) -> str:
         return ""
     if isinstance(node, ast.JoinedStr):
         return "".join(
-            v.value for v in node.values
-            if isinstance(v, ast.Constant) and isinstance(v.value, str)
+            v.value for v in node.values if isinstance(v, ast.Constant) and isinstance(v.value, str)
         )
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
@@ -103,13 +191,21 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(union)
 
 
-def audit_similarity(server_src: str) -> dict[str, Any]:
+def tool_source_texts() -> list[str]:
+    """Return the hub plus every per-domain schema module (#581)."""
+    paths = [SRC, *sorted(TOOLS_DIR.glob("*.py"))]
+    return [p.read_text(encoding="utf-8") for p in paths]
+
+
+def audit_similarity(server_src: str | list[str]) -> dict[str, Any]:
     """Audit tool boundary health across the declared MCP surface.
 
     Parameters
     ----------
     server_src:
-        Contents of ``src/autoinfo/mcp/server.py``.
+        Contents of ``src/autoinfo/mcp/server.py``, or a list of source
+        strings covering the hub and the per-domain modules under
+        ``src/autoinfo/mcp/tools/`` (#581 extraction).
 
     Returns
     -------
@@ -118,21 +214,24 @@ def audit_similarity(server_src: str) -> dict[str, Any]:
         ``violations`` (``same_stem_verb_pairs``, ``high_desc_overlap``),
         ``families``, and ``tools``. Sorted deterministically.
     """
+    sources = [server_src] if isinstance(server_src, str) else server_src
     tools: list[dict[str, Any]] = []
-    for call in _tool_calls(server_src):
+    for call in (call for source in sources for call in _tool_calls(source)):
         name = _str_literal(_kw(call, "name"))
         if not name:
             continue
         desc = _str_literal(_kw(call, "description"))
         segs = name.split("_")
-        tools.append({
-            "name": name,
-            "description": desc,
-            "segments": segs,
-            "stem": "_".join(segs[1:]),  # everything after the first segment
-            "first": segs[0],
-            "token_set": _tokens(desc),
-        })
+        tools.append(
+            {
+                "name": name,
+                "description": desc,
+                "segments": segs,
+                "stem": "_".join(segs[1:]),  # everything after the first segment
+                "first": segs[0],
+                "token_set": _tokens(desc),
+            }
+        )
     tools.sort(key=lambda t: t["name"])
 
     # --- noun-stem families ------------------------------------------------
@@ -150,9 +249,7 @@ def audit_similarity(server_src: str) -> dict[str, Any]:
         if t["stem"]:
             key = (t["first"], t["stem"])
             same_stem_first.setdefault(key, []).append(t["name"])
-    same_stem_verb_pairs = [
-        names for names in sorted(same_stem_first.values()) if len(names) >= 2
-    ]
+    same_stem_verb_pairs = [names for names in sorted(same_stem_first.values()) if len(names) >= 2]
 
     # --- description overlap (pairwise Jaccard) -----------------------------
     overlap_pairs: list[dict[str, Any]] = []
@@ -163,11 +260,13 @@ def audit_similarity(server_src: str) -> dict[str, Any]:
                 continue
             sim = _jaccard(a["token_set"], b["token_set"])
             if sim >= DESC_OVERLAP_THRESHOLD:
-                overlap_pairs.append({
-                    "a": a["name"],
-                    "b": b["name"],
-                    "jaccard": round(sim, 3),
-                })
+                overlap_pairs.append(
+                    {
+                        "a": a["name"],
+                        "b": b["name"],
+                        "jaccard": round(sim, 3),
+                    }
+                )
     overlap_pairs.sort(key=lambda p: (-p["jaccard"], p["a"], p["b"]))
 
     family_sizes = [len(v) for v in families.values()]
@@ -188,42 +287,40 @@ def audit_similarity(server_src: str) -> dict[str, Any]:
         },
         "families": {k: v for k, v in families.items()},
         "tools": [
-            {"name": t["name"], "segments": t["segments"], "stem": t["stem"],
-             "first": t["first"]}
+            {"name": t["name"], "segments": t["segments"], "stem": t["stem"], "first": t["first"]}
             for t in tools
         ],
     }
 
 
 def main() -> int:
-    result = audit_similarity(SRC.read_text(encoding="utf-8"))
+    result = audit_similarity(tool_source_texts())
     s = result["summary"]
 
     print(f"Tool similarity audit (D-工-7) — {datetime.date.today().isoformat()}")
     print(f"Tools: {s['total']}")
-    print(f"Noun-stem families (>=2 members): {s['family_count']} "
-          f"(largest: {s['largest_family']})")
-    print(f"Same stem+verb name pairs (boundary risk): "
-          f"{s['same_stem_verb_pairs']}")
-    print(f"High description-overlap pairs (jaccard >= "
-          f"{s['desc_overlap_threshold']}): {s['high_desc_overlap_pairs']}")
+    print(f"Noun-stem families (>=2 members): {s['family_count']} (largest: {s['largest_family']})")
+    print(f"Same stem+verb name pairs (boundary risk): {s['same_stem_verb_pairs']}")
+    print(
+        f"High description-overlap pairs (jaccard >= "
+        f"{s['desc_overlap_threshold']}): {s['high_desc_overlap_pairs']}"
+    )
 
     if result["violations"]["same_stem_verb_pairs"]:
         print("\nsame_stem_verb_pairs:")
         for names in result["violations"]["same_stem_verb_pairs"]:
             print(f"  {', '.join(names)}")
     if result["violations"]["high_desc_overlap"]:
-        print(f"\nhigh_desc_overlap "
-              f"(top {min(10, len(result['violations']['high_desc_overlap']))}):")
+        print(
+            f"\nhigh_desc_overlap (top {min(10, len(result['violations']['high_desc_overlap']))}):"
+        )
         for p in result["violations"]["high_desc_overlap"][:10]:
             print(f"  {p['jaccard']:.2f} {p['a']} <-> {p['b']}")
 
     out_dir = OUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"tool-similarity-{datetime.date.today().isoformat()}.json"
-    out_path.write_text(
-        json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\nWrote {out_path}")
     return 0
 

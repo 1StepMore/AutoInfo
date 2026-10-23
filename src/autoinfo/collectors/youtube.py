@@ -22,7 +22,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -158,6 +158,14 @@ class YouTubeHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch YouTube videos, applying the topic as an unset query."""
+        if ctx.topic and not self.config.get("query"):
+            self.query = ctx.topic
+            self.config["query"] = ctx.topic
+        videos = self.fetch(limit=ctx.resolved_limit(10))
+        return [self.to_item(v) for v in videos]
 
     def fetch(self, limit: int = 10) -> list[dict[str, Any]]:
         """Search YouTube and return parsed video dicts.
@@ -338,10 +346,7 @@ class YouTubeHandler(BaseHandler):
         """
         if not caption_id:
             return ""
-        url = (
-            f"{CAPTIONS_BASE_URL}/{caption_id}"
-            f"?{urlencode({'key': self.api_key, 'tfmt': 'srt'})}"
-        )
+        url = f"{CAPTIONS_BASE_URL}/{caption_id}?{urlencode({'key': self.api_key, 'tfmt': 'srt'})}"
         try:
             resp = self._request(url)
         except Exception as exc:
@@ -433,10 +438,7 @@ class YouTubeHandler(BaseHandler):
             "channel_id": channel_id,
             "channel_title": snippet.get("channelTitle", "") or "",
             "thumbnail_url": (
-                snippet.get("thumbnails", {})
-                .get("default", {})
-                .get("url", "")
-                or ""
+                snippet.get("thumbnails", {}).get("default", {}).get("url", "") or ""
             ),
         }
 
@@ -462,9 +464,8 @@ class YouTubeHandler(BaseHandler):
             source_name="youtube",
             source_type="youtube",
             source_platform="youtube",
-            source_url=video.get("source_url") or (
-                f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
-            ),
+            source_url=video.get("source_url")
+            or (f"https://www.youtube.com/watch?v={video_id}" if video_id else ""),
             title=title,
             content=video.get("content") or "",
             content_type="text",

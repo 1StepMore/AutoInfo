@@ -18,7 +18,7 @@ from urllib.parse import quote
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -170,6 +170,12 @@ class OpenAlexHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch OpenAlex works for the topic/keyword query."""
+        query = " ".join(ctx.keywords) if ctx.keywords else ctx.topic
+        articles = self.fetch(limit=ctx.resolved_limit(10), query=query)
+        return [self.to_item(a) for a in articles]
+
     def fetch(self, limit: int = 10, query: str = "") -> list[dict[str, Any]]:
         """Fetch works from the OpenAlex API.
 
@@ -286,11 +292,7 @@ class OpenAlexHandler(BaseHandler):
             source_name="openalex",
             source_type="api",
             source_platform="openalex",
-            source_url=(
-                f"https://api.openalex.org/works/{work_id}"
-                if work_id
-                else ""
-            ),
+            source_url=(f"https://api.openalex.org/works/{work_id}" if work_id else ""),
             title=article.get("title", ""),
             content=article.get("abstract", ""),
             content_type="text",

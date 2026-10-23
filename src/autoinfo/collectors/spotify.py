@@ -21,7 +21,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -275,6 +275,12 @@ class SpotifyHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch Spotify episodes for the topic query."""
+        query = ctx.topic if ctx.topic else ""
+        episodes = self.fetch(limit=ctx.resolved_limit(10), query=query)
+        return [self.to_item(e) for e in episodes]
 
     def fetch(
         self,

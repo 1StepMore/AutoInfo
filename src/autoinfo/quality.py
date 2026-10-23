@@ -24,10 +24,11 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol, TypeVar
 
 import yaml
 
@@ -170,6 +171,149 @@ class QualityResult:
 
 
 # ---------------------------------------------------------------------------
+# Unified gate contract (issue #583)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class GateContext:
+    """Everything a gate may read, in one object.
+
+    Fields are all optional so each gate reads only what it needs.  The
+    container is mutable on purpose: :func:`_coerce_gate_context` fills it
+    from the legacy positional/keyword call forms so existing callers keep
+    working while every gate exposes exactly one ``check`` entry point.
+    """
+
+    item: Item | None = None
+    raw_item: dict[str, Any] | None = None
+    extraction: ExtractionResult | None = None
+    source_config: dict[str, Any] | None = None
+    existing_entries: list[KBEntry] = field(default_factory=list)
+    topic_keywords: list[str] | dict[str, list[str]] = field(default_factory=list)
+    threshold: int = 30
+    gate_config: QualityGateConfig | None = None
+    product_output: dict[str, Any] | None = None
+    context: dict[str, Any] | None = None
+
+
+class Gate(Protocol):
+    """Uniform contract every quality/delivery gate satisfies."""
+
+    gate_name: str
+    category: str
+
+    def check(self, ctx: GateContext | None = None, *args: Any, **kwargs: Any) -> QualityResult:
+        """Evaluate this gate against *ctx* (or a legacy argument form)."""
+
+
+#: Legacy call-form spec per gate: ``(subject_field, positional_fields)``.
+#: ``subject_field`` receives the first positional argument; the remaining
+#: positional slots map onto :class:`GateContext` field names in order.
+_GATE_POSITIONAL_SPECS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "G0-SchemaIntegrity": ("raw_item", ("context", "gate_config")),
+    "G1-SourceAuthority": ("item", ("source_config", "gate_config")),
+    "G1-TosCompliance": ("item", ("source_config", "gate_config")),
+    "G2-Dedup": ("item", ("existing_entries", "gate_config")),
+    "G3-RelevanceScoring": ("item", ("topic_keywords", "threshold", "gate_config")),
+    "G4-SummaryFactual": ("item", ("extraction", "gate_config")),
+    "G5-TranslationAccuracy": ("item", ("extraction",)),
+    "G7-EntityFactConsistency": ("item", ("extraction", "gate_config")),
+    "D1-ProductCompleteness": ("product_output", ("context",)),
+    "D2-FormatIntegrity": ("product_output", ("context",)),
+    "D3-Freshness": ("product_output", ("context",)),
+}
+
+_SUBJECT_ALIASES = ("item", "raw_item", "product_output")
+
+
+def _coerce_gate_context(
+    gate_name: str,
+    subject: Any = None,
+    args: tuple[Any, ...] = (),
+    kwargs: dict[str, Any] | None = None,
+) -> GateContext:
+    """Normalise every legacy ``check(...)`` call form into a :class:`GateContext`.
+
+    A :class:`GateContext` subject is copied (never mutated in place); any
+    other subject is treated as the gate's primary input and the remaining
+    positional/keyword arguments are mapped by name onto context fields.
+    """
+    if isinstance(subject, GateContext):
+        return replace(subject)
+
+    subject_field, positional = _GATE_POSITIONAL_SPECS[gate_name]
+    ctx = GateContext()
+    keywords = dict(kwargs or {})
+
+    if subject is not None:
+        setattr(ctx, subject_field, subject)
+    for field_name, value in zip(positional, args):
+        setattr(ctx, field_name, value)
+    if len(args) > len(positional):
+        raise TypeError(
+            f"{gate_name}.check() takes at most {len(positional) + 1} positional "
+            f"arguments, got {len(args) + 1}"
+        )
+
+    for alias in _SUBJECT_ALIASES:
+        if alias in keywords:
+            value = keywords.pop(alias)
+            if hasattr(ctx, alias) and getattr(ctx, alias) is None:
+                setattr(ctx, alias, value)
+
+    for field_name, value in keywords.items():
+        if not hasattr(ctx, field_name):
+            raise TypeError(f"{gate_name}.check() got an unexpected keyword {field_name!r}")
+        setattr(ctx, field_name, value)
+    return ctx
+
+
+@dataclass
+class RetryAttempt:
+    """Position of one attempt inside :func:`retry_with_escalation`."""
+
+    index: int
+    number: int
+    model: str | None
+
+
+T = TypeVar("T")
+
+
+def retry_with_escalation(
+    attempt: Callable[[RetryAttempt], T | None],
+    *,
+    models: Sequence[str] = (),
+    retries: int = 0,
+) -> tuple[T | None, int]:
+    """Run *attempt* until it succeeds, escalating the model per attempt.
+
+    **Retry semantics (issue #583, unified):** ``retries`` counts the number
+    of EXTRA attempts, so the total is ``1 + max(retries, 0)``.  ``retries=0``
+    therefore means exactly one attempt; ``retries=3`` means four.
+
+    *attempt* receives a :class:`RetryAttempt` and returns the successful
+    value, or ``None`` when that attempt failed.  Model escalation follows
+    *models* (last entry repeats once the list is exhausted).
+
+    Returns
+    -------
+    tuple[Any, int]
+        ``(value, attempts_made)`` — ``(None, n)`` when every attempt failed.
+    """
+    total = 1 + max(int(retries or 0), 0)
+    attempts = 0
+    for index in range(total):
+        attempts = index + 1
+        model = models[min(index, len(models) - 1)] if models else None
+        value = attempt(RetryAttempt(index=index, number=attempts, model=model))
+        if value is not None:
+            return value, attempts
+    return None, attempts
+
+
+# ---------------------------------------------------------------------------
 # G0 — Schema Integrity
 # ---------------------------------------------------------------------------
 
@@ -180,43 +324,32 @@ class G0SchemaIntegrity:
     Checks mandatory fields (source_url, source_type, source_platform) and
     optional frontmatter YAML validity.
 
-    This gate is **HARD** — on persistent failure after one retry it blocks
-    the item from entering the pipeline.
+    This gate is **HARD** and **deterministic** — retrying cannot turn an
+    invalid document valid, so it blocks after a single attempt
+    (``retries`` defaults to 0; issue #565/#583).
     """
+
+    gate_name = "G0-SchemaIntegrity"
+    category = "hard"
 
     MANDATORY_FIELDS = ["source_url", "source_type", "source_platform"]
 
     def check(
         self,
-        item: dict[str, Any],
-        context: dict[str, Any] | None = None,
-        gate_config: QualityGateConfig | None = None,
+        ctx: GateContext | dict[str, Any] | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Validate *item* dict schema integrity.
+        """Validate the raw item dict in *ctx* for schema integrity.
 
-        Parameters
-        ----------
-        item:
-            Raw collected item dict (not yet constructed into Item).
-        context:
-            Optional context dict (reserved for future use).
-        gate_config:
-            Optional gate config. If provided, ``retries`` controls how many
-            re-validation attempts are made on failure (default: 1).
-
-        Returns
-        -------
-        QualityResult
-            ``passed=True`` when all mandatory fields are non-empty strings
-            and frontmatter (if present) is valid YAML.
-
-            On persistent failure after retries: ``passed=False`` with
-            ``action="block"`` in details.
+        Accepts a :class:`GateContext` or the legacy
+        ``check(item_dict, context=None, gate_config=None)`` form.
+        ``gate_config.retries`` is the number of EXTRA attempts.
         """
-        failed_fields: list[dict[str, object]] = []
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        item = c.raw_item if c.raw_item is not None else {}
 
         def _validate() -> list[dict[str, object]]:
-            """Run validation once, return list of field errors."""
             errors: list[dict[str, object]] = []
 
             for fname in self.MANDATORY_FIELDS:
@@ -254,42 +387,33 @@ class G0SchemaIntegrity:
 
             return errors
 
-        # First attempt
-        failed_fields = _validate()
+        retries = c.gate_config.retries if c.gate_config is not None else 0
+        failed_fields: list[dict[str, object]] = []
 
-        # Determine max retries from gate config (default 1 for backward compat)
-        max_retries = 1
-        if gate_config is not None and gate_config.retries is not None and gate_config.retries > 0:
-            max_retries = gate_config.retries
+        def _attempt(attempt: RetryAttempt) -> bool | None:
+            nonlocal failed_fields
+            failed_fields = _validate()
+            return None if failed_fields else True
 
-        retry_count = 0
-        if failed_fields:
-            logger.warning(
-                "G0 first attempt failed for fields: %s",
-                [f["field"] for f in failed_fields],
-            )
-            for _ in range(max_retries):
-                retry_count += 1
-                failed_fields = _validate()
-                if not failed_fields:
-                    break
+        _, attempts = retry_with_escalation(_attempt, retries=retries)
 
         if not failed_fields:
             return QualityResult(
-                gate_name="G0-SchemaIntegrity",
+                gate_name=self.gate_name,
                 passed=True,
                 score=1.0,
-                details={"valid": True},
+                details={"valid": True, "attempts": attempts},
             )
 
         return QualityResult(
-            gate_name="G0-SchemaIntegrity",
+            gate_name=self.gate_name,
             passed=False,
             score=0.0,
             flagged=True,
             details={
                 "action": "block",
-                "retry_count": retry_count,
+                "retry_count": attempts - 1,
+                "attempts": attempts,
                 "failed_fields": failed_fields,
                 "error": (
                     "Schema integrity check failed for fields: "
@@ -314,41 +438,31 @@ class G1SourceAuthority:
     This gate is **advisory only** — it never blocks or fails items.
     """
 
+    gate_name = "G1-SourceAuthority"
+    category = "soft"
+
     def check(
         self,
-        item: Item,
-        source_config: dict[str, Any] | None = None,
-        gate_config: QualityGateConfig | None = None,
+        ctx: GateContext | Item | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Check source authority tier for *item*.
+        """Check source authority tier for the item in *ctx*.
 
-        Parameters
-        ----------
-        item:
-            The collected item to check.
-        source_config:
-            Optional source configuration dict.  If provided, *quality_tier*
-            from *source_config* takes precedence over ``item.quality_tier``
-            (the latter is typically set at collection time).
-        gate_config:
-            Optional gate configuration dict.  If provided, the *action*
-            field controls what the caller should do on failure:
+        Accepts a :class:`GateContext` or the legacy
+        ``check(item, source_config=None, gate_config=None)`` form.
 
-            - ``"flag"`` (default): item passes with an advisory warning
-            - ``"skip"``: item is returned as ``passed=False`` with
-              ``action="skip"`` in details, signalling the caller to skip it.
-
-            When *gate_config* is ``None``, the default action ``"flag"``
-            is used (backward compatible with v1.4 behaviour).
-
-        Returns
-        -------
-        QualityResult
-            When action is ``"skip"`` and tier > 2, returns ``passed=False``
-            with ``action="skip"`` in details.  Otherwise always returns
-            ``passed=True``.  Items from tier 3+ sources have
-            ``flagged=True`` with an advisory warning.
+        ``gate_config.action`` controls the outcome for tier 3+ sources:
+        ``"skip"`` returns ``passed=False`` with ``action="skip"``;
+        anything else passes with ``flagged=True`` (advisory).
         """
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        item = c.item
+        if item is None:
+            raise TypeError("G1-SourceAuthority.check() requires an item")
+        source_config = c.source_config
+        gate_config = c.gate_config
+
         tier = (
             source_config.get("quality_tier", item.quality_tier)
             if source_config
@@ -356,11 +470,9 @@ class G1SourceAuthority:
         )
         action = gate_config.action if gate_config else "flag"
 
-        # Resolve source_score map: gate_config override → module constant
         score_map: dict[int, float] = SOURCE_TIER_SCORE_MAP
         if gate_config is not None and gate_config.source_score_map:
             score_map = gate_config.source_score_map
-        # Fallback for tiers not in the map: derive proportionally from tier 4=30
         source_score = score_map.get(
             int(tier),
             max(10.0, 30.0 - (int(tier) - 4) * 20.0),
@@ -368,7 +480,7 @@ class G1SourceAuthority:
 
         if tier <= 2:
             return QualityResult(
-                gate_name="G1-SourceAuthority",
+                gate_name=self.gate_name,
                 passed=True,
                 score=float(tier),
                 flagged=False,
@@ -380,10 +492,9 @@ class G1SourceAuthority:
                 },
             )
 
-        # tier 3+
         if action == "skip":
             return QualityResult(
-                gate_name="G1-SourceAuthority",
+                gate_name=self.gate_name,
                 passed=False,
                 score=float(tier),
                 flagged=True,
@@ -397,7 +508,7 @@ class G1SourceAuthority:
             )
 
         return QualityResult(
-            gate_name="G1-SourceAuthority",
+            gate_name=self.gate_name,
             passed=True,
             score=float(tier),
             flagged=True,
@@ -450,48 +561,29 @@ class G1TosCompliance:
     # Public API
     # ------------------------------------------------------------------
 
+    gate_name = "G1-TosCompliance"
+    category = "soft"
+
     def check(
         self,
-        item: Item,
-        source_config: dict[str, Any] | None = None,
-        gate_config: QualityGateConfig | None = None,
+        ctx: GateContext | Item | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Check source ToS compliance for *item*.
+        """Check source ToS compliance for the item in *ctx*.
 
-        Parameters
-        ----------
-        item:
-            The collected item to check.
-        source_config:
-            Optional source configuration dict.  If provided,
-            ``tos_classification`` and ``quality_tier`` are read from
-            *source_config*; otherwise they are derived from
-            ``item.quality_tier`` via the tier→ToS mapping.
-        gate_config:
-            Optional gate configuration.  The *action* field controls
-            what the caller should do:
-
-            - ``"flag"`` (default): compliance warning is raised but
-              item still passes.
-            - ``"skip"``: item is returned as ``passed=False`` with
-              ``action="skip"`` in details.
-            - ``"block"``: item is returned as ``passed=False`` with
-              ``action="block"`` in details.
-
-            When *gate_config* is ``None``, the default action ``"flag"``
-            is used (backward compatible).
-
-        Returns
-        -------
-        QualityResult
-            ``passed=True`` when ToS is compliant (``"open"`` or
-            ``"licensed"``) or when no source_config is available.
-
-            When ``tos_classification`` is ``"restricted"`` or
-            ``"sensitive"``, ``flagged=True`` and ``details["compliance_warning"]``
-            is set.  ``details["tos_compliant"]`` is ``True`` only for
-            ``"open"`` and ``"licensed"`` sources.
+        Accepts a :class:`GateContext` or the legacy
+        ``check(item, source_config=None, gate_config=None)`` form.  The
+        resolved ``gate_config.action`` (``flag`` by default) decides whether
+        a restricted/sensitive classification merely warns (``flag``) or
+        fails the item (``skip`` / ``block``).
         """
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        item = c.item
+        if item is None:
+            raise TypeError("G1-TosCompliance.check() requires an item")
+        source_config = c.source_config
+        gate_config = c.gate_config
         action = gate_config.action if gate_config else "flag"
 
         # Resolve tos_classification and tier from source_config or item
@@ -611,44 +703,31 @@ class G2Dedup:
         (backward compatible).  Default is 30.
     """
 
+    gate_name = "G2-Dedup"
+    category = "soft"
+
     def __init__(self, window_days: int = 30) -> None:
         self.window_days = window_days
 
     def check(
         self,
-        item: Item,
-        existing_entries: list[KBEntry],
-        gate_config: QualityGateConfig | None = None,
+        ctx: GateContext | Item | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Check if *item* is a duplicate of any entry in *existing_entries*.
+        """Check whether the item in *ctx* duplicates an existing KB entry.
 
-        Parameters
-        ----------
-        item:
-            The collected item to check.
-        existing_entries:
-            Previously stored KB entries to compare against.
-        gate_config:
-            Optional gate configuration dict.  If provided, the *action*
-            field controls how the result is annotated:
-
-            - ``"flag"`` (default): duplicate is reported with ``flagged=True``
-            - ``"skip"``: duplicate is reported with ``action="skip"`` in
-              details, signalling the caller to skip this item.
-
-            When *gate_config* is ``None``, the default action ``"flag"``
-            is used (backward compatible with v1.4 behaviour).
-
-            If *gate_config* has ``window_days > 0`` it overrides the
-            instance-level ``window_days``.  See :class:`G2Dedup` for
-            window semantics.
-
-        Returns
-        -------
-        QualityResult
-            ``passed=True`` when the item appears unique,
-            ``passed=False`` when a duplicate is found.
+        Accepts a :class:`GateContext` or the legacy
+        ``check(item, existing_entries, gate_config=None)`` form.
+        ``passed=True`` means unique, ``passed=False`` means a duplicate was
+        found; ``gate_config.action`` annotates the result.
         """
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        item = c.item
+        if item is None:
+            raise TypeError("G2-Dedup.check() requires an item")
+        existing_entries = c.existing_entries
+        gate_config = c.gate_config
         action = gate_config.action if gate_config else "flag"
 
         effective_window_days = self.window_days
@@ -663,7 +742,7 @@ class G2Dedup:
         for entry in existing_entries:
             if entry.source_url and item.source_url and entry.source_url == item.source_url:
                 return QualityResult(
-                    gate_name="G2-Dedup",
+                    gate_name=self.gate_name,
                     passed=False,
                     flagged=True,
                     details={
@@ -683,7 +762,7 @@ class G2Dedup:
                 )
                 if entry_pmid and str(entry_pmid) == str(item_pmid):
                     return QualityResult(
-                        gate_name="G2-Dedup",
+                        gate_name=self.gate_name,
                         passed=False,
                         flagged=True,
                         details={
@@ -702,7 +781,7 @@ class G2Dedup:
                 entry_doi = extract.get("doi") or entry.custom_fields.get("doi", "")
                 if entry_doi and str(entry_doi).lower() == str(item_doi).lower():
                     return QualityResult(
-                        gate_name="G2-Dedup",
+                        gate_name=self.gate_name,
                         passed=False,
                         flagged=True,
                         details={
@@ -744,7 +823,7 @@ class G2Dedup:
                             entry.entry_id,
                         )
                         return QualityResult(
-                            gate_name="G2-Dedup",
+                            gate_name=self.gate_name,
                             passed=False,
                             flagged=True,
                             details={
@@ -758,7 +837,7 @@ class G2Dedup:
 
         # No match found — unique
         return QualityResult(
-            gate_name="G2-Dedup",
+            gate_name=self.gate_name,
             passed=True,
             score=1.0,
             details={"is_duplicate": False, "matched_by": None, "action": action},
@@ -836,49 +915,29 @@ class G3RelevanceScoring:
     # Public API
     # ------------------------------------------------------------------
 
+    gate_name = "G3-RelevanceScoring"
+    category = "soft"
+
     def check(
         self,
-        item: Item,
-        topic_keywords: list[str] | dict[str, list[str]],
-        threshold: int = 30,
-        gate_config: QualityGateConfig | None = None,
+        ctx: GateContext | Item | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Score *item* relevance against *topic_keywords*.
+        """Score the item's relevance against the topic keywords in *ctx*.
 
-        Parameters
-        ----------
-        item:
-            The collected item to score.
-        topic_keywords:
-            List of keywords that define the topic (e.g. ``["IVF", "embryo"]``)
-            or a dict mapping language codes to keyword lists
-            (e.g. ``{"en": ["IVF"], "zh": ["试管婴儿"]}``).
-        threshold:
-            Minimum score (0-100) below which the item is flagged as hidden.
-            Defaults to 30.
-        gate_config:
-            Optional :class:`QualityGateConfig`.  When *retries* > 0 and
-            litellm is available, the gate uses LLM-based scoring with a
-            retry loop.  Otherwise it falls back to lexical keyword overlap.
-
-            The *action* field controls how below-threshold items are
-            annotated:
-
-            - ``"archive"`` (default): item is marked with both
-              ``hidden=True`` and ``archive=True`` in details.
-            - ``"flag"``: item is marked with ``hidden=True`` only.
-
-            When *gate_config* is ``None``, lexical scoring is used
-            (backward compatible with v1.x).
-
-        Returns
-        -------
-        QualityResult
-            Contains the relevance ``score`` (0-100). Items below threshold
-            have ``flagged=True`` and ``details["hidden"] = True``.  When
-            action is ``"archive"``, ``details["archive"]`` is also set to
-            ``True``.
+        Accepts a :class:`GateContext` or the legacy
+        ``check(item, topic_keywords, threshold=30, gate_config=None)`` form.
+        ``gate_config.retries`` > 0 enables the LLM scoring path (retries
+        counts EXTRA attempts); otherwise lexical overlap is used.
         """
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        item = c.item
+        if item is None:
+            raise TypeError("G3-RelevanceScoring.check() requires an item")
+        topic_keywords = c.topic_keywords
+        threshold = c.threshold
+        gate_config = c.gate_config
         action = gate_config.action if gate_config else "archive"
 
         # ---- Normalise multi-language keywords to a flat list -----------
@@ -896,7 +955,7 @@ class G3RelevanceScoring:
         # keywordless topic, flattening digest/magazine Relevance to 100.
         if not keywords:
             return QualityResult(
-                gate_name="G3-RelevanceScoring",
+                gate_name=self.gate_name,
                 passed=False,
                 score=0.0,
                 flagged=True,
@@ -994,7 +1053,7 @@ class G3RelevanceScoring:
                     details["archived_as_flag"] = True
 
             return QualityResult(
-                gate_name="G3-RelevanceScoring",
+                gate_name=self.gate_name,
                 passed=False,
                 score=float(score_val),
                 flagged=True,
@@ -1013,7 +1072,7 @@ class G3RelevanceScoring:
             details_pass["total_keywords"] = len(keywords)
 
         return QualityResult(
-            gate_name="G3-RelevanceScoring",
+            gate_name=self.gate_name,
             passed=True,
             score=float(score_val),
             flagged=False,
@@ -1030,27 +1089,19 @@ class G3RelevanceScoring:
         keywords: list[str],
         gate_config: QualityGateConfig,
     ) -> tuple[int | None, int]:
-        """Run LLM-based relevance scoring with retry loop.
+        """Run LLM-based relevance scoring via the shared retry helper.
 
-        Returns (score_or_none, retries_used).  On all retries exhausted
-        returns (None, retries_used) — caller assigns score=50.
+        Returns ``(score_or_none, attempts_made)``; ``None`` means every
+        attempt failed and the caller must fall back to lexical scoring.
         """
-        # Truncate content to ~8K tokens
         truncated = text[: self._MAX_CONTENT_CHARS]
-        keyword_str = ", ".join(keywords[:20])  # cap keywords to 20
-
-        # Build retry chain (same pattern as G4FactualConsistency.check)
+        keyword_str = ", ".join(keywords[:20])
         retry_models = list(gate_config.retry_models) if gate_config.retry_models else []
         models = [self._model] + retry_models
-        max_attempts = gate_config.retries
-
-        retries_used = 0
         llm_api_key, llm_base_url = _llm_credentials()
 
-        for attempt in range(max_attempts):
-            model = models[min(attempt, len(models) - 1)]
-            retries_used = attempt + 1
-
+        def _attempt(attempt: RetryAttempt) -> int | None:
+            model = attempt.model or self._model
             try:
                 user_content = (
                     f"Rate relevance of this content to keywords "
@@ -1058,9 +1109,7 @@ class G3RelevanceScoring:
                     f"Return only a number.\n\n"
                     f"CONTENT: {truncated}"
                 )
-
-                # Escalating context on retry
-                if attempt > 0:
+                if attempt.index > 0:
                     user_content += (
                         "\n\nPrevious attempt failed to produce a valid "
                         "score (0-100). Please ensure you return ONLY a "
@@ -1081,7 +1130,6 @@ class G3RelevanceScoring:
                         max_tokens=512,
                         temperature=0.0,
                     )
-                    raw: str = response.choices[0].message.content
                 else:
                     response = call_with_fallback(
                         model=model,
@@ -1096,45 +1144,50 @@ class G3RelevanceScoring:
                         api_key=llm_api_key,
                         base_url=llm_base_url,
                     )
-                    raw = response.choices[0].message.content
+                raw: str = response.choices[0].message.content
 
                 parsed = self._parse_score(raw)
                 if parsed is not None:
                     logger.info(
                         "G3 LLM score=%d (attempt %d, model=%s)",
                         parsed,
-                        attempt + 1,
+                        attempt.number,
                         model,
                     )
-                    return parsed, retries_used
+                    return parsed
 
                 logger.warning(
                     "G3 LLM returned unparseable score (attempt %d): %r",
-                    attempt + 1,
+                    attempt.number,
                     raw[:200],
                 )
-
             except (json.JSONDecodeError, ValueError, KeyError, AttributeError) as exc:
                 logger.warning(
                     "G3 LLM parse error (attempt %d, model=%s): %s",
-                    attempt + 1,
+                    attempt.number,
                     model,
                     exc,
                 )
             except Exception as exc:
                 logger.warning(
                     "G3 LLM call failed (attempt %d, model=%s): %s",
-                    attempt + 1,
+                    attempt.number,
                     model,
                     exc,
                 )
+            return None
 
-        # All retries exhausted
-        logger.warning(
-            "G3 all %d attempt(s) exhausted — returning neutral score 50",
-            max_attempts,
+        score, attempts = retry_with_escalation(
+            _attempt,
+            models=models,
+            retries=gate_config.retries,
         )
-        return None, retries_used
+        if score is None:
+            logger.warning(
+                "G3 all %d attempt(s) exhausted — falling back to lexical scoring",
+                attempts,
+            )
+        return score, attempts
 
     # ------------------------------------------------------------------
     # Lexical keyword overlap (fallback)
@@ -1288,42 +1341,35 @@ class G4FactualConsistency:
     # Public API
     # ------------------------------------------------------------------
 
+    gate_name = "G4-SummaryFactual"
+    category = "hard"
+
     def check(
         self,
-        item: Item,
-        extraction: ExtractionResult,
-        gate_config: QualityGateConfig | None = None,
+        ctx: GateContext | Item | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Compare *item* content with *extraction* summary using LLM.
+        """Compare the item's content with its extraction summary via LLM.
 
-        When *gate_config* is provided with ``retries > 0``, the gate
-        implements a retry chain: each failed attempt uses the next model
-        from ``gate_config.retry_models`` and includes the previous
-        attempt's contradiction evidence in the prompt.  On all retries
-        exhausted the item is blocked and ``_failed/`` diagnostics are
-        written.
-
-        Parameters
-        ----------
-        item:
-            The collected item whose content is used as the source of truth.
-        extraction:
-            The LLM extraction result containing the ``tl_dr`` summary.
-        gate_config:
-            Optional gate configuration.  When ``None`` (default), the
-            legacy single-call advisory behaviour is used.
-
-        Returns
-        -------
-        QualityResult
-            When contradiction is found after all retries: ``passed=False``,
-            ``action="block"``, ``retry_count=N``.
-            When no contradiction: ``passed=True``, ``flagged=False``.
-            When litellm unavailable: ``flagged=True`` with explanation.
+        Accepts a :class:`GateContext` or the legacy
+        ``check(item, extraction, gate_config=None)`` form.  When
+        ``gate_config.retries`` > 0 the gate runs ``1 + retries`` attempts
+        with escalating context and a different model per attempt; when the
+        retries are exhausted the item is blocked and ``_failed/``
+        diagnostics are written.  Without a retry config the single-call
+        advisory path is used.
         """
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        item = c.item
+        extraction = c.extraction
+        if item is None or extraction is None:
+            raise TypeError("G4-SummaryFactual.check() requires item and extraction")
+        gate_config = c.gate_config
+
         if not extraction.tl_dr:
             return QualityResult(
-                gate_name="G4-SummaryFactual",
+                gate_name=self.gate_name,
                 passed=True,
                 flagged=False,
                 details={
@@ -1332,13 +1378,12 @@ class G4FactualConsistency:
                 },
             )
 
-        if gate_config is not None and gate_config.retries > 0:
-            retry_models = list(gate_config.retry_models) if gate_config.retry_models else []
-            models = [self._model] + retry_models
-            max_attempts = gate_config.retries
-        else:
-            max_attempts = 1
-            models = [self._model]
+        retries = gate_config.retries if gate_config is not None else 0
+        retrying = retries > 0
+        retry_models = (
+            list(gate_config.retry_models) if gate_config is not None and retrying else []
+        )
+        models = [self._model] + retry_models
 
         retry_log: list[dict[str, Any]] = []
         last_error: str | None = None
@@ -1347,13 +1392,12 @@ class G4FactualConsistency:
         if llm_api_key is None and llm_base_url is None:
             llm_api_key, llm_base_url = _llm_credentials()
 
-        for attempt in range(max_attempts):
-            model = models[min(attempt, len(models) - 1)]
-
+        def _attempt(attempt: RetryAttempt) -> QualityResult | None:
+            nonlocal last_error
+            model = attempt.model or self._model
             try:
                 user_content = f"SOURCE TEXT: {item.content[:4000]}\n\nSUMMARY: {extraction.tl_dr}"
-
-                if attempt > 0 and retry_log:
+                if attempt.index > 0 and retry_log:
                     prev = retry_log[-1]
                     if prev.get("explanation"):
                         user_content += (
@@ -1385,39 +1429,39 @@ class G4FactualConsistency:
 
                 if not contradiction:
                     return QualityResult(
-                        gate_name="G4-SummaryFactual",
+                        gate_name=self.gate_name,
                         passed=True,
                         score=1.0,
                         flagged=False,
                         details={
                             "contradiction": False,
                             "explanation": explanation,
-                            "retry_count": attempt,
+                            "retry_count": attempt.index,
                             "retries": list(retry_log),
                         },
                     )
 
                 retry_log.append(
                     {
-                        "attempt": attempt + 1,
+                        "attempt": attempt.number,
                         "model": model,
                         "contradiction": True,
                         "explanation": explanation,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
+                return None
 
             except (json.JSONDecodeError, KeyError, AttributeError) as exc:
-                logger.warning("G4 malformed LLM response (attempt %d): %s", attempt + 1, exc)
-                if gate_config is None or gate_config.retries <= 0:
+                logger.warning("G4 malformed LLM response (attempt %d): %s", attempt.number, exc)
+                if not retrying:
                     return QualityResult(
-                        gate_name="G4-SummaryFactual",
+                        gate_name=self.gate_name,
                         passed=False,
                         flagged=True,
                         # Issue #195: an unparseable LLM response is NOT a
                         # genuine contradiction verdict — the gate could not
-                        # judge.  judged=False (NOT_JUDGED) so consumers never
-                        # read this as a real FAIL.
+                        # judge.
                         judged=False,
                         details={
                             "contradiction": None,
@@ -1426,24 +1470,24 @@ class G4FactualConsistency:
                     )
                 retry_log.append(
                     {
-                        "attempt": attempt + 1,
+                        "attempt": attempt.number,
                         "model": model,
                         "error": f"Failed to parse LLM response: {exc}",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
                 last_error = str(exc)
+                return None
 
             except Exception as exc:
-                logger.warning("G4 LLM call failed (attempt %d): %s", attempt + 1, exc)
-                if gate_config is None or gate_config.retries <= 0:
+                logger.warning("G4 LLM call failed (attempt %d): %s", attempt.number, exc)
+                if not retrying:
                     return QualityResult(
-                        gate_name="G4-SummaryFactual",
+                        gate_name=self.gate_name,
                         passed=False,
                         flagged=True,
-                        # Issue #195: an LLM-call failure (401 / timeout /
-                        # ghost model) is NOT a contradiction verdict — the
-                        # gate could not judge.  judged=False (NOT_JUDGED).
+                        # Issue #195: an LLM-call failure is NOT a
+                        # contradiction verdict — the gate could not judge.
                         judged=False,
                         details={
                             "contradiction": None,
@@ -1452,36 +1496,40 @@ class G4FactualConsistency:
                     )
                 retry_log.append(
                     {
-                        "attempt": attempt + 1,
+                        "attempt": attempt.number,
                         "model": model,
                         "error": f"LLM check failed: {exc}",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
                 last_error = str(exc)
+                return None
 
-        if gate_config is not None and gate_config.retries > 0:
+        result, attempts = retry_with_escalation(_attempt, models=models, retries=retries)
+        if result is not None:
+            return result
+
+        if retrying:
             self._write_failed_diagnostics(item, extraction, retry_log, last_error)
             return QualityResult(
-                gate_name="G4-SummaryFactual",
+                gate_name=self.gate_name,
                 passed=False,
                 flagged=True,
                 score=0.0,
-                # Issue #195: when the retries exhausted on LLM FAILURE
-                # (last_error set — 401/timeout/ghost), this is NOT a genuine
-                # contradiction verdict — the gate could not judge.  judged=
-                # False (NOT_JUDGED) distinguishes infra-failure from a real
-                # contradiction; action="block" (hard gate) stays either way.
+                # Issue #195: exhausting the retries on LLM FAILURE is not a
+                # genuine contradiction verdict — judged=False marks
+                # NOT_JUDGED; the hard-gate block stays either way.
                 judged=(last_error is None),
                 details={
                     "contradiction": last_error is None,
                     "action": "block",
                     "retry_count": len(retry_log),
+                    "attempts": attempts,
                     "retries": list(retry_log),
                     "explanation": (
-                        f"All {max_attempts} attempt(s) exhausted. Last error: {last_error}"
+                        f"All {attempts} attempt(s) exhausted. Last error: {last_error}"
                         if last_error
-                        else f"All {max_attempts} attempt(s) exhausted. Summary contradicts source."
+                        else f"All {attempts} attempt(s) exhausted. Summary contradicts source."
                     ),
                 },
             )
@@ -1492,7 +1540,7 @@ class G4FactualConsistency:
             else "Contradiction detected"
         )
         return QualityResult(
-            gate_name="G4-SummaryFactual",
+            gate_name=self.gate_name,
             passed=False,
             flagged=True,
             score=0.0,
@@ -1601,32 +1649,34 @@ class G5TranslationAccuracy:
     # Public API
     # ------------------------------------------------------------------
 
-    def check(self, item: Item, extraction: ExtractionResult) -> QualityResult:
-        """Send an LLM prompt to compare *item* content with its translation.
+    gate_name = "G5-TranslationAccuracy"
+    category = "soft"
 
-        Parameters
-        ----------
-        item:
-            The collected item whose content is used as the source of truth.
-        extraction:
-            The LLM extraction result whose ``custom_fields["translation"]``
-            contains the translated text to check.
+    def check(
+        self,
+        ctx: GateContext | Item | None = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> QualityResult:
+        """Compare the item's content with its translation via a single LLM call.
 
-        Returns
-        -------
-        QualityResult
-            ``flagged=True`` when the translation is found to be unfaithful.
-            ``flagged=False`` when the translation is faithful.
-            If the LLM call fails or returns malformed JSON, the item is flagged
-            as uncertain (``faithful: None``).
+        Accepts a :class:`GateContext` or the legacy
+        ``check(item, extraction)`` form.  Unfaithful translations are
+        flagged; an LLM failure or malformed response yields
+        ``faithful=None`` with ``judged=False``.
         """
-        # Get translation from extraction custom_fields
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        item = c.item
+        extraction = c.extraction
+        if item is None or extraction is None:
+            raise TypeError("G5-TranslationAccuracy.check() requires item and extraction")
+
         translation = (extraction.custom_fields or {}).get("translation", "")
 
         # No translation to check — trivially accurate
         if not translation:
             return QualityResult(
-                gate_name="G5-TranslationAccuracy",
+                gate_name=self.gate_name,
                 passed=True,
                 flagged=False,
                 details={
@@ -1666,7 +1716,7 @@ class G5TranslationAccuracy:
             issues = list(parsed.get("issues", []))
 
             return QualityResult(
-                gate_name="G5-TranslationAccuracy",
+                gate_name=self.gate_name,
                 passed=faithful,
                 score=1.0 if faithful else 0.0,
                 flagged=not faithful,
@@ -1680,7 +1730,7 @@ class G5TranslationAccuracy:
         except (json.JSONDecodeError, KeyError, AttributeError) as exc:
             logger.warning("G5 malformed LLM response: %s", exc)
             return QualityResult(
-                gate_name="G5-TranslationAccuracy",
+                gate_name=self.gate_name,
                 passed=False,
                 flagged=True,
                 # Issue #195: unparseable LLM response = could not judge.
@@ -1695,7 +1745,7 @@ class G5TranslationAccuracy:
         except Exception as exc:
             logger.warning("G5 LLM call failed: %s", exc)
             return QualityResult(
-                gate_name="G5-TranslationAccuracy",
+                gate_name=self.gate_name,
                 passed=False,
                 flagged=True,
                 # Issue #195: LLM failure (401/timeout/ghost) = could not
@@ -1707,28 +1757,6 @@ class G5TranslationAccuracy:
                     "issues": [],
                 },
             )
-
-    # ------------------------------------------------------------------
-    # Detailed check (uses all 5 translation quality gates)
-    # ------------------------------------------------------------------
-
-    def check_detailed(
-        self,
-        source: str,
-        target: str,
-        source_lang: str,
-        target_lang: str,
-        terminology_dict: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Run all 5 translation quality gates via the orchestrator."""
-        return run_translation_quality_gates(
-            source=source,
-            target=target,
-            source_lang=source_lang,
-            target_lang=target_lang,
-            terminology_dict=terminology_dict,
-            model=self._model,
-        )
 
     # ------------------------------------------------------------------
     # Internals
@@ -2027,23 +2055,31 @@ class G7EntityFactConsistency:
     """
 
     gate_name = "G7-EntityFactConsistency"
+    category = "soft"
 
     def __init__(self, *, relative_tolerance: float = _REL_TOLERANCE) -> None:
         self._relative_tolerance = relative_tolerance
 
     def check(
         self,
-        item: Item,
-        extraction: ExtractionResult,
-        gate_config: QualityGateConfig | None = None,
+        ctx: GateContext | Item | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Flag extraction claims that cannot be traced to *item*.
+        """Flag extraction claims that cannot be traced to the source item.
 
-        Returns a :class:`QualityResult` with ``details["unsupported_claims"]``
-        listing each unsupported ``{"kind", "claim", "sentence"?}`` claim.
-        ``action="block"`` (via *gate_config*) makes the gate fail
-        (``passed=False``); the default ``action="flag"`` leaves ``passed=True``.
+        Accepts a :class:`GateContext` or the legacy
+        ``check(item, extraction, gate_config=None)`` form.  Unsupported
+        numeric/entity claims land in ``details["unsupported_claims"]``;
+        ``action="block"`` fails the gate, the default ``"flag"`` passes it
+        flagged.
         """
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        item = c.item
+        extraction = c.extraction
+        if item is None or extraction is None:
+            raise TypeError("G7-EntityFactConsistency.check() requires item and extraction")
+        gate_config = c.gate_config
         action = gate_config.action if gate_config is not None else "flag"
         source_lower = f"{item.title}\n{item.content}".lower()
         source_values = _extract_numbers(source_lower)
@@ -2114,6 +2150,8 @@ class D1ProductCompleteness:
     """
 
     gate_type: Literal["delivery"] = "delivery"
+    gate_name = "D1-ProductCompleteness"
+    category = "delivery"
 
     def __init__(
         self,
@@ -2129,41 +2167,25 @@ class D1ProductCompleteness:
 
     def check(
         self,
-        product_output: dict[str, Any],
-        context: dict[str, Any] | None = None,
+        ctx: GateContext | dict[str, Any] | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Check *product_output* for completeness.
+        """Check the product output in *ctx* for completeness.
 
-        Parameters
-        ----------
-        product_output:
-            The rendered product output dict.  Expected to contain a
-            ``format`` key and one or more section keys (e.g.
-            ``key_findings``, ``summary``, ``recommendations``).
-            May also contain an ``entries`` list with individual entry
-            data.
-
-            A ``product_type`` in *product_output* or *context* set to
-            ``"RAW"`` causes this gate to **skip** (trivially pass).
-
-        context:
-            Optional context.  May contain ``product_type`` to override
-            the product type detected from *product_output*.
-
-        Returns
-        -------
-        QualityResult
-            ``passed=True`` when all required sections are present and
-            non-empty.  ``passed=False`` with a list of missing/empty
-            sections when the check fails.
+        Accepts a :class:`GateContext` or the legacy
+        ``check(product_output, context=None)`` form.  RAW products skip the
+        check entirely; PROCESSED products must carry every required section.
         """
-        ctx = context or {}
-        product_type = product_output.get("product_type") or ctx.get("product_type", "")
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        product_output = c.product_output or {}
+        gate_ctx = c.context or {}
+        product_type = product_output.get("product_type") or gate_ctx.get("product_type", "")
 
         # RAW products skip delivery-gate checks
         if product_type.upper() == "RAW":
             return QualityResult(
-                gate_name="D1-ProductCompleteness",
+                gate_name=self.gate_name,
                 passed=True,
                 score=1.0,
                 details={
@@ -2185,7 +2207,7 @@ class D1ProductCompleteness:
             ok = len(entries) > 0
             if ok:
                 return QualityResult(
-                    gate_name="D1-ProductCompleteness",
+                    gate_name=self.gate_name,
                     passed=True,
                     score=1.0,
                     details={
@@ -2197,7 +2219,7 @@ class D1ProductCompleteness:
                     },
                 )
             return QualityResult(
-                gate_name="D1-ProductCompleteness",
+                gate_name=self.gate_name,
                 passed=self.action_on_failure != "block",
                 score=0.0,
                 flagged=True,
@@ -2224,7 +2246,7 @@ class D1ProductCompleteness:
             text_len = len(_re.sub(r"<[^>]+>", " ", body).strip())
             if text_len >= 200:
                 return QualityResult(
-                    gate_name="D1-ProductCompleteness",
+                    gate_name=self.gate_name,
                     passed=True,
                     score=1.0,
                     details={
@@ -2235,7 +2257,7 @@ class D1ProductCompleteness:
                     },
                 )
             return QualityResult(
-                gate_name="D1-ProductCompleteness",
+                gate_name=self.gate_name,
                 passed=self.action_on_failure != "block",
                 score=0.0,
                 flagged=True,
@@ -2262,7 +2284,7 @@ class D1ProductCompleteness:
 
         if not missing and not empty:
             return QualityResult(
-                gate_name="D1-ProductCompleteness",
+                gate_name=self.gate_name,
                 passed=True,
                 score=1.0,
                 details={
@@ -2275,10 +2297,10 @@ class D1ProductCompleteness:
 
         # Dispatch D1-BLOCKED alert when gate blocks delivery
         if self.action_on_failure == "block":
-            self._dispatch_d1_alert(product_output, ctx, missing, empty)
+            self._dispatch_d1_alert(product_output, gate_ctx, missing, empty)
 
         return QualityResult(
-            gate_name="D1-ProductCompleteness",
+            gate_name=self.gate_name,
             passed=passed,
             score=0.0,
             flagged=True,
@@ -2533,7 +2555,7 @@ class D2FormatIntegrity:
 
         if not restricted_entries:
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=True,
                 score=1.0,
                 details={"tos_blocked": False},
@@ -2555,7 +2577,7 @@ class D2FormatIntegrity:
                     f"{', '.join(repr(c) for c in classifications)} sources"
                 )
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=False,
                 score=0.0,
                 flagged=True,
@@ -2576,7 +2598,7 @@ class D2FormatIntegrity:
         # 与「不做违法采集」这条硬约束直接冲突。
         if not self.allow_processed_from_restricted:
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=False,
                 score=0.0,
                 flagged=True,
@@ -2599,7 +2621,7 @@ class D2FormatIntegrity:
 
         # 显式放行（allow_processed_from_restricted=True）——仍附合规提示
         return QualityResult(
-            gate_name="D2-FormatIntegrity",
+            gate_name=self.gate_name,
             passed=True,
             score=1.0,
             details={
@@ -2615,38 +2637,27 @@ class D2FormatIntegrity:
             },
         )
 
+    gate_name = "D2-FormatIntegrity"
+    category = "delivery"
+
     def check(
         self,
-        product_output: dict[str, Any],
-        context: dict[str, Any] | None = None,
+        ctx: GateContext | dict[str, Any] | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Check format integrity and ToS delivery compliance.
+        """Check format integrity and ToS delivery compliance on the product in *ctx*.
 
-        Parameters
-        ----------
-        product_output:
-            The rendered product output dict.  Must contain a ``format``
-            key (``"html"``, ``"json"``, ``"markdown"``, etc.), a
-            ``body`` key with the rendered string, a ``product_type``
-            (``"RAW"`` or ``"PROCESSED"``), and ``entries``.
-
-        context:
-            Optional context.  May contain ``product_type`` to override
-            the product type detected from *product_output*.
-
-        Returns
-        -------
-        QualityResult
-            ``passed=True`` when the output parses correctly and no
-            ToS block applies.
-            ``passed=False`` with ``action="block"`` when ToS stops
-            RAW delivery from restricted/sensitive sources.
+        Accepts a :class:`GateContext` or the legacy
+        ``check(product_output, context=None)`` form.
         """
-        ctx = context or {}
-        product_type = product_output.get("product_type") or ctx.get("product_type", "")
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        product_output = c.product_output or {}
+        gate_ctx = c.context or {}
+        product_type = product_output.get("product_type") or gate_ctx.get("product_type", "")
 
         # --- Step 1: ToS delivery compliance check (all product types) ----
-        tos_result = self.tos_delivery_check(product_output, ctx)
+        tos_result = self.tos_delivery_check(product_output, gate_ctx)
         tos_details: dict[str, Any] = dict(tos_result.details)
 
         # ToS blocks RAW delivery from restricted/sensitive sources
@@ -2661,7 +2672,7 @@ class D2FormatIntegrity:
             }
             details.update(tos_details)
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=True,
                 score=1.0,
                 details=details,
@@ -2679,7 +2690,7 @@ class D2FormatIntegrity:
             }
             details.update(tos_details)
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=False,
                 score=0.0,
                 flagged=True,
@@ -2697,7 +2708,7 @@ class D2FormatIntegrity:
             result = self._check_pdf(body)
         else:
             result = QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=True,
                 score=1.0,
                 details={
@@ -2742,7 +2753,7 @@ class D2FormatIntegrity:
         orphans = self_claim_orphan_entities(body)
         if contradictions:
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=False,
                 score=0.0,
                 flagged=True,
@@ -2758,7 +2769,7 @@ class D2FormatIntegrity:
             )
         if orphans:
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=True,
                 score=1.0,
                 flagged=True,
@@ -2775,7 +2786,7 @@ class D2FormatIntegrity:
                 },
             )
         return QualityResult(
-            gate_name="D2-FormatIntegrity",
+            gate_name=self.gate_name,
             passed=True,
             score=1.0,
             details={
@@ -2797,7 +2808,7 @@ class D2FormatIntegrity:
 
         if not parser.is_valid():
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=self.action_on_failure != "block",
                 score=0.0,
                 flagged=True,
@@ -2811,7 +2822,7 @@ class D2FormatIntegrity:
             )
 
         return QualityResult(
-            gate_name="D2-FormatIntegrity",
+            gate_name=self.gate_name,
             passed=True,
             score=1.0,
             details={
@@ -2826,7 +2837,7 @@ class D2FormatIntegrity:
             json.loads(body)
         except json.JSONDecodeError as exc:
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=self.action_on_failure != "block",
                 score=0.0,
                 flagged=True,
@@ -2839,7 +2850,7 @@ class D2FormatIntegrity:
             )
 
         return QualityResult(
-            gate_name="D2-FormatIntegrity",
+            gate_name=self.gate_name,
             passed=True,
             score=1.0,
             details={
@@ -2871,7 +2882,7 @@ class D2FormatIntegrity:
             import fitz  # noqa: PLC0415 — deferred import
         except ImportError:
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=self.action_on_failure != "block",
                 score=0.0,
                 flagged=True,
@@ -2890,7 +2901,7 @@ class D2FormatIntegrity:
             doc = fitz.open(stream=content, filetype="pdf")
         except fitz.EmptyFileError as exc:
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=self.action_on_failure != "block",
                 score=0.0,
                 flagged=True,
@@ -2908,7 +2919,7 @@ class D2FormatIntegrity:
             else:
                 label = "PDF data is corrupt or not a valid PDF"
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=self.action_on_failure != "block",
                 score=0.0,
                 flagged=True,
@@ -2921,7 +2932,7 @@ class D2FormatIntegrity:
             )
         except Exception as exc:
             return QualityResult(
-                gate_name="D2-FormatIntegrity",
+                gate_name=self.gate_name,
                 passed=self.action_on_failure != "block",
                 score=0.0,
                 flagged=True,
@@ -2947,7 +2958,7 @@ class D2FormatIntegrity:
         )
 
         return QualityResult(
-            gate_name="D2-FormatIntegrity",
+            gate_name=self.gate_name,
             passed=True,
             score=1.0,
             details={
@@ -2997,43 +3008,29 @@ class D3Freshness:
         self.action_on_failure = action_on_failure
         self.recency_window_days = recency_window_days
 
+    gate_name = "D3-Freshness"
+    category = "delivery"
+
     def check(
         self,
-        product_output: dict[str, Any],
-        context: dict[str, Any] | None = None,
+        ctx: GateContext | dict[str, Any] | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> QualityResult:
-        """Check that all entries in *product_output* are fresh.
+        """Check that every entry in the product is within the recency window.
 
-        Parameters
-        ----------
-        product_output:
-            The rendered product output dict.  Should contain an
-            ``entries`` key with a list of entry dicts, each having
-            a ``collected_at`` or ``date`` field.
-
-            A ``product_type`` in *product_output* or *context* set to
-            ``"RAW"`` causes this gate to **skip** (trivially pass).
-
-        context:
-            Optional context.  May contain ``product_type`` to override
-            the product type detected from *product_output*.
-            May also contain ``recency_window_days`` to override the
-            configured window.
-
-        Returns
-        -------
-        QualityResult
-            ``passed=True`` when all entries are within the recency
-            window.  ``passed=False`` with a list of stale entries
-            when the check fails.
+        Accepts a :class:`GateContext` or the legacy
+        ``check(product_output, context=None)`` form.
         """
-        ctx = context or {}
-        product_type = product_output.get("product_type") or ctx.get("product_type", "")
+        c = _coerce_gate_context(self.gate_name, ctx, args, kwargs)
+        product_output = c.product_output or {}
+        gate_ctx = c.context or {}
+        product_type = product_output.get("product_type") or gate_ctx.get("product_type", "")
 
         # RAW products skip delivery-gate checks
         if product_type.upper() == "RAW":
             return QualityResult(
-                gate_name="D3-Freshness",
+                gate_name=self.gate_name,
                 passed=True,
                 score=1.0,
                 details={
@@ -3042,7 +3039,7 @@ class D3Freshness:
                 },
             )
 
-        window_days = ctx.get(
+        window_days = gate_ctx.get(
             "recency_window_days",
             self.recency_window_days,
         )
@@ -3085,7 +3082,7 @@ class D3Freshness:
 
         if not stale_entries:
             return QualityResult(
-                gate_name="D3-Freshness",
+                gate_name=self.gate_name,
                 passed=True,
                 score=1.0,
                 details={
@@ -3098,7 +3095,7 @@ class D3Freshness:
 
         passed = self.action_on_failure not in ("block",)
         return QualityResult(
-            gate_name="D3-Freshness",
+            gate_name=self.gate_name,
             passed=passed,
             score=0.0,
             flagged=True,
@@ -3470,6 +3467,156 @@ def _resolve_llm_timeout() -> float | None:
         return None
 
 
+def _run_translation_gates(
+    source: str,
+    target: str,
+    source_lang: str,
+    target_lang: str,
+    terminology_dict: dict[str, Any] | None = None,
+    model: str | None = None,
+    json_mode: bool = False,
+    timeout: float | None = None,
+    judge: Callable[..., dict[str, Any]] | None = None,
+    *,
+    short_circuit_on_precheck: bool = False,
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any] | None]:
+    """Run the five translation gates — the single translation-QA path.
+
+    Gates 1-4 are deterministic; gate 5 is the LLM judge.  Returns the gate
+    outcome dict and the composite score, or ``(gates, None)`` when
+    *short_circuit_on_precheck* is set and a deterministic gate failed (the
+    LLM judge is not paid for in that case).
+    """
+    from autoinfo.translation_qa import calculate_quality_score  # noqa: PLC0415
+
+    gates: dict[str, dict[str, Any]] = {
+        "inline_tags": check_inline_tags(source, target),
+        "terminology": check_terminology(source, target, terminology_dict or {}),
+        "length_ratio": check_length_ratio(source, target),
+        "source_copy": check_source_copy(source, target),
+    }
+    if short_circuit_on_precheck and any(not g["passed"] for g in gates.values()):
+        return gates, None
+
+    gates["llm_judge"] = (judge or llm_judge)(
+        source,
+        target,
+        source_lang,
+        target_lang,
+        model,
+        json_mode=json_mode,
+        timeout=timeout,
+    )
+    scores = gates["llm_judge"]
+    composite = calculate_quality_score(
+        faithfulness=float(scores["faithfulness"]),
+        terminology=float(scores["terminology"]),
+        style=float(scores["style"]),
+        readability=float(scores["readability"]),
+    )
+    return gates, composite
+
+
+def check_translation_accuracy(
+    item: Item,
+    extraction: ExtractionResult,
+    *,
+    terminology_dict: dict[str, Any] | None = None,
+    json_mode: bool = False,
+    timeout: float | None = None,
+    judge: Callable[..., dict[str, Any]] | None = None,
+) -> QualityResult:
+    """Canonical G5 check: deterministic pre-checks then the LLM judge.
+
+    This is the single implementation used by the processing pipeline; it
+    returns a :class:`QualityResult` with the same details keys the pipeline
+    has always persisted (``gates``, ``composite_score``, ``faithful``).
+    """
+    translation = (extraction.custom_fields or {}).get("translation", "")
+    if not translation:
+        return QualityResult(
+            gate_name="G5-TranslationAccuracy",
+            passed=True,
+            flagged=False,
+            details={
+                "faithful": True,
+                "explanation": "No translation to check",
+                "issues": [],
+            },
+        )
+
+    source_text = item.content or ""
+    source_lang = item.language or "en"
+    target_lang = (extraction.custom_fields or {}).get("target_language", "zh")
+    gates, composite = _run_translation_gates(
+        source_text,
+        translation,
+        source_lang,
+        target_lang,
+        terminology_dict,
+        model=None,
+        json_mode=json_mode,
+        timeout=timeout,
+        judge=judge,
+        short_circuit_on_precheck=True,
+    )
+
+    if composite is None:
+        failed_gates = [name for name, result in gates.items() if not result["passed"]]
+        return QualityResult(
+            gate_name="G5-TranslationAccuracy",
+            passed=False,
+            flagged=True,
+            score=0.0,
+            details={
+                "faithful": False,
+                "explanation": (
+                    "Deterministic pre-checks failed: "
+                    + ", ".join(failed_gates)
+                    + " — LLM judge skipped"
+                ),
+                "issues": [],
+                "gates": gates,
+                "composite_score": 0.0,
+            },
+        )
+
+    judge_gate = gates["llm_judge"]
+    if judge_gate.get("judged", True) is False:
+        return QualityResult(
+            gate_name="G5-TranslationAccuracy",
+            passed=False,
+            flagged=True,
+            score=0.0,
+            judged=False,
+            details={
+                "faithful": None,
+                "explanation": (
+                    "LLM judge unavailable — G5 not judged: " + str(judge_gate.get("error", ""))
+                ),
+                "issues": judge_gate.get("issues", []),
+                "gates": gates,
+                "composite_score": 0.0,
+            },
+        )
+
+    composite_score = float(composite.get("composite", 0.0))
+    faithful = composite_score >= 50.0
+    return QualityResult(
+        gate_name="G5-TranslationAccuracy",
+        passed=faithful,
+        flagged=not faithful,
+        score=composite_score / 100.0,
+        details={
+            "faithful": faithful,
+            "explanation": "5-gate pipeline evaluation",
+            "issues": judge_gate.get("issues", []),
+            "gates": gates,
+            "composite_score": composite_score,
+        },
+    )
+
+
 def run_translation_quality_gates(
     source: str,
     target: str,
@@ -3479,48 +3626,55 @@ def run_translation_quality_gates(
     model: str | None = None,
     timeout: float | None = None,
 ) -> dict[str, Any]:
-    """Run all 5 translation quality gates and compute composite score.
+    """Run all 5 translation quality gates and compute the composite score.
 
-    Gates 1-4 are deterministic (no LLM).  Gate 5 calls the LLM.
-    Composite score computed via
-    :func:`~autoinfo.translation_qa.calculate_quality_score`.
-
-    Returns
-    -------
-    dict
-        ``gates`` — dict of ``{gate_name: gate_result}`` for all 5 gates
-        ``composite_score`` — weighted composite from calculate_quality_score
+    Thin wrapper over :func:`_run_translation_gates` (the single
+    translation-QA implementation).  Gates 1-4 are deterministic; gate 5 is
+    the LLM judge.
     """
-    from autoinfo.translation_qa import calculate_quality_score  # noqa: PLC0415
-
-    g1 = check_inline_tags(source, target)
-    g2 = check_terminology(source, target, terminology_dict or {})
-    g3 = check_length_ratio(source, target)
-    g4 = check_source_copy(source, target)
-    g5 = llm_judge(source, target, source_lang, target_lang, model, timeout=timeout)
-
-    composite = calculate_quality_score(
-        faithfulness=float(g5["faithfulness"]),
-        terminology=float(g5["terminology"]),
-        style=float(g5["style"]),
-        readability=float(g5["readability"]),
+    gates, composite = _run_translation_gates(
+        source,
+        target,
+        source_lang,
+        target_lang,
+        terminology_dict,
+        model=model,
+        timeout=timeout,
     )
-
-    return {
-        "gates": {
-            "inline_tags": g1,
-            "terminology": g2,
-            "length_ratio": g3,
-            "source_copy": g4,
-            "llm_judge": g5,
-        },
-        "composite_score": composite,
-    }
+    return {"gates": gates, "composite_score": composite}
 
 
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
+
+
+#: Canonical execution/report order of the collection-time quality gates.
+#: Mirrors the gate catalog order in ``docs/dev/specs/quality-gates.md`` §3
+#: (G0 → G1 → G1-ToS → G2 → G3); ``tests/quality/test_gate_registry.py``
+#: asserts the two stay in sync.
+QUALITY_GATE_ORDER: tuple[str, ...] = (
+    "G0-SchemaIntegrity",
+    "G1-SourceAuthority",
+    "G1-TosCompliance",
+    "G2-Dedup",
+    "G3-RelevanceScoring",
+)
+
+
+def _build_gate_registry(
+    llm_model: str | None,
+    llm_timeout: float | None,
+) -> dict[str, Gate]:
+    """Instantiate the collection-time gates keyed by canonical name."""
+    registry: dict[str, Gate] = {
+        "G0-SchemaIntegrity": G0SchemaIntegrity(),
+        "G1-SourceAuthority": G1SourceAuthority(),
+        "G1-TosCompliance": G1TosCompliance(),
+        "G2-Dedup": G2Dedup(),
+        "G3-RelevanceScoring": G3RelevanceScoring(model=llm_model, timeout=llm_timeout),
+    }
+    return {name: registry[name] for name in QUALITY_GATE_ORDER}
 
 
 def run_quality_gates(
@@ -3529,37 +3683,29 @@ def run_quality_gates(
     gate_config: dict[str, QualityGateConfig] | None = None,
     llm_timeout: float | None = None,
     llm_model: str | None = None,
+    precomputed: dict[str, QualityResult] | None = None,
 ) -> dict[str, QualityResult]:
-    """Run all quality gates (G0, G1, G1-ToS, G2, G3) on *item*.
+    """Run the collection-time quality gates on *item*, in canonical order.
 
-    G0 runs first (schema integrity), followed by G1 (authority),
-    G1-ToS (compliance), G2 (dedup), and G3 (relevance).  G4 and G5
-    are run separately in the processing pipeline.
+    Execution is registry-driven via :data:`QUALITY_GATE_ORDER`
+    (G0 → G1 → G1-ToS → G2 → G3).  G4, G5 and G7 run later in the
+    processing pipeline.
 
     Parameters
     ----------
     item:
         The collected item to check.
     context:
-        Optional dictionary that may contain:
-
-        - ``source_config`` — source configuration dict (for G1, G1-ToS)
-        - ``existing_entries`` — list of :class:`KBEntry` (for G2)
-        - ``topic_keywords`` — list of keyword strings (for G3)
-        - ``threshold`` — relevance threshold integer (for G3)
+        Optional dictionary that may contain ``source_config``,
+        ``existing_entries``, ``topic_keywords`` and ``threshold``.
     gate_config:
         Optional mapping of gate name → :class:`QualityGateConfig`.
-        If provided, per-gate values (retries, action, threshold) are
-        applied to matching gates.  When ``None`` or missing keys,
-        defaults are used (backward compatible).
-    llm_timeout:
-        Optional per-call LLM timeout (seconds) forwarded to the G3
-        LLM scorer.  ``None`` keeps litellm's default.
-    llm_model:
-        Optional production LLM model string for G3 (issue #172/#173).
-        When provided (e.g. ``config.llm.resolve_model()``) the serial G3
-        scores with the configured model instead of the hardcoded default
-        that has no API key in the deployment.  ``None`` keeps G3's default.
+    llm_timeout / llm_model:
+        Per-call timeout and production model forwarded to G3.
+    precomputed:
+        Optional gate-name → :class:`QualityResult` map of results already
+        produced by the caller.  Those gates are NOT re-run (issue #583:
+        the pipeline's pre-extraction G0 decision is reused here).
 
     Returns
     -------
@@ -3568,7 +3714,6 @@ def run_quality_gates(
     """
     ctx = context or {}
 
-    # Validate gate_config type
     if gate_config is not None and not isinstance(gate_config, dict):
         logger.warning("Invalid gate_config type '%s', ignoring", type(gate_config).__name__)
         gate_config = None
@@ -3578,35 +3723,29 @@ def run_quality_gates(
     topic_keywords: list[str] = ctx.get("topic_keywords", [])
     threshold: int = ctx.get("threshold", 30)
 
-    # Resolve per-gate configs
-    g0_config = gate_config.get("G0-SchemaIntegrity") if gate_config else None
-    g1_config = gate_config.get("G1-SourceAuthority") if gate_config else None
-    g1tos_config = gate_config.get("G1-TosCompliance") if gate_config else None
-    g2_config = gate_config.get("G2-Dedup") if gate_config else None
     g3_config = gate_config.get("G3-RelevanceScoring") if gate_config else None
-
-    # G3: gate_config.threshold overrides context threshold
     if g3_config is not None and g3_config.threshold is not None:
         threshold = int(g3_config.threshold)
 
-    g0 = G0SchemaIntegrity()
-    g1 = G1SourceAuthority()
-    g1tos = G1TosCompliance()
-    g2 = G2Dedup()
-    # Issue #172/#173: use the configured production LLM when provided, so
-    # the SERIAL G3 path (default `autoinfo process`) scores with the real
-    # model instead of the hardcoded default that has no key locally.
-    g3 = G3RelevanceScoring(model=llm_model, timeout=llm_timeout)
+    gate_arguments: dict[str, dict[str, Any]] = {
+        "G0-SchemaIntegrity": {"raw_item": item.to_dict()},
+        "G1-SourceAuthority": {"source_config": source_config},
+        "G1-TosCompliance": {"source_config": source_config},
+        "G2-Dedup": {"existing_entries": existing_entries},
+        "G3-RelevanceScoring": {"topic_keywords": topic_keywords, "threshold": threshold},
+    }
 
+    registry = _build_gate_registry(llm_model, llm_timeout)
     results: dict[str, QualityResult] = {}
-
-    # G0 runs FIRST — validates raw item schema before further processing
-    results["G0-SchemaIntegrity"] = g0.check(item.to_dict(), ctx, g0_config)
-    results["G1-SourceAuthority"] = g1.check(item, source_config, g1_config)
-    results["G1-TosCompliance"] = g1tos.check(item, source_config, g1tos_config)
-    results["G2-Dedup"] = g2.check(item, existing_entries, g2_config)
-    results["G3-RelevanceScoring"] = g3.check(item, topic_keywords, threshold, g3_config)
-
+    for name in QUALITY_GATE_ORDER:
+        if precomputed and name in precomputed:
+            results[name] = precomputed[name]
+            continue
+        gate = registry[name]
+        gate_cfg = gate_config.get(name) if gate_config else None
+        results[name] = gate.check(
+            GateContext(item=item, gate_config=gate_cfg, context=ctx, **gate_arguments[name])
+        )
     return results
 
 

@@ -28,7 +28,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -98,9 +98,7 @@ class ApplePodcastsHandler(BaseHandler):
             self._last_request_time = time.time()
             return
 
-        min_interval = (
-            1.0 / self.max_rps if self.max_rps > 0 else MIN_REQUEST_INTERVAL
-        )
+        min_interval = 1.0 / self.max_rps if self.max_rps > 0 else MIN_REQUEST_INTERVAL
         elapsed = time.time() - self._last_request_time
         if elapsed < min_interval:
             time.sleep(min_interval - elapsed)
@@ -168,11 +166,7 @@ class ApplePodcastsHandler(BaseHandler):
         author: str = item.get("artistName") or ""
         feed_url: str = item.get("feedUrl") or ""
         published_date: str = item.get("releaseDate") or ""
-        source_url: str = (
-            item.get("collectionViewUrl")
-            or item.get("trackViewUrl")
-            or ""
-        )
+        source_url: str = item.get("collectionViewUrl") or item.get("trackViewUrl") or ""
         genre: str = item.get("primaryGenreName") or ""
         artwork_url: str = (
             item.get("artworkUrl600")
@@ -204,6 +198,12 @@ class ApplePodcastsHandler(BaseHandler):
     # Public API
     # ------------------------------------------------------------------
 
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch podcast shows for the topic term."""
+        term = ctx.topic if ctx.topic else ""
+        shows = self.fetch(term=term, limit=ctx.resolved_limit(10))
+        return [self.to_item(s) for s in shows]
+
     def fetch(
         self,
         term: str = "",
@@ -231,9 +231,7 @@ class ApplePodcastsHandler(BaseHandler):
 
         query = (term or self.term).strip()
         if not query:
-            logger.warning(
-                "Apple Podcasts fetch called with empty term; returning empty list."
-            )
+            logger.warning("Apple Podcasts fetch called with empty term; returning empty list.")
             return []
 
         page_size = min(limit, MAX_LIMIT)

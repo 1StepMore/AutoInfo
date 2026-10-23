@@ -492,11 +492,11 @@ class TestG4RetrySemantics:
     def test_g4_always_fail_blocks_item(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """3 failed attempts → hard-gate block path preserved.
+        """4 failed attempts (1 + 3 retries) → hard-gate block path preserved.
 
-        All three attempts fail: G4 returns the ``action: block`` result,
-        the item is blocked (no storage), and G4 writes its own ``_failed/``
-        diagnostics (3 attempts recorded).
+        All four attempts fail: G4 returns the ``action: block`` result, the
+        item is blocked (no storage), and G4 writes its own ``_failed/``
+        diagnostics (4 attempts recorded).
         """
 
         def always_fail(*args: Any, **kwargs: Any) -> Any:  # noqa: ARG001
@@ -515,11 +515,11 @@ class TestG4RetrySemantics:
                 check_factual=True,
             )
 
-        # G4 wrote its _failed/ diagnostics after exhausting 3 attempts
+        # G4 wrote its _failed/ diagnostics after exhausting 4 attempts
         assert mock_wfd.call_count == 1
         retry_log = mock_wfd.call_args.args[2]
-        assert len(retry_log) == 3, (
-            f"G4 block path did not exhaust 3 attempts (retry_log={len(retry_log)})"
+        assert len(retry_log) == 4, (
+            f"G4 block path did not exhaust 4 attempts (retry_log={len(retry_log)})"
         )
         # Hard-gate block: storage skipped, item marked blocked and
         # unlogged (the existing g4_blocked contract: stats["logged"]=False)

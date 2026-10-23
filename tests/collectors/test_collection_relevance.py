@@ -108,9 +108,10 @@ def _run_collection(
         source_name=source_name,
         source_url=source_url,
     )
-    with patch("autoinfo.collect.get_config_path"), patch(
-        "autoinfo.collect.load_config"
-    ) as mock_load:
+    with (
+        patch("autoinfo.collect.get_config_path"),
+        patch("autoinfo.collect.load_config") as mock_load,
+    ):
         mock_load.return_value = config
         with patch("autoinfo.collect._fetch_items", return_value=items):
             return run_collection(
@@ -219,7 +220,7 @@ class TestPartialWordMatching:
     """Keyword matching is token-level, partial-word aware (#177 fix)."""
 
     def test_hyphenated_multiword_keyword_matches(self):
-        """"supply chain" matches "supply-chain disruptions" (hyphenated)."""
+        """ "supply chain" matches "supply-chain disruptions" (hyphenated)."""
         result = _run_collection(
             items=[_make_item("h1", "supply-chain disruptions hit retailers")],
             topics=[TopicConfig(name="retail", keywords=["supply chain"])],
@@ -229,7 +230,7 @@ class TestPartialWordMatching:
         assert src["items_new"] == 1
 
     def test_inflected_word_matches(self):
-        """"retail" matches "retailers" — inflection/plural tolerance."""
+        """ "retail" matches "retailers" — inflection/plural tolerance."""
         result = _run_collection(
             items=[_make_item("i1", "Retailers slash prices in Q3")],
             topics=[TopicConfig(name="retail", keywords=["retail"])],
@@ -239,7 +240,7 @@ class TestPartialWordMatching:
         assert src["items_new"] == 1
 
     def test_multiword_keyword_requires_all_words(self):
-        """"supply chain" does not match an item with only "supply"."""
+        """ "supply chain" does not match an item with only "supply"."""
         result = _run_collection(
             items=[_make_item("s1", "supply shortages everywhere")],
             topics=[TopicConfig(name="retail", keywords=["supply chain"])],
@@ -336,17 +337,23 @@ class TestSourceTypeAwareness:
         from autoinfo.collect import _is_cross_disciplinary_source
 
         for stype in ("dblp", "web"):
-            assert _is_cross_disciplinary_source(
-                SourceConfig(name="sr", type=stype, url="https://example.com"),
-            ) is True, f"{stype} should be cross-disciplinary"
+            assert (
+                _is_cross_disciplinary_source(
+                    SourceConfig(name="sr", type=stype, url="https://example.com"),
+                )
+                is True
+            ), f"{stype} should be cross-disciplinary"
 
     def test_generic_api_is_not_filtered(self):
         """A generic HttpApi source (e.g. coursera) is topical by construction."""
         from autoinfo.collect import _is_cross_disciplinary_source
 
-        assert _is_cross_disciplinary_source(
-            SourceConfig(name="coursera", type="api", url="https://example.com"),
-        ) is False
+        assert (
+            _is_cross_disciplinary_source(
+                SourceConfig(name="coursera", type="api", url="https://example.com"),
+            )
+            is False
+        )
 
     def test_google_news_unscoped_is_filtered(self):
         """An unscoped Google News search RSS is a cross-disciplinary feed."""
@@ -378,13 +385,16 @@ class TestSourceTypeAwareness:
         """A non-Google News RSS feed is curated, never filtered."""
         from autoinfo.collect import _is_cross_disciplinary_source
 
-        assert _is_cross_disciplinary_source(
-            SourceConfig(
-                name="techcrunch",
-                type="rss",
-                url="https://techcrunch.com/feed/",
-            ),
-        ) is False
+        assert (
+            _is_cross_disciplinary_source(
+                SourceConfig(
+                    name="techcrunch",
+                    type="rss",
+                    url="https://techcrunch.com/feed/",
+                ),
+            )
+            is False
+        )
 
 
 # ======================================================================
@@ -427,28 +437,44 @@ class TestNoKeywordsNoFilter:
 
 
 class TestOpenAlexTopicQuery:
-    """OpenAlex API query must be built from topic keywords (#177)."""
+    """OpenAlex API query must be built from topic keywords (#177).
+
+    The query resolution lives on the collector (``fetch_items``), so these
+    tests drive the real handler and capture what it passes to ``fetch``.
+    """
+
+    @staticmethod
+    def _capture_query(topic: str, keywords: list[str]) -> dict[str, object]:
+        from unittest.mock import patch
+
+        from autoinfo.collectors.base import CollectorContext
+        from autoinfo.collectors.openalex import OpenAlexHandler
+
+        calls: list[dict[str, object]] = []
+
+        def fake_fetch(limit: int = 10, query: str = "") -> list[dict]:
+            calls.append({"limit": limit, "query": query})
+            return []
+
+        handler = OpenAlexHandler()
+        with patch.object(OpenAlexHandler, "fetch", side_effect=fake_fetch):
+            items = handler.fetch_items(CollectorContext(topic=topic, keywords=keywords, limit=5))
+        assert items == []
+        return calls[-1]
 
     def test_fetch_items_passes_topic_keywords_as_query(self):
-        """``_fetch_items`` forwards joined topic keywords as the query."""
-        from autoinfo.collect import _fetch_items
-
-        handler = FakeOpenAlexHandler()
-        source = SourceConfig(name="openalex", type="openalex", settings={})
-        items = _fetch_items(
-            handler, source, topic="", limit=5, keywords=["CRISPR", "gene editing"]
-        )
-        assert items == []
-        assert handler.calls[-1] == {"limit": 5, "query": "CRISPR gene editing"}
+        """Joined topic keywords become the OpenAlex query."""
+        assert self._capture_query("", ["CRISPR", "gene editing"]) == {
+            "limit": 5,
+            "query": "CRISPR gene editing",
+        }
 
     def test_fetch_items_falls_back_to_topic_name_without_keywords(self):
         """Without keywords, the topic name becomes the query."""
-        from autoinfo.collect import _fetch_items
-
-        handler = FakeOpenAlexHandler()
-        source = SourceConfig(name="openalex", type="openalex", settings={})
-        _fetch_items(handler, source, topic="cancer research", limit=5, keywords=[])
-        assert handler.calls[-1] == {"limit": 5, "query": "cancer research"}
+        assert self._capture_query("cancer research", []) == {
+            "limit": 5,
+            "query": "cancer research",
+        }
 
     def test_handler_fetch_builds_search_param_from_query(self):
         """The handler encodes the query override into the ``search=`` param."""

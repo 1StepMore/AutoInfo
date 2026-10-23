@@ -33,6 +33,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src/autoinfo/mcp/server.py"
+TOOLS_DIR = ROOT / "src/autoinfo/mcp/tools"
 OUT_DIR = ROOT / "validation-runs" / "coverage"
 
 # Action verbs that make a tool name verb-first. Covers get/list/add/remove
@@ -222,13 +223,21 @@ def _schema_dict(node: ast.AST | None) -> dict[str, Any]:
         return {}
 
 
-def audit_tools(server_src: str) -> dict[str, Any]:
+def tool_source_texts() -> list[str]:
+    """Return the hub plus every per-domain schema module (#581)."""
+    paths = [SRC, *sorted(TOOLS_DIR.glob("*.py"))]
+    return [p.read_text(encoding="utf-8") for p in paths]
+
+
+def audit_tools(server_src: str | list[str]) -> dict[str, Any]:
     """Audit every declared Tool against the D-工-1 conventions.
 
     Parameters
     ----------
     server_src:
-        Contents of ``src/autoinfo/mcp/server.py``.
+        Contents of ``src/autoinfo/mcp/server.py``, or a list of source
+        strings covering the hub and the per-domain modules under
+        ``src/autoinfo/mcp/tools/`` (#581 extraction).
 
     Returns
     -------
@@ -237,13 +246,14 @@ def audit_tools(server_src: str) -> dict[str, Any]:
         ``violations`` (verb-first / param-count / short-description lists),
         and ``tools`` (per-tool rows). Sorted deterministically.
     """
+    sources = [server_src] if isinstance(server_src, str) else server_src
     rows: list[dict[str, Any]] = []
     # T-S-01: every declared Tool must carry an outputSchema.  Statically
     # the schema is attached by ``_with_output_schema`` in
     # ``_full_tool_list``; an explicit ``outputSchema=`` keyword also
     # counts (future per-tool refinement).
-    legacy_output_schema_wrapped = _legacy_output_schema_wrapped(server_src)
-    for call in _tool_calls(server_src):
+    legacy_output_schema_wrapped = any(_legacy_output_schema_wrapped(s) for s in sources)
+    for call in (call for source in sources for call in _tool_calls(source)):
         name = _str_literal(_kw(call, "name"))
         if not name:
             continue
@@ -338,7 +348,7 @@ def audit_tools(server_src: str) -> dict[str, Any]:
 
 
 def main() -> int:
-    src = SRC.read_text(encoding="utf-8")
+    src = tool_source_texts()
     result = audit_tools(src)
     s = result["summary"]
 

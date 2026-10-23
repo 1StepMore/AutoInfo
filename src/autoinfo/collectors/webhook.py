@@ -18,7 +18,7 @@ import time
 from collections import deque
 from typing import Any
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,10 @@ class WebhookHandler(BaseHandler):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Webhook is push-based; pull collection yields nothing."""
+        return []
 
     def fetch(self, *args: Any, **kwargs: Any) -> list[Item]:
         """Webhook is push-based; pull-based fetch returns nothing."""

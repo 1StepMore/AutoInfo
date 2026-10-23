@@ -839,7 +839,7 @@ class TestG3RelevanceScoringLLM:
         # Discriminative lexical score, not a flat neutral 50.
         assert result.score != 50.0
         assert result.details["scoring_method"] == "lexical"
-        assert result.details["llm_retries"] == 3
+        assert result.details["llm_retries"] == 4
 
     def test_retry_escalating_context(self, sample_item: Item) -> None:
         """First call fails (unparseable), second succeeds → returns second score."""

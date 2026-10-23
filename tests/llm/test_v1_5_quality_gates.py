@@ -111,7 +111,7 @@ class TestG0SchemaIntegrity:
         assert result.passed is True
 
     def test_empty_source_url_fails_and_blocks(self) -> None:
-        """Empty source_url → G0 fails, retries once, blocks."""
+        """Empty source_url → G0 fails in one attempt and blocks."""
         item = {
             "source_url": "",
             "source_type": "api",
@@ -124,7 +124,8 @@ class TestG0SchemaIntegrity:
         assert result.flagged is True
         assert result.score == 0.0
         assert result.details["action"] == "block"
-        assert result.details["retry_count"] == 1
+        assert result.details["retry_count"] == 0
+        assert result.details["attempts"] == 1
         assert any(f["field"] == "source_url" for f in result.details["failed_fields"])
 
     def test_missing_source_url_fails(self) -> None:
@@ -138,7 +139,7 @@ class TestG0SchemaIntegrity:
 
         assert result.passed is False
         assert result.details["action"] == "block"
-        assert result.details["retry_count"] == 1
+        assert result.details["retry_count"] == 0
 
     def test_empty_source_type_fails(self) -> None:
         """Empty source_type → fails."""
@@ -195,7 +196,8 @@ class TestG0SchemaIntegrity:
 
         assert result.passed is False
         assert len(result.details["failed_fields"]) == 3
-        assert result.details["retry_count"] == 1
+        assert result.details["retry_count"] == 0
+        assert result.details["attempts"] == 1
 
     def test_invalid_frontmatter_fails(self) -> None:
         """Invalid YAML frontmatter → fails."""
@@ -1467,7 +1469,7 @@ class TestG4RetryChain:
         assert model_args[2] == "test/model-three"
 
     def test_blocks_after_all_retries_exhausted(self) -> None:
-        """G4 blocks when all 3 retries return contradiction."""
+        """G4 blocks after 1 + 3 retries (four attempts) all contradict."""
         item = _g4_fixture_item()
         extraction = _g4_fixture_extraction()
         gate_config = _g4_gate_config(retries=3)
@@ -1477,6 +1479,7 @@ class TestG4RetryChain:
                 {"contradiction": True, "explanation": "First check: contradiction found."},
                 {"contradiction": True, "explanation": "Second check: still contradictory."},
                 {"contradiction": True, "explanation": "Third check: still contradicts."},
+                {"contradiction": True, "explanation": "Fourth check: still contradicts."},
             ]
         )
         with patch(
@@ -1490,8 +1493,8 @@ class TestG4RetryChain:
         assert result.score == 0.0
         assert result.details["contradiction"] is True
         assert result.details["action"] == "block"
-        assert result.details["retry_count"] == 3
-        assert mock_cwf.call_count == 3
+        assert result.details["retry_count"] == 4
+        assert mock_cwf.call_count == 4
 
     def test_failed_json_written_on_block(self, tmp_path: Path) -> None:
         """When G4 blocks, _failed/ diagnostics JSON is written."""
@@ -1504,6 +1507,7 @@ class TestG4RetryChain:
                 {"contradiction": True, "explanation": "Contradiction 1"},
                 {"contradiction": True, "explanation": "Contradiction 2"},
                 {"contradiction": True, "explanation": "Contradiction 3"},
+                {"contradiction": True, "explanation": "Contradiction 4"},
             ]
         )
 
@@ -1528,11 +1532,12 @@ class TestG4RetryChain:
 
         assert diagnostics["item_id"] == "test-item-g4-retry"
         assert diagnostics["source_url"] == "https://example.com/article"
-        assert len(diagnostics["retries"]) == 3
+        assert len(diagnostics["retries"]) == 4
         assert diagnostics["retries"][0]["attempt"] == 1
         assert diagnostics["retries"][0]["model"] == "test/test-model"
         assert diagnostics["retries"][1]["model"] == "test/model-two"
         assert diagnostics["retries"][2]["model"] == "test/model-three"
+        assert diagnostics["retries"][3]["model"] == "test/model-three"
         assert "final_error" in diagnostics
         assert "item_snapshot" in diagnostics
         assert isinstance(diagnostics["item_snapshot"], dict)
@@ -1568,7 +1573,7 @@ class TestGateConfigIntegration:
     """run_quality_gates() with gate_config dict — retries, action, threshold."""
 
     def test_g0_retry_count_from_config(self, sample_item: Item) -> None:
-        """G0 reads retry count from gate_config (retries=3 → retry_count=3)."""
+        """G0 reads the configured extra retries (retries=3 → retry_count=3)."""
         from autoinfo.config import QualityGateConfig
 
         g0_gate = G0SchemaIntegrity()
@@ -1594,7 +1599,7 @@ class TestGateConfigIntegration:
 
         g0 = G0SchemaIntegrity()
         result = g0.check({"source_url": "", "source_type": "", "source_platform": ""})
-        assert result.details["retry_count"] == 1
+        assert result.details["retry_count"] == 0
 
         results2 = run_quality_gates(sample_item, gate_config={})
         assert results2["G0-SchemaIntegrity"].passed is True

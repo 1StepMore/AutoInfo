@@ -35,7 +35,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler
+from autoinfo.collectors.base import BaseHandler, CollectorContext
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -100,9 +100,7 @@ class SSRNHandler(BaseHandler):
             self._last_request_time = time.time()
             return
 
-        min_interval = (
-            1.0 / self.max_rps if self.max_rps > 0 else MIN_REQUEST_INTERVAL
-        )
+        min_interval = 1.0 / self.max_rps if self.max_rps > 0 else MIN_REQUEST_INTERVAL
         elapsed = time.time() - self._last_request_time
         if elapsed < min_interval:
             time.sleep(min_interval - elapsed)
@@ -181,7 +179,7 @@ class SSRNHandler(BaseHandler):
         # or
         #   https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3542186
         abstract_url_pattern = re.compile(
-            r'(?:https?://papers\.ssrn\.com)?/sol3/papers\.cfm\?abstract_id=(\d+)',
+            r"(?:https?://papers\.ssrn\.com)?/sol3/papers\.cfm\?abstract_id=(\d+)",
             re.IGNORECASE,
         )
 
@@ -205,7 +203,7 @@ class SSRNHandler(BaseHandler):
             # Simple approach: title is typically the link text or nearby heading
             title = ""
             title_match = re.search(
-                r'<a[^>]*abstract_id=' + re.escape(abstract_id) + r'[^>]*>([^<]+)',
+                r"<a[^>]*abstract_id=" + re.escape(abstract_id) + r"[^>]*>([^<]+)",
                 context_window,
                 re.IGNORECASE,
             )
@@ -223,7 +221,7 @@ class SSRNHandler(BaseHandler):
             # Try alt title extraction from meta/heading tags near the link
             if not title:
                 alt_title = re.search(
-                    r'<h\d[^>]*>([^<]+)</h\d>',
+                    r"<h\d[^>]*>([^<]+)</h\d>",
                     context_window,
                     re.IGNORECASE,
                 )
@@ -233,7 +231,7 @@ class SSRNHandler(BaseHandler):
             # Extract authors (comma-separated names near the link)
             authors: list[str] = []
             author_match = re.search(
-                r'(?:by|authors?)[:\s]*([^<]+)',
+                r"(?:by|authors?)[:\s]*([^<]+)",
                 context_window,
                 re.IGNORECASE,
             )
@@ -244,40 +242,48 @@ class SSRNHandler(BaseHandler):
             # Extract abstract snippet
             content = ""
             abstract_match = re.search(
-                r'(?:abstract|description)[:\s]*<[^>]*>?\s*([^<]{50,500})',
+                r"(?:abstract|description)[:\s]*<[^>]*>?\s*([^<]{50,500})",
                 context_window,
                 re.IGNORECASE | re.DOTALL,
             )
             if abstract_match:
                 content = abstract_match.group(1).strip()
                 # Clean leading HTML tags
-                content = re.sub(r'<[^>]+>', '', content).strip()
+                content = re.sub(r"<[^>]+>", "", content).strip()
 
             # Extract date
             published_date = ""
             date_match = re.search(
-                r'(?:posted|published|date)[:\s]*(\d{1,2}\s\w+\s\d{4}|\d{4}-\d{2}-\d{2}|\w+\s\d{1,2},?\s\d{4})',
+                r"(?:posted|published|date)[:\s]*(\d{1,2}\s\w+\s\d{4}|\d{4}-\d{2}-\d{2}|\w+\s\d{1,2},?\s\d{4})",
                 context_window,
                 re.IGNORECASE,
             )
             if date_match:
                 published_date = date_match.group(1).strip()
 
-            papers.append({
-                "id": abstract_id,
-                "title": title,
-                "content": content,
-                "authors": authors,
-                "published_date": published_date,
-                "source_url": paper_url,
-                "abstract_id": abstract_id,
-            })
+            papers.append(
+                {
+                    "id": abstract_id,
+                    "title": title,
+                    "content": content,
+                    "authors": authors,
+                    "published_date": published_date,
+                    "source_url": paper_url,
+                    "abstract_id": abstract_id,
+                }
+            )
 
         return papers
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def fetch_items(self, ctx: CollectorContext) -> list[Item]:
+        """Fetch SSRN papers for the topic query."""
+        query = ctx.topic if ctx.topic else ""
+        papers = self.fetch(query=query, limit=ctx.resolved_limit(10))
+        return [self.to_item(p) for p in papers]
 
     def fetch(
         self,
@@ -308,9 +314,7 @@ class SSRNHandler(BaseHandler):
 
         search_query = (query or self.query).strip()
         if not search_query:
-            logger.warning(
-                "SSRN fetch called with empty query; returning empty list."
-            )
+            logger.warning("SSRN fetch called with empty query; returning empty list.")
             return []
 
         # Build SSRN search URL

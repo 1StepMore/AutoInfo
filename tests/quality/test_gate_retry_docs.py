@@ -1,9 +1,10 @@
-"""Doc/code consistency for quality-gate retry semantics (issue #565).
+"""Doc/code consistency for quality-gate retry semantics (issue #565/#583).
 
 G0 is a deterministic schema check: retrying cannot flip an invalid document
-to valid, so it blocks without retry. Only G4 (LLM-judged factual consistency)
-carries the 3x retry. These tests parse the real docs so the prose cannot drift
-from ``_DEFAULT_QUALITY_GATES`` again.
+to valid, so it makes one attempt (``retries=0``). Only G4 (LLM-judged factual
+consistency) carries extra retries (``retries=3`` → four attempts). These
+tests parse the real docs so the prose cannot drift from
+``_DEFAULT_QUALITY_GATES`` and from the ``1 + retries`` attempt contract.
 """
 
 from __future__ import annotations
@@ -55,22 +56,28 @@ def _parse_retry_table() -> dict[str, int]:
     return parsed
 
 
-def _expected_retries() -> dict[str, int]:
+def _expected_attempts() -> dict[str, int]:
+    """Documented Attempts column = 1 + configured extra retries."""
     expected: dict[str, int] = {}
     for short_name in GATES_IN_SCOPE:
         long_name = _GATE_CONFIG_KEY_MAP[short_name]
-        expected[long_name] = _DEFAULT_QUALITY_GATES[short_name]["retries"]
+        expected[long_name] = 1 + _DEFAULT_QUALITY_GATES[short_name]["retries"]
     return expected
 
 
 def test_retry_table_matches_default_quality_gates() -> None:
     parsed = _parse_retry_table()
-    expected = _expected_retries()
+    expected = _expected_attempts()
 
     assert parsed == expected, (
         "retry table in docs/dev/acceptance-framework.md disagrees with "
         f"_DEFAULT_QUALITY_GATES:\n  doc:    {parsed}\n  config: {expected}"
     )
+
+
+def test_g0_default_retries_is_zero() -> None:
+    """G0 is deterministic: retries=0 means exactly one attempt (issue #583)."""
+    assert _DEFAULT_QUALITY_GATES["G0"]["retries"] == 0
 
 
 def test_agents_md_g0_row_says_no_retry() -> None:

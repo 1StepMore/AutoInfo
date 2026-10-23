@@ -47,6 +47,12 @@ _G0_GATE_KEY = "G0-SchemaIntegrity"
 _G1_GATE_KEY = "G1-SourceAuthority"
 _G3_GATE_KEY = "G3-RelevanceScoring"
 _G4_GATE_KEY = "G4-SummaryFactual"
+
+#: Promotion admission runs G4 as ONE strict check, not the pipeline's
+#: ``1 + 3`` attempt retry chain: a draft that contradicts its own source is
+#: rejected outright (issue #583).  Expressed as the number of EXTRA attempts
+#: — 0 means a single attempt.
+PROMOTION_G4_RETRIES = 0
 _CURATION_GATE_KEY = "CurationGate"
 
 
@@ -253,7 +259,7 @@ def _run_g4_check(
 
     g4_config = gate_config.get(_G4_GATE_KEY) if gate_config else None
     if g4_config is not None:
-        g4_config = replace(g4_config, retries=0)
+        g4_config = replace(g4_config, retries=PROMOTION_G4_RETRIES)
 
     g4 = G4FactualConsistency(
         model=model_name,

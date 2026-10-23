@@ -253,9 +253,12 @@ The service-coverage scope is fixed by the end-user willingness-to-pay research 
 | Gate | Category | Attempts |
 |:--|:--|--:|
 | G0-SchemaIntegrity | hard | 1 |
-| G4-SummaryFactual | hard | 3 |
+| G4-SummaryFactual | hard | 4 |
 
-`Attempts` is the code's `QualityGateConfig.retries`: it counts **total attempts** (the gate loop is `for _ in range(retries)`), so `1` means no retry.
+`Attempts` is `1 + QualityGateConfig.retries`: `retries` counts **extra
+attempts** after the first (the shared `retry_with_escalation()` helper runs
+`1 + max(retries, 0)` total), so G0 (`retries=0`) makes exactly one
+deterministic attempt and G4 (`retries=3`) makes four.
 
 ### 5.2 Director sampling review (human-as-end-user)
 

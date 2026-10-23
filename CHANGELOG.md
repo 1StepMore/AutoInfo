@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.40](https://github.com/1StepMore/AutoInfo/compare/v1.17.39...v1.17.40) (2026-10-23)
+
+
+### Refactoring
+
+* **core:** MCP dispatch 注册表 + output 产品模块拆分（[#581](https://github.com/1StepMore/AutoInfo/issues/581)/[#582](https://github.com/1StepMore/AutoInfo/issues/582) phase 2） ([#601](https://github.com/1StepMore/AutoInfo/issues/601)) ([684d440](https://github.com/1StepMore/AutoInfo/commit/684d44064a1d86387b058c4633744a6ed43d2bec))
+
 ## [1.17.39](https://github.com/1StepMore/AutoInfo/compare/v1.17.38...v1.17.39) (2026-10-23)
 
 

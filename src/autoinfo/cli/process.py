@@ -57,6 +57,11 @@ def process(
             "clears the cursor and reprocesses from the beginning."
         ),
     ),
+    newest_first: bool = typer.Option(
+        False,
+        "--newest-first",
+        help="Process the most recently collected items first.",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Process collected items (LLM extraction, quality gates G1-G5, KB storage)."""
@@ -69,6 +74,7 @@ def process(
             check_factual=check_factual,
             check_translation=check_translation,
             resume_from=resume_from,
+            newest_first=newest_first,
         )
     except FileNotFoundError as exc:
         fail_if_global("NotFound", str(exc))

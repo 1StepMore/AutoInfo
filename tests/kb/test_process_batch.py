@@ -144,7 +144,9 @@ class TestBatchProcessing:
         assert len(result.per_item_logs) == 2
 
         # Progress was persisted
-        mock_write.assert_called_once_with("medical-research", 2, 3)
+        mock_write.assert_called_once_with(
+            "medical-research", 2, 3, processed_ids=["item-001", "item-002"]
+        )
 
     def test_batch_completes_when_batch_exceeds_remaining(
         self,
@@ -199,10 +201,11 @@ class TestBatchProcessing:
                 domain, {"last_processed_index": 0, "total_items": len(three_items)}
             )
 
-        def mock_write(domain: str, index: int, total: int) -> None:
+        def mock_write(domain: str, index: int, total: int, processed_ids=None) -> None:
             progress_store[domain] = {
                 "last_processed_index": index,
                 "total_items": total,
+                "processed_ids": sorted(processed_ids or []),
             }
 
         patches = [
@@ -245,7 +248,7 @@ class TestBatchProcessing:
         three_items: list[Item],
         mock_extraction: ExtractionResult,
     ) -> None:
-        """When total_items changed, progress resets to 0 (no duplication)."""
+        """A shrunk cache must not reprocess the items the legacy cursor covered."""
         processed_ids: list[str] = []
 
         def track_extraction(item: Item, **kwargs: Any) -> ExtractionResult:
@@ -256,51 +259,198 @@ class TestBatchProcessing:
         mock_quality = MagicMock(return_value=_all_pass_gates())
         mock_store = _mock_kb_store()
 
-        # Simulate: progress says 3 items, but only 2 items loaded
+        # Legacy state: cursor covered 2 items, but the cache now holds 2 items.
         with (
             patch("autoinfo.process.load_cached_items", return_value=three_items[:2]),
             patch(
                 "autoinfo.process._read_progress",
-                return_value={"last_processed_index": 2, "total_items": 3},
-            ),
-            patch("autoinfo.process._write_progress"),
-            patch.object(LLMExtractor, "extract", mock_ext),
-            patch("autoinfo.process.run_quality_gates", mock_quality),
-            patch("autoinfo.process.KBStore", return_value=mock_store),
-        ):
-            result = run_processing("medical-research", batch_size=5)
-
-        # Cache changed => reset to start_index=0, re-process from start
-        assert result.total_items == 2
-        assert result.processed_count == 2
-        # All items reprocessed when cache size changes (order not guaranteed)
-        assert sorted(processed_ids) == ["item-001", "item-002"]
-
-    def test_cache_change_resets_progress(self, three_items: list[Item]) -> None:
-        """When persisted total_items differs from cache, progress resets."""
-        mock_ext = MagicMock()
-        mock_quality = MagicMock()
-        mock_store = _mock_kb_store()
-
-        # persisted_total=5 but actual=3 → reset
-        with (
-            patch("autoinfo.process.load_cached_items", return_value=three_items),
-            patch(
-                "autoinfo.process._read_progress",
-                return_value={"last_processed_index": 3, "total_items": 5},
+                return_value={
+                    "last_processed_index": 2,
+                    "total_items": 3,
+                    "processed_ids": [],
+                },
             ),
             patch("autoinfo.process._write_progress") as mock_write,
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
             patch("autoinfo.process.KBStore", return_value=mock_store),
         ):
-            run_processing("medical-research", batch_size=2)
+            result = run_processing("medical-research", batch_size=5)
 
-        # Should have written progress from index 2 (after reset to 0)
-        mock_write.assert_called_once()
-        args = mock_write.call_args[0]
-        assert args[0] == "medical-research"
-        assert args[1] == 2  # processed 2 items after reset
+        assert result.total_items == 2
+        assert result.processed_count == 0
+        assert processed_ids == []
+        mock_write.assert_not_called()
+
+    def test_cache_growth_processes_only_the_new_items(
+        self,
+        three_items: list[Item],
+        mock_extraction: ExtractionResult,
+    ) -> None:
+        """The regression: a collect that changes the item count must not reset
+        progress. The recorded ids are skipped; only the new item is extracted."""
+        processed_ids: list[str] = []
+
+        def track_extraction(item: Item, **kwargs: Any) -> ExtractionResult:
+            processed_ids.append(item.id)
+            return mock_extraction
+
+        mock_ext = MagicMock(side_effect=track_extraction)
+        mock_quality = MagicMock(return_value=_all_pass_gates())
+        mock_store = _mock_kb_store()
+
+        # 3 items cached now; the first two were recorded on previous nights.
+        with (
+            patch("autoinfo.process.load_cached_items", return_value=three_items),
+            patch(
+                "autoinfo.process._read_progress",
+                return_value={
+                    "last_processed_index": 2,
+                    "total_items": 2,
+                    "processed_ids": ["item-001", "item-002"],
+                },
+            ),
+            patch("autoinfo.process._write_progress") as mock_write,
+            patch.object(LLMExtractor, "extract", mock_ext),
+            patch("autoinfo.process.run_quality_gates", mock_quality),
+            patch("autoinfo.process.KBStore", return_value=mock_store),
+        ):
+            result = run_processing("medical-research", batch_size=5)
+
+        assert sorted(processed_ids) == ["item-003"]
+        assert result.processed_count == 1
+        assert result.remaining_count == 0
+        mock_write.assert_called_once_with("medical-research", 3, 3, processed_ids=["item-003"])
+
+    def test_newest_first_prioritises_the_latest_items(
+        self,
+        three_items: list[Item],
+        mock_extraction: ExtractionResult,
+    ) -> None:
+        """With newest_first and a batch of 1, the most recent item is chosen."""
+        processed_ids: list[str] = []
+
+        def track_extraction(item: Item, **kwargs: Any) -> ExtractionResult:
+            processed_ids.append(item.id)
+            return mock_extraction
+
+        mock_ext = MagicMock(side_effect=track_extraction)
+        mock_quality = MagicMock(return_value=_all_pass_gates())
+        mock_store = _mock_kb_store()
+
+        with (
+            patch("autoinfo.process.load_cached_items", return_value=three_items),
+            patch(
+                "autoinfo.process._read_progress",
+                return_value={
+                    "last_processed_index": 0,
+                    "total_items": 3,
+                    "processed_ids": [],
+                },
+            ),
+            patch("autoinfo.process._write_progress"),
+            patch.object(LLMExtractor, "extract", mock_ext),
+            patch("autoinfo.process.run_quality_gates", mock_quality),
+            patch("autoinfo.process.KBStore", return_value=mock_store),
+        ):
+            result = run_processing("medical-research", batch_size=1, newest_first=True)
+
+        assert processed_ids == ["item-003"]
+        assert result.processed_count == 1
+
+    def test_resume_from_start_records_ids(
+        self,
+        three_items: list[Item],
+        mock_extraction: ExtractionResult,
+    ) -> None:
+        """A full re-run must record ids, so a later auto run does not repeat it."""
+        mock_ext = MagicMock(return_value=mock_extraction)
+        mock_quality = MagicMock(return_value=_all_pass_gates())
+        mock_store = _mock_kb_store()
+
+        with (
+            patch("autoinfo.process.load_cached_items", return_value=three_items),
+            patch("autoinfo.process._reset_progress") as mock_reset,
+            patch("autoinfo.process._write_progress") as mock_write,
+            patch.object(LLMExtractor, "extract", mock_ext),
+            patch("autoinfo.process.run_quality_gates", mock_quality),
+            patch("autoinfo.process.KBStore", return_value=mock_store),
+        ):
+            result = run_processing("medical-research", resume_from="start")
+
+        mock_reset.assert_called_once_with("medical-research")
+        assert result.processed_count == 3
+        mock_write.assert_called_once_with(
+            "medical-research",
+            3,
+            3,
+            processed_ids=["item-001", "item-002", "item-003"],
+        )
+
+    def test_legacy_cursor_migration_is_persisted(
+        self,
+        three_items: list[Item],
+        mock_extraction: ExtractionResult,
+    ) -> None:
+        """The seeded prefix must be written back, not just used in memory:
+        otherwise the next run sees a non-empty table, skips the migration, and
+        reprocesses the whole legacy prefix."""
+        mock_ext = MagicMock(return_value=mock_extraction)
+        mock_quality = MagicMock(return_value=_all_pass_gates())
+        mock_store = _mock_kb_store()
+
+        with (
+            patch("autoinfo.process.load_cached_items", return_value=three_items),
+            patch(
+                "autoinfo.process._read_progress",
+                return_value={
+                    "last_processed_index": 2,
+                    "total_items": 2,
+                    "processed_ids": [],
+                },
+            ),
+            patch("autoinfo.process._write_progress") as mock_write,
+            patch.object(LLMExtractor, "extract", mock_ext),
+            patch("autoinfo.process.run_quality_gates", mock_quality),
+            patch("autoinfo.process.KBStore", return_value=mock_store),
+        ):
+            run_processing("medical-research", batch_size=5)
+
+        mock_write.assert_called_once_with(
+            "medical-research",
+            3,
+            3,
+            processed_ids=["item-001", "item-002", "item-003"],
+        )
+
+    def test_cache_change_resets_progress(self, three_items: list[Item]) -> None:
+        """A legacy cursor past the current cache means the prefix is processed;
+        a different persisted total alone must not trigger a re-run."""
+        mock_ext = MagicMock()
+        mock_quality = MagicMock()
+        mock_store = _mock_kb_store()
+
+        with (
+            patch("autoinfo.process.load_cached_items", return_value=three_items),
+            patch(
+                "autoinfo.process._read_progress",
+                return_value={
+                    "last_processed_index": 3,
+                    "total_items": 5,
+                    "processed_ids": [],
+                },
+            ),
+            patch("autoinfo.process._write_progress") as mock_write,
+            patch.object(LLMExtractor, "extract", mock_ext),
+            patch("autoinfo.process.run_quality_gates", mock_quality),
+            patch("autoinfo.process.KBStore", return_value=mock_store),
+        ):
+            result = run_processing("medical-research", batch_size=2)
+
+        # The legacy cursor covered all three cached items -> nothing to do.
+        assert result.processed_count == 0
+        mock_ext.assert_not_called()
+        mock_write.assert_not_called()
 
 
 class TestBatchBackwardCompatibility:
@@ -487,6 +637,7 @@ class TestBatchCli:
             check_factual=False,
             check_translation=False,
             resume_from=None,
+            newest_first=False,
         )
 
     def test_batch_progress_shown_in_human_output(self, cli_runner) -> None:

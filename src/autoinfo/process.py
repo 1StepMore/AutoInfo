@@ -23,8 +23,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 from autoinfo import db
 from autoinfo.config import (
@@ -449,12 +450,27 @@ def _connect_progress_db() -> sqlite3.Connection:
 
 
 def _init_progress_table(conn: sqlite3.Connection) -> None:
-    """Create the ``processing_progress`` table if it does not exist."""
+    """Create the progress tables if they do not exist.
+
+    ``processing_progress`` keeps the positional cursor for backwards
+    compatibility (``nightly_process.py`` reads it to size the backlog).
+    ``processing_items`` is the authoritative "already processed" set: a
+    position is meaningless once ``collect`` changes the item count, while an
+    item id is stable across nightly runs (AutoInfo#596).
+    """
     conn.execute("""
         CREATE TABLE IF NOT EXISTS processing_progress (
             domain                  TEXT PRIMARY KEY,
             last_processed_index    INTEGER NOT NULL DEFAULT 0,
             total_items             INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS processing_items (
+            domain          TEXT NOT NULL,
+            item_id         TEXT NOT NULL,
+            processed_at    TEXT NOT NULL,
+            PRIMARY KEY (domain, item_id)
         )
     """)
 
@@ -465,13 +481,14 @@ def _read_progress(domain: str) -> dict[str, Any]:
     Returns
     -------
     dict
-        Keys: ``last_processed_index`` (int), ``total_items`` (int).
-        Returns zeroed values when no progress row exists.
+        Keys: ``last_processed_index`` (int), ``total_items`` (int) and
+        ``processed_ids`` (list[str]).  Returns zeroed values when no
+        progress row exists.
     """
     db_path = _get_progress_db_path()
     # If the db does not exist yet there is no progress
     if not db_path.is_file():
-        return {"last_processed_index": 0, "total_items": 0}
+        return {"last_processed_index": 0, "total_items": 0, "processed_ids": []}
     try:
         with _connect_progress_db() as conn:
             _init_progress_table(conn)
@@ -479,15 +496,35 @@ def _read_progress(domain: str) -> dict[str, Any]:
                 "SELECT last_processed_index, total_items FROM processing_progress WHERE domain = ?",  # noqa: E501
                 (domain,),
             ).fetchone()
+            ids = [
+                str(r[0])
+                for r in conn.execute(
+                    "SELECT item_id FROM processing_items WHERE domain = ?", (domain,)
+                )
+            ]
             if row is not None:
-                return {"last_processed_index": row[0], "total_items": row[1]}
+                return {
+                    "last_processed_index": row[0],
+                    "total_items": row[1],
+                    "processed_ids": ids,
+                }
+            return {"last_processed_index": 0, "total_items": 0, "processed_ids": ids}
     except sqlite3.OperationalError:
         logger.warning("Could not read processing progress for '%s'", domain)
-    return {"last_processed_index": 0, "total_items": 0}
+    return {"last_processed_index": 0, "total_items": 0, "processed_ids": []}
 
 
-def _write_progress(domain: str, last_processed_index: int, total_items: int) -> None:
-    """Persist the current processing progress for *domain*."""
+def _write_progress(
+    domain: str,
+    last_processed_index: int,
+    total_items: int,
+    processed_ids: Iterable[str] | None = None,
+) -> None:
+    """Persist the current processing progress for *domain*.
+
+    ``processed_ids`` is merged (INSERT OR IGNORE) into ``processing_items``
+    in the same transaction.  ``None`` keeps the legacy positional-only write.
+    """
     db_path = _get_progress_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -499,12 +536,20 @@ def _write_progress(domain: str, last_processed_index: int, total_items: int) ->
                    VALUES (?, ?, ?)""",
                 (domain, last_processed_index, total_items),
             )
+            if processed_ids is not None:
+                stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                conn.executemany(
+                    """INSERT OR IGNORE INTO processing_items
+                       (domain, item_id, processed_at)
+                       VALUES (?, ?, ?)""",
+                    [(domain, item_id, stamp) for item_id in processed_ids],
+                )
     except sqlite3.OperationalError as exc:
         logger.warning("Could not write processing progress: %s", exc)
 
 
 def _reset_progress(domain: str) -> None:
-    """Delete the progress row for *domain* (forces a full re-process)."""
+    """Delete the progress rows for *domain* (forces a full re-process)."""
     db_path = _get_progress_db_path()
     if not db_path.is_file():
         return
@@ -512,6 +557,10 @@ def _reset_progress(domain: str) -> None:
         with _connect_progress_db() as conn:
             conn.execute(
                 "DELETE FROM processing_progress WHERE domain = ?",
+                (domain,),
+            )
+            conn.execute(
+                "DELETE FROM processing_items WHERE domain = ?",
                 (domain,),
             )
     except sqlite3.OperationalError:
@@ -787,6 +836,7 @@ def run_processing(
     check_translation: bool = False,
     auto_promote: bool = False,
     resume_from: str | None = None,
+    newest_first: bool = False,
 ) -> ProcessResult:
     """Main processing pipeline.
 
@@ -842,12 +892,15 @@ def run_processing(
         unexpected failure never aborts the run; rejected items stay in
         02-Draft with a ``_failed/`` marker).  Defaults to ``False``.
     resume_from : str, optional
-        Checkpoint/resume mode (R-A-01).  ``"auto"`` resumes from the
-        persisted processing cursor — items already processed in an
-        interrupted run are skipped and the remaining items are processed
-        even when *batch_size* is 0.  ``"start"`` clears the cursor and
+        Checkpoint/resume mode (R-A-01).  ``"auto"`` skips items already
+        recorded in ``processing_items`` and processes the remaining ones even
+        when *batch_size* is 0.  ``"start"`` clears the progress rows and
         reprocesses from the beginning.  ``None`` (default) keeps the legacy
-        behaviour (cursor consulted only when *batch_size* > 0).
+        behaviour (progress consulted only when *batch_size* > 0).
+    newest_first : bool, optional
+        Order the pending items by ``collected_at`` descending before applying
+        *batch_size*.  Defaults to ``False`` (oldest-first, the historical
+        order).
 
     Returns
     -------
@@ -872,26 +925,31 @@ def run_processing(
         _reset_progress(domain)
     persist_cursor = batch_size > 0 or resume_from in ("auto", "start")
     use_cursor = batch_size > 0 or resume_from == "auto"
+    legacy_seeded: set[str] = set()
     if use_cursor:
         progress = _read_progress(domain)
         start_index: int = progress["last_processed_index"]
-        persisted_total: int = progress["total_items"]
+        processed_ids: set[str] = set(progress.get("processed_ids") or [])
 
-        # If the cache grew (new items collected), restart from 0 so nothing
-        # is missed.  If it shrank, also reset to avoid an out-of-range slice.
-        # Issue #213: quantity alone is a weak signal — a re-collect can
-        # produce the same count with entirely new items, leaving a stale
-        # cursor at the end that silently skips them.  A cursor past the end
-        # also indicates stale progress; reset in both cases.
-        if persisted_total != total_items or start_index >= total_items:
-            start_index = 0
+        # One-time migration off the positional cursor.  The old cursor counted
+        # a prefix of the oldest-first cache, so seed the id set from that same
+        # prefix; without this every legacy install would reprocess its entire
+        # history once.  The seeded ids are persisted below — if they were only
+        # held in memory, the next run would see a non-empty table and skip the
+        # migration, silently re-processing the whole legacy prefix.
+        if not processed_ids and start_index > 0:
+            legacy_seeded = {item.id for item in cached_items[:start_index]}
+            processed_ids = set(legacy_seeded)
 
-        effective_batch = batch_size if batch_size > 0 else total_items
-        items_slice = cached_items[start_index : start_index + effective_batch]
+        pending = [item for item in cached_items if item.id not in processed_ids]
+        if newest_first:
+            pending.sort(key=lambda item: item.collected_at or "", reverse=True)
+
+        effective_batch = batch_size if batch_size > 0 else len(pending)
+        items_slice = pending[:effective_batch]
         processed_count = len(items_slice)
-        new_index = start_index + processed_count
-        remaining_count = total_items - new_index
-        is_complete = new_index >= total_items
+        remaining_count = len(pending) - processed_count
+        is_complete = remaining_count == 0
     else:
         items_slice = cached_items
         processed_count = total_items
@@ -1634,7 +1692,28 @@ def run_processing(
 
     # -- Persist progress (batch/resume mode) -------------------------------
     if persist_cursor:
-        _write_progress(domain, new_index, total_items)
+        if use_cursor:
+            attempted_ids = [item.id for item in items_slice]
+            current_ids = {item.id for item in cached_items}
+            after_ids = processed_ids | set(attempted_ids)
+            new_index = len(after_ids & current_ids)
+            _write_progress(
+                domain,
+                new_index,
+                total_items,
+                processed_ids=sorted(set(attempted_ids) | legacy_seeded),
+            )
+        else:
+            # resume_from="start" with no batch: record the ids too, otherwise
+            # the next "--resume-from auto" run sees an empty id set and
+            # reprocesses the whole cache.  The positional cursor advances with
+            # the run so readers that still use it see a consistent backlog.
+            _write_progress(
+                domain,
+                processed_count,
+                total_items,
+                processed_ids=[item.id for item in items_slice],
+            )
 
     result.duration_s = round(time.time() - start_time, 3)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
@@ -71,8 +72,8 @@ def test_below_threshold_skips(tmp_path: Path) -> None:
     _seed_domain(tmp_path, count=6)
     calls: list[str] = []
 
-    def runner(domain: str, repo: Path, timeout: int) -> tuple[int, float]:
-        calls.append(domain)
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
+        calls.append(invocation.domain)
         return 0, 0.1
 
     rc = np.main(
@@ -98,8 +99,8 @@ def test_at_threshold_runs_and_writes_reports(tmp_path: Path) -> None:
     _seed_domain(tmp_path, count=10)
     calls: list[tuple[str, Path, int]] = []
 
-    def runner(domain: str, repo: Path, timeout: int) -> tuple[int, float]:
-        calls.append((domain, repo, timeout))
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
+        calls.append((invocation.domain, invocation.repo, invocation.timeout_s))
         return 0, 1.5
 
     rc = np.main(
@@ -127,9 +128,10 @@ def test_at_threshold_runs_and_writes_reports(tmp_path: Path) -> None:
         "selected": 1,
         "executed": 1,
         "failed": 0,
+        "budget_exhausted": 0,
         "skipped": 0,
     }
-    assert "| alpha | 10 | 0 | 10 | run | 0 | 1.5 |" in (tmp_path / "report.md").read_text(
+    assert "| alpha | 10 | 0 | 10 | run | 30 | 0 | 0 | 1.5 |" in (tmp_path / "report.md").read_text(
         encoding="utf-8"
     )
 
@@ -139,8 +141,8 @@ def test_progress_reduces_backlog(tmp_path: Path) -> None:
     _seed_progress(tmp_path, last=25, total=30)
     calls: list[str] = []
 
-    def runner(domain: str, repo: Path, timeout: int) -> tuple[int, float]:
-        calls.append(domain)
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
+        calls.append(invocation.domain)
         return 0, 0.1
 
     rc = np.main(
@@ -173,8 +175,8 @@ def test_missing_progress_table_means_full_backlog(tmp_path: Path) -> None:
 
     calls: list[str] = []
 
-    def runner(domain: str, repo: Path, timeout: int) -> tuple[int, float]:
-        calls.append(domain)
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
+        calls.append(invocation.domain)
         return 0, 0.1
 
     rc = np.main(
@@ -196,7 +198,7 @@ def test_missing_progress_table_means_full_backlog(tmp_path: Path) -> None:
 def test_process_failure_returns_1(tmp_path: Path) -> None:
     _seed_domain(tmp_path, count=10)
 
-    def runner(domain: str, repo: Path, timeout: int) -> tuple[int, float]:
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
         return 1, 2.0
 
     rc = np.main(
@@ -220,8 +222,8 @@ def test_dry_run_does_not_execute(tmp_path: Path) -> None:
     _seed_domain(tmp_path, count=10)
     calls: list[str] = []
 
-    def runner(domain: str, repo: Path, timeout: int) -> tuple[int, float]:
-        calls.append(domain)
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
+        calls.append(invocation.domain)
         return 0, 0.1
 
     rc = np.main(
@@ -241,3 +243,131 @@ def test_dry_run_does_not_execute(tmp_path: Path) -> None:
     report = _read_report(tmp_path)
     assert report["domains"][0]["action"] == "would_run"
     assert report["summary"]["executed"] == 0
+
+
+def _seed_two_domains(tmp_path: Path) -> None:
+    for domain in ("alpha", "beta"):
+        _seed_domain(tmp_path, domain=domain, count=10)
+
+
+def test_max_seconds_shares_the_budget_across_domains(tmp_path: Path) -> None:
+    """Given a 60s budget and two domains, each gets a fair share, and the
+    derived batch size follows the share / seconds-per-item."""
+    _seed_two_domains(tmp_path)
+    seen: list[np.ProcessInvocation] = []
+
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
+        seen.append(invocation)
+        return 0, 0.1
+
+    rc = np.main(
+        _args(
+            tmp_path,
+            "--min-backlog",
+            "10",
+            "--max-seconds",
+            "60",
+            "--seconds-per-item",
+            "10",
+            "--json-out",
+            str(tmp_path / "report.json"),
+        ),
+        runner=runner,
+    )
+
+    assert rc == 0
+    assert [inv.domain for inv in seen] == ["alpha", "beta"]
+    assert all(inv.batch_size >= 1 for inv in seen)
+    report = _read_report(tmp_path)
+    assert report["max_seconds"] == 60
+    assert all("budget_s" in row and "batch_size" in row for row in report["domains"])
+
+
+def test_budget_exhaustion_stops_before_the_next_domain(tmp_path: Path) -> None:
+    """A domain that consumes the budget leaves the next one recorded as
+    budget_exhausted, never as a failure."""
+    _seed_two_domains(tmp_path)
+    seen: list[str] = []
+
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
+        seen.append(invocation.domain)
+        time.sleep(1.2)
+        return 0, 1.2
+
+    rc = np.main(
+        _args(
+            tmp_path,
+            "--min-backlog",
+            "10",
+            "--max-seconds",
+            "1",
+            "--json-out",
+            str(tmp_path / "report.json"),
+        ),
+        runner=runner,
+    )
+
+    assert rc == 0
+    report = _read_report(tmp_path)
+    actions = {row["domain"]: row["action"] for row in report["domains"]}
+    assert "budget_exhausted" in actions.values() or len(seen) == 1
+    assert report["summary"]["failed"] == 0
+    assert report["summary"]["budget_exhausted"] >= 1
+
+
+def test_explicit_batch_and_newest_first_are_forwarded(tmp_path: Path) -> None:
+    _seed_domain(tmp_path, count=10)
+    seen: list[np.ProcessInvocation] = []
+
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
+        seen.append(invocation)
+        return 0, 0.1
+
+    rc = np.main(
+        _args(
+            tmp_path,
+            "--min-backlog",
+            "10",
+            "--max-seconds",
+            "600",
+            "--batch-size",
+            "7",
+            "--newest-first",
+            "--json-out",
+            str(tmp_path / "report.json"),
+        ),
+        runner=runner,
+    )
+
+    assert rc == 0
+    assert seen[0].batch_size == 7
+    assert seen[0].newest_first is True
+
+
+def test_dry_run_reports_the_derived_budget(tmp_path: Path) -> None:
+    _seed_domain(tmp_path, count=10)
+
+    def runner(invocation: np.ProcessInvocation) -> tuple[int, float]:
+        raise AssertionError("dry run must not execute")
+
+    rc = np.main(
+        _args(
+            tmp_path,
+            "--min-backlog",
+            "10",
+            "--max-seconds",
+            "600",
+            "--dry-run",
+            "--json-out",
+            str(tmp_path / "report.json"),
+        ),
+        runner=runner,
+    )
+
+    assert rc == 0
+    row = _read_report(tmp_path)["domains"][0]
+    assert row["action"] == "would_run"
+    # The share is computed from a monotonic deadline, so a few milliseconds of
+    # setup can shave one second (and therefore one batch slot) off the value.
+    assert 598 <= row["budget_s"] <= 600
+    assert 14 <= row["batch_size"] <= 15

@@ -17,6 +17,14 @@ The cursor is intentionally read from the same ``autoinfo.db`` /
 missing table means "nothing processed yet" and therefore the full cache is
 treated as backlog.
 
+``--max-seconds`` bounds the WHOLE stage (AutoInfo#596): the remaining budget is
+split evenly across the domains still to run, each domain's subprocess timeout
+is capped to its share, and when ``--batch-size`` is 0 the per-domain batch is
+derived from ``share / --seconds-per-item``.  A domain that no longer fits is
+recorded as ``budget_exhausted`` rather than killed mid-item.  ``--newest-first``
+is forwarded so a bounded run refreshes the 7-day freshness window instead of
+re-processing old items.
+
 Exit codes:
     0  all selected domains processed successfully, or nothing was due
     1  at least one selected domain failed
@@ -35,6 +43,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -47,7 +56,22 @@ DEFAULT_MIN_BACKLOG = 20
 DEFAULT_TIMEOUT = 7200
 SCHEMA = "autoinfo-nightly-process/1"
 
-Runner = Callable[[str, Path, int], tuple[int, float]]
+DEFAULT_MAX_SECONDS = 0
+DEFAULT_SECONDS_PER_ITEM = 40.0
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessInvocation:
+    """One domain's ``autoinfo process`` call, sized to the remaining budget."""
+
+    domain: str
+    repo: Path
+    timeout_s: int
+    batch_size: int = 0
+    newest_first: bool = False
+
+
+Runner = Callable[[ProcessInvocation], tuple[int, float]]
 
 
 def domain_names(domains_dir: Path) -> list[str]:
@@ -110,22 +134,26 @@ def _autoinfo_cmd(python: str) -> list[str]:
     return [python, "-m", "autoinfo.cli"]
 
 
-def _run_process(domain: str, repo: Path, timeout: int) -> tuple[int, float]:
+def _run_process(invocation: ProcessInvocation) -> tuple[int, float]:
     """Run ``autoinfo process --domain ... --resume-from auto``."""
     cmd = [
         *_autoinfo_cmd(sys.executable),
         "process",
         "--domain",
-        domain,
+        invocation.domain,
         "--resume-from",
         "auto",
     ]
+    if invocation.batch_size > 0:
+        cmd.extend(["--batch-size", str(invocation.batch_size)])
+    if invocation.newest_first:
+        cmd.append("--newest-first")
     started = time.monotonic()
     try:
         completed = subprocess.run(
             cmd,
-            cwd=str(repo),
-            timeout=timeout,
+            cwd=str(invocation.repo),
+            timeout=invocation.timeout_s,
             check=False,
         )
         return completed.returncode, round(time.monotonic() - started, 1)
@@ -145,19 +173,22 @@ def _render_md(report: dict[str, object]) -> str:
         "",
         f"- generated: {report['generated_at']}",
         f"- min backlog: {report['min_backlog']}",
+        f"- max seconds: {report['max_seconds']} (0 = unlimited)",
+        f"- newest first: {str(report['newest_first']).lower()}",
         f"- dry run: {str(report['dry_run']).lower()}",
         f"- selected: {summary['selected']} / executed: {summary['executed']} / "
         f"failed: {summary['failed']} / skipped: {summary['skipped']}",
         "",
-        "| domain | cached | processed | backlog | action | exit | seconds |",
-        "|:---|---:|---:|---:|:---|---:|---:|",
+        "| domain | cached | processed | backlog | action | budget_s | batch | exit | seconds |",
+        "|:---|---:|---:|---:|:---|---:|---:|---:|---:|",
     ]
     for row in rows:
         assert isinstance(row, dict)
         lines.append(
             f"| {row['domain']} | {row['cached_items']} | "
             f"{row['processed_count']} | {row['backlog']} | "
-            f"{row['action']} | {row['exit_code']} | {row['duration_s']} |"
+            f"{row['action']} | {row.get('budget_s', '—')} | "
+            f"{row.get('batch_size', '—')} | {row['exit_code']} | {row['duration_s']} |"
         )
     if not rows:
         lines += ["", "No configured domain has cached items."]
@@ -190,7 +221,30 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
         "--timeout",
         type=int,
         default=DEFAULT_TIMEOUT,
-        help=f"Per-domain process timeout in seconds (default: {DEFAULT_TIMEOUT}).",
+        help=f"Per-domain process timeout cap in seconds (default: {DEFAULT_TIMEOUT}).",
+    )
+    ap.add_argument(
+        "--max-seconds",
+        type=int,
+        default=DEFAULT_MAX_SECONDS,
+        help="Total wall-clock budget for all selected domains (0 = unlimited; AutoInfo#596).",
+    )
+    ap.add_argument(
+        "--batch-size",
+        type=int,
+        default=0,
+        help="Max items per domain (0 = derive from the budget share).",
+    )
+    ap.add_argument(
+        "--seconds-per-item",
+        type=float,
+        default=DEFAULT_SECONDS_PER_ITEM,
+        help=f"Cost estimate used to derive --batch-size (default: {DEFAULT_SECONDS_PER_ITEM}).",
+    )
+    ap.add_argument(
+        "--newest-first",
+        action="store_true",
+        help="Process the most recently collected items first.",
     )
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--json-out", default="")
@@ -201,6 +255,12 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
         ap.error("--min-backlog must be >= 1")
     if args.timeout < 1:
         ap.error("--timeout must be >= 1")
+    if args.max_seconds < 0:
+        ap.error("--max-seconds must be >= 0")
+    if args.batch_size < 0:
+        ap.error("--batch-size must be >= 0")
+    if args.seconds_per_item <= 0:
+        ap.error("--seconds-per-item must be > 0")
 
     domains_dir = Path(args.domains_dir)
     collections = Path(args.collections)
@@ -230,7 +290,7 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
                 file=sys.stderr,
             )
 
-    run = runner or _run_process
+    invocations: list[ProcessInvocation] = []
     rows: list[dict[str, object]] = []
     for domain in configured:
         cached = count_cached_items(collections, domain)
@@ -238,44 +298,71 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
             continue
         processed = read_processed_count(db_path, domain)
         backlog = max(0, cached - processed)
-        should_run = backlog >= args.min_backlog
-
-        if not should_run:
-            action = "skip"
-            exit_code = 0
-            duration_s = 0.0
-        elif args.dry_run:
-            action = "would_run"
-            exit_code = 0
-            duration_s = 0.0
-        else:
-            action = "run"
-            exit_code, duration_s = run(domain, repo, args.timeout)
-
-        print(
-            f"[nightly-process] {domain}: cached={cached} "
-            f"processed={processed} backlog={backlog} -> {action}",
-            flush=True,
-        )
+        if backlog >= args.min_backlog:
+            invocations.append(ProcessInvocation(domain=domain, repo=repo, timeout_s=args.timeout))
         rows.append(
             {
                 "domain": domain,
                 "cached_items": cached,
                 "processed_count": processed,
                 "backlog": backlog,
-                "action": action,
-                "exit_code": exit_code,
-                "duration_s": duration_s,
+                "action": "skip" if backlog < args.min_backlog else "would_run",
+                "exit_code": 0,
+                "duration_s": 0.0,
             }
+        )
+
+    deadline = time.monotonic() + args.max_seconds if args.max_seconds else None
+    run = runner or _run_process
+    selected_count = len(invocations)
+    for index, invocation in enumerate(invocations):
+        row = next(r for r in rows if r["domain"] == invocation.domain)
+        share_s = args.timeout
+        batch_size = args.batch_size
+        if deadline is not None:
+            remaining_s = max(0.0, deadline - time.monotonic())
+            if remaining_s < 1:
+                row["action"] = "budget_exhausted"
+                continue
+            share_s = max(1, int(remaining_s / (selected_count - index)))
+            if batch_size == 0:
+                batch_size = max(1, int(share_s / args.seconds_per_item))
+        row["budget_s"] = share_s
+        row["batch_size"] = batch_size
+
+        if args.dry_run:
+            row["action"] = "would_run"
+            continue
+
+        invocation = ProcessInvocation(
+            domain=invocation.domain,
+            repo=invocation.repo,
+            timeout_s=min(args.timeout, share_s),
+            batch_size=batch_size,
+            newest_first=args.newest_first,
+        )
+        row["action"] = "run"
+        row["exit_code"], row["duration_s"] = run(invocation)
+
+    for row in rows:
+        print(
+            f"[nightly-process] {row['domain']}: cached={row['cached_items']} "
+            f"processed={row['processed_count']} backlog={row['backlog']} "
+            f"-> {row['action']}",
+            flush=True,
         )
 
     selected = sum(1 for row in rows if row["action"] in ("run", "would_run"))
     executed = sum(1 for row in rows if row["action"] == "run")
     failed = sum(1 for row in rows if row["action"] == "run" and row["exit_code"] != 0)
+    budget_exhausted = sum(1 for row in rows if row["action"] == "budget_exhausted")
     report = {
         "schema": SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "min_backlog": args.min_backlog,
+        "max_seconds": args.max_seconds,
+        "seconds_per_item": args.seconds_per_item,
+        "newest_first": args.newest_first,
         "dry_run": args.dry_run,
         "domains_dir": str(domains_dir),
         "collections": str(collections),
@@ -286,7 +373,8 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
             "selected": selected,
             "executed": executed,
             "failed": failed,
-            "skipped": len(rows) - selected,
+            "budget_exhausted": budget_exhausted,
+            "skipped": sum(1 for row in rows if row["action"] == "skip"),
         },
     }
 

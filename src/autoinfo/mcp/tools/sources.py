@@ -579,6 +579,14 @@ def build_tools() -> list[Tool]:
                         ),
                         "default": False,
                     },
+                    "newest_first": {
+                        "type": "boolean",
+                        "description": (
+                            "Process the most recently collected items first. "
+                            "Default: False (oldest first)."
+                        ),
+                        "default": False,
+                    },
                 },
                 "required": ["domain"],
             },

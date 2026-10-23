@@ -94,6 +94,7 @@ class TestProcessFlagForwarding:
                     "--check-translation",
                     "--resume-from",
                     "auto",
+                    "--newest-first",
                 ],
             )
 
@@ -106,6 +107,7 @@ class TestProcessFlagForwarding:
             "check_factual": True,
             "check_translation": True,
             "resume_from": "auto",
+            "newest_first": True,
         }
 
 

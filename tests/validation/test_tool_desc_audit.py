@@ -38,7 +38,7 @@ def tool_audit() -> Any:
 
 @pytest.fixture(scope="module")
 def result(tool_audit: Any) -> Any:
-    return tool_audit.audit_tools(SERVER_SRC.read_text(encoding="utf-8"))
+    return tool_audit.audit_tools(tool_audit.tool_source_texts())
 
 
 def test_all_declared_tools_parsed(result: Any) -> None:

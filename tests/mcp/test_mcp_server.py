@@ -236,6 +236,21 @@ class TestErrorResponse:
 
 
 class TestToolRegistration:
+    def test_full_tool_list_returns_fresh_objects_per_call(self) -> None:
+        """Schemas are decorated in place, so each call must rebuild tools.
+
+        Sharing Tool instances would let annotations from one request leak into
+        the next; the per-domain builders in ``autoinfo.mcp.tools`` are the
+        seam that guarantees a fresh surface.
+        """
+        first = mcp_server._full_tool_list()
+        second = mcp_server._full_tool_list()
+
+        assert [t.name for t in first] == [t.name for t in second]
+        assert first is not second
+        assert not ({id(t) for t in first} & {id(t) for t in second})
+        assert [t.inputSchema for t in first] == [t.inputSchema for t in second]
+
     @pytest.mark.asyncio
     async def test_lists_at_least_twenty_three_tools(self) -> None:
         tools = await mcp_server.list_tools()

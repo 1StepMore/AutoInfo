@@ -30,6 +30,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src/autoinfo/mcp/server.py"
+TOOLS_DIR = ROOT / "src/autoinfo/mcp/tools"
 SCN = ROOT / "src/autoinfo/mcp/scenarios"
 
 #: Tools a scenario step cannot exercise (suite runners recurse into the whole
@@ -44,6 +45,12 @@ SCENARIO_EXEMPT_TOOLS: frozenset[str] = frozenset(
         "get_run_decisions",
     }
 )
+
+
+def tool_source_text() -> str:
+    """Return the hub plus every per-domain schema module (#581)."""
+    paths = [SRC, *sorted(TOOLS_DIR.glob("*.py"))]
+    return "\n".join(p.read_text(encoding="utf-8") for p in paths)
 
 
 def compute_coverage(server_src: str, scenarios_dir: Path) -> dict[str, Any]:
@@ -92,7 +99,7 @@ def compute_coverage(server_src: str, scenarios_dir: Path) -> dict[str, Any]:
 
 
 def main() -> None:
-    cov = compute_coverage(SRC.read_text(), SCN)
+    cov = compute_coverage(tool_source_text(), SCN)
     print(f"Total MCP tools declared: {len(cov['declared'])}")
     print(f"Covered by scenarios: {len(cov['covered'])}/{len(cov['declared'])}")
     print(f"Suite tools exempt from scenario coverage (unit-tested): {len(cov['suite_exempt'])}")

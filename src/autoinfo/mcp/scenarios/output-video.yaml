@@ -1,5 +1,5 @@
 # Video output format (V1, 2026-08-13) — report format="video" via the
-# HyperFrames pipeline (HTML+GSAP -> MP4, ported from AutoMedia).
+# HyperFrames pipeline (HTML+GSAP -> MP4, ported from an internal sibling pipeline).
 #
 # LLM-required (same BYOK obligation as output-digest-report): the narration
 # TTS uses the configured engine (OpenAI TTS default, edge-tts optional).

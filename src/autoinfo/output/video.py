@@ -1,7 +1,7 @@
 """Video output pipeline — HyperFrames (HTML + GSAP -> MP4) renderer.
 
 Generates video content from structured report data using the HyperFrames
-pipeline (ported from AutoMedia, 2026-08-13):
+pipeline (ported from an internal sibling pipeline, 2026-08-13; provenance recorded outside this repo):
 
 1. TTS audio narration (via existing ``_render_audio`` from output.py)
 2. HyperFrames project scaffold (theme + scene planning + layout diversity)
@@ -26,7 +26,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Directory containing the ported AutoMedia assets (themes + templates).
+# Directory containing the ported assets (themes + templates).
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "video_assets")
 
 
@@ -43,12 +43,12 @@ class VideoConfig:
     bg_color: str = ""  # kept for backward compat; theme overrides
     font_color: str = ""  # kept for backward compat; theme overrides
     font_size: int = 30  # kept for backward compat; scene templates own sizes
-    scene_mode: str = "auto"  # auto | A | B | C | D (AutoMedia scene patterns)
+    scene_mode: str = "auto"  # auto | A | B | C | D (scene patterns A/B/C/D)
     theme_mood: str = ""  # filter themes by mood (light/dark/tech/editorial/...)
 
 
 # ---------------------------------------------------------------------------
-# Theme library (ported from AutoMedia theme-palettes.json / od-themes.json)
+# Theme library (ported theme palettes / od themes)
 # ---------------------------------------------------------------------------
 
 
@@ -124,10 +124,10 @@ def select_theme(config: VideoConfig | None = None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Scene planning — AutoMedia scene patterns (A/B/C/D) + layout diversity
+# Scene planning — scene patterns (A/B/C/D) + layout diversity
 # ---------------------------------------------------------------------------
 
-# Visual layout patterns (AutoMedia visual-layouts.md, 6 types).  Each scene
+# Visual layout patterns (6 types).  Each scene
 # picks a layout; adjacent scenes must differ (5-scene video uses >= 4 layouts).
 LAYOUTS: dict[str, dict[str, Any]] = {
     "centered-hero": {
@@ -261,7 +261,7 @@ LAYOUTS: dict[str, dict[str, Any]] = {
 }
 
 # Ordered layout rotation — guarantees adjacent-scene diversity (>=4 of 6
-# layouts for a 5-scene video, matching AutoMedia Gate VQ).
+# layouts for a 5-scene video — the Gate VQ diversity rule).
 _LAYOUT_ORDER = [
     "centered-hero",
     "split-screen",
@@ -372,7 +372,7 @@ def _split_narration_into_scenes(
 ) -> list[dict[str, Any]]:
     """Assign per-scene start/duration from TTS length by character ratio.
 
-    Mirrors AutoMedia's scene-frame-boundary math, including the float
+    Mirrors the source pipeline's scene-frame-boundary math, including the float
     precision safety margin (-0.01s per scene) that prevents HyperFrames
     ``overlapping_clips_same_track`` lint failures.
     """

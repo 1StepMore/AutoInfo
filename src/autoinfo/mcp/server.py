@@ -47,135 +47,6 @@ from autoinfo.kb import DirectorOnlyError, is_director
 from autoinfo.keywords import keyword_suggestion_system_prompt
 from autoinfo.llm import call_with_fallback
 from autoinfo.mcp import context as mcp_context
-from autoinfo.mcp.context import (
-    _PERSIST_EXT_BY_FORMAT as _PERSIST_EXT_BY_FORMAT,
-)
-from autoinfo.mcp.context import (
-    _PLATFORM_INFO as _PLATFORM_INFO,
-)
-from autoinfo.mcp.context import (
-    _REQUIRED_KEYS_DOCS_REF as _REQUIRED_KEYS_DOCS_REF,
-)
-from autoinfo.mcp.context import (
-    _SOURCE_SETTINGS_KEY_KEYS as _SOURCE_SETTINGS_KEY_KEYS,
-)
-from autoinfo.mcp.context import (
-    _VALID_SOURCE_TYPES as _VALID_SOURCE_TYPES,
-)
-from autoinfo.mcp.context import (
-    OUTPUTS_DIR as OUTPUTS_DIR,
-)
-from autoinfo.mcp.context import (
-    PLATFORMS as PLATFORMS,
-)
-from autoinfo.mcp.context import (
-    T as T,
-)
-from autoinfo.mcp.context import (
-    _canonicalize as _canonicalize,
-)
-from autoinfo.mcp.context import (
-    _chain_contains_timeout as _chain_contains_timeout,
-)
-from autoinfo.mcp.context import (
-    _classify_exception as _classify_exception,
-)
-from autoinfo.mcp.context import (
-    _config_path as _config_path,
-)
-from autoinfo.mcp.context import (
-    _default_platform_info as _default_platform_info,
-)
-from autoinfo.mcp.context import (
-    _demo_sources_defs as _demo_sources_defs,
-)
-from autoinfo.mcp.context import (
-    _detect_kb_status as _detect_kb_status,
-)
-from autoinfo.mcp.context import (
-    _detect_missing_source_keys as _detect_missing_source_keys,
-)
-from autoinfo.mcp.context import (
-    _detect_phase as _detect_phase,
-)
-from autoinfo.mcp.context import (
-    _error_from_exc as _error_from_exc,
-)
-from autoinfo.mcp.context import (
-    _error_response as _error_response,
-)
-from autoinfo.mcp.context import (
-    _find_domain as _find_domain,
-)
-from autoinfo.mcp.context import (
-    _gate_to_dict as _gate_to_dict,
-)
-from autoinfo.mcp.context import (
-    _infer_format as _infer_format,
-)
-from autoinfo.mcp.context import (
-    _init_job_state_table as _init_job_state_table,
-)
-from autoinfo.mcp.context import (
-    _job_db_path as _job_db_path,
-)
-from autoinfo.mcp.context import (
-    _load_config as _load_config,
-)
-from autoinfo.mcp.context import (
-    _load_job_state as _load_job_state,
-)
-from autoinfo.mcp.context import (
-    _load_latest_domain_state as _load_latest_domain_state,
-)
-from autoinfo.mcp.context import (
-    _maybe_persist_output as _maybe_persist_output,
-)
-from autoinfo.mcp.context import (
-    _merge_fallback_entries as _merge_fallback_entries,
-)
-from autoinfo.mcp.context import (
-    _output_text as _output_text,
-)
-from autoinfo.mcp.context import (
-    _parse_tags as _parse_tags,
-)
-from autoinfo.mcp.context import (
-    _persist_output as _persist_output,
-)
-from autoinfo.mcp.context import (
-    _safe_json_load as _safe_json_load,
-)
-from autoinfo.mcp.context import (
-    _save_config as _save_config,
-)
-from autoinfo.mcp.context import (
-    _save_job_state as _save_job_state,
-)
-from autoinfo.mcp.context import (
-    _source_key_status as _source_key_status,
-)
-from autoinfo.mcp.context import (
-    _suggest_extract_fields as _suggest_extract_fields,
-)
-from autoinfo.mcp.context import (
-    _text_payload_metadata as _text_payload_metadata,
-)
-from autoinfo.mcp.context import (
-    _validate_llm_pool_params as _validate_llm_pool_params,
-)
-from autoinfo.mcp.context import (
-    _validate_source_type as _validate_source_type,
-)
-from autoinfo.mcp.context import (
-    _validate_url as _validate_url,
-)
-from autoinfo.mcp.context import (
-    _with_job_db as _with_job_db,
-)
-from autoinfo.mcp.context import (
-    logger as logger,
-)
 from autoinfo.mcp.errors import ErrorCode, error_response, success_response
 
 # ---------------------------------------------------------------------------
@@ -7844,6 +7715,52 @@ def run(readonly: bool = False) -> None:
     """Synchronous entry point (used by ``python -m autoinfo.mcp.server``)."""
     asyncio.run(main(readonly=readonly))
 
+
+# Re-export surface for the shared helper tier (#581 phase 3): handler code
+# and external imports keep these names without importing context directly.
+from autoinfo.mcp.context import _PERSIST_EXT_BY_FORMAT as _PERSIST_EXT_BY_FORMAT
+from autoinfo.mcp.context import _PLATFORM_INFO as _PLATFORM_INFO
+from autoinfo.mcp.context import _REQUIRED_KEYS_DOCS_REF as _REQUIRED_KEYS_DOCS_REF
+from autoinfo.mcp.context import _SOURCE_SETTINGS_KEY_KEYS as _SOURCE_SETTINGS_KEY_KEYS
+from autoinfo.mcp.context import _VALID_SOURCE_TYPES as _VALID_SOURCE_TYPES
+from autoinfo.mcp.context import OUTPUTS_DIR as OUTPUTS_DIR
+from autoinfo.mcp.context import PLATFORMS as PLATFORMS
+from autoinfo.mcp.context import T as T
+from autoinfo.mcp.context import _canonicalize as _canonicalize
+from autoinfo.mcp.context import _chain_contains_timeout as _chain_contains_timeout
+from autoinfo.mcp.context import _classify_exception as _classify_exception
+from autoinfo.mcp.context import _config_path as _config_path
+from autoinfo.mcp.context import _default_platform_info as _default_platform_info
+from autoinfo.mcp.context import _demo_sources_defs as _demo_sources_defs
+from autoinfo.mcp.context import _detect_kb_status as _detect_kb_status
+from autoinfo.mcp.context import _detect_missing_source_keys as _detect_missing_source_keys
+from autoinfo.mcp.context import _detect_phase as _detect_phase
+from autoinfo.mcp.context import _error_from_exc as _error_from_exc
+from autoinfo.mcp.context import _error_response as _error_response
+from autoinfo.mcp.context import _find_domain as _find_domain
+from autoinfo.mcp.context import _gate_to_dict as _gate_to_dict
+from autoinfo.mcp.context import _infer_format as _infer_format
+from autoinfo.mcp.context import _init_job_state_table as _init_job_state_table
+from autoinfo.mcp.context import _job_db_path as _job_db_path
+from autoinfo.mcp.context import _load_config as _load_config
+from autoinfo.mcp.context import _load_job_state as _load_job_state
+from autoinfo.mcp.context import _load_latest_domain_state as _load_latest_domain_state
+from autoinfo.mcp.context import _maybe_persist_output as _maybe_persist_output
+from autoinfo.mcp.context import _merge_fallback_entries as _merge_fallback_entries
+from autoinfo.mcp.context import _output_text as _output_text
+from autoinfo.mcp.context import _parse_tags as _parse_tags
+from autoinfo.mcp.context import _persist_output as _persist_output
+from autoinfo.mcp.context import _safe_json_load as _safe_json_load
+from autoinfo.mcp.context import _save_config as _save_config
+from autoinfo.mcp.context import _save_job_state as _save_job_state
+from autoinfo.mcp.context import _source_key_status as _source_key_status
+from autoinfo.mcp.context import _suggest_extract_fields as _suggest_extract_fields
+from autoinfo.mcp.context import _text_payload_metadata as _text_payload_metadata
+from autoinfo.mcp.context import _validate_llm_pool_params as _validate_llm_pool_params
+from autoinfo.mcp.context import _validate_source_type as _validate_source_type
+from autoinfo.mcp.context import _validate_url as _validate_url
+from autoinfo.mcp.context import _with_job_db as _with_job_db
+from autoinfo.mcp.context import logger as logger
 
 if __name__ == "__main__":
     import argparse

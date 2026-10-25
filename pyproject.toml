@@ -146,7 +146,11 @@ select = ["E", "F", "I", "N", "W"]
 # those files are lint-cleaned. server.py rows injected by direct commit
 # 2026-08-08 bypassing PR gates; never lint-cleaned.
 [tool.ruff.lint.per-file-ignores]
-"src/autoinfo/mcp/server.py" = ["E501", "F841", "N806"]
+# E402 is added by #581 phase 3 wave 0 (T5): the `from autoinfo.mcp.context
+# import X as X` re-export surface sits below the definitions so it reads as a
+# re-export block rather than an ordinary import (the same pattern
+# output/__init__.py uses for its submodule re-exports).
+"src/autoinfo/mcp/server.py" = ["E501", "F841", "N806", "E402"]
 # mcp/tools/*.py: the 149 Tool schemas extracted verbatim from server.py
 # (#581 phase 1). The long description literals inherit server.py's E501
 # exemption (`ruff format` cannot split a string); reflowing them would break

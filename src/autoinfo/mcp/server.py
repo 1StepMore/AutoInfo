@@ -33,61 +33,6 @@ from autoinfo.kb import is_director
 from autoinfo.mcp.errors import ErrorCode, error_response, success_response
 
 # ---------------------------------------------------------------------------
-# Config I/O helpers
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Job state persistence (SQLite-backed, survives server restarts)
-# ---------------------------------------------------------------------------
-
-# Reuse the same autoinfo.db that KBStore uses.
-# KBStore places it at ``Path("knowledge").resolve().parent / "autoinfo.db"``,
-# which resolves to ``<cwd>/autoinfo.db`` when running from the project root.
-
-
-# ---------------------------------------------------------------------------
-# Tool implementations
-#
-# These are plain (sync) functions so they can be tested without an async
-# test harness.  The ``call_tool`` handler wraps them in ``TextContent``.
-# ---------------------------------------------------------------------------
-
-
-# -- Platform metadata (static) -------------------------------------------
-
-# Curated metadata for well-known source types; anything missing from this
-# map still gets advertised via ``list_available_platforms`` with a default
-# entry so PLATFORMS always mirrors VALID_SOURCE_TYPES.
-
-
-# ---------------------------------------------------------------------------
-# Source key requirements (D4: requirement awareness at onboarding)
-# ---------------------------------------------------------------------------
-
-# Canonical env vars per source type live in
-# ``autoinfo.config.SOURCE_KEY_ENV_VARS`` — the single source of truth
-# shared with ``alerts.py`` (B3 credential-missing detection) so the two
-# key-maps can never drift apart.  Mirrors the collector contract:
-# handlers with ``requires_key() -> True`` (ap_api, reuters_mcp, unpaywall,
-# youtube) plus the collect-time key guards (nyt, spotify, quandl, kaggle,
-# core, email, email_imap).  Drives the missing-key detection behind
-# ``init_project`` next_steps and the ``test_source`` key warning.
-
-# Source settings keys that carry a credential directly, satisfying the
-# requirement without any env var.
-
-
-# ---------------------------------------------------------------------------
-# Error response helper
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Agent Callback handlers (3)
-
-
-# ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
 

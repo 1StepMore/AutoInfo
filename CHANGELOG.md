@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.43](https://github.com/1StepMore/AutoInfo/compare/v1.17.42...v1.17.43) (2026-10-25)
+
+
+### Refactoring
+
+* **mcp:** phase 3 waves 1-3 — move all 149 handlers into tools/ ([#581](https://github.com/1StepMore/AutoInfo/issues/581)) ([#611](https://github.com/1StepMore/AutoInfo/issues/611)) ([6b3fc43](https://github.com/1StepMore/AutoInfo/commit/6b3fc437733e276c4ab493c955889ce55ae29b23))
+
 ## [1.17.42](https://github.com/1StepMore/AutoInfo/compare/v1.17.41...v1.17.42) (2026-10-25)
 
 

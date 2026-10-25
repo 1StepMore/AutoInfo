@@ -202,40 +202,8 @@ def _helper_template_ok(src: str) -> bool:
     return False
 
 
-def audit_errors(src: str) -> dict[str, Any]:
-    """Audit every error call site against the D-工-4 conventions.
-
-    Parameters
-    ----------
-    src:
-        Contents of ``src/autoinfo/mcp/server.py``.
-
-    Returns
-    -------
-    dict
-        With keys ``total_sites``, ``summary``, ``violations``
-        (``raw_exception``, ``no_fix_hint``, ``rate_limited_no_retry``),
-        and ``sites``. Sorted deterministically by line.
-    """
-    sites = _call_sites(src)
-    sites.sort(key=lambda s: s["line"])
-
-    raw_exception = [s for s in sites if s["call"] == "_error_dict" or s["raw"]]
-    no_hint = [
-        s
-        for s in sites
-        if s["call"] in ("error_response", "error_dict")
-        and s["message"]
-        and not any(m in s["message"].lower() for m in HINT_MARKERS)
-    ]
-    # _error_from_exc sites must pass a non-empty operation context; the
-    # fix-hint part is guaranteed by the helper template (checked below).
-    from_exc_missing_context = [
-        s for s in sites if s["call"] == "_error_from_exc" and not s["message"]
-    ]
-    helper_template_ok = _helper_template_ok(src)
-    # RATE_LIMITED sites should carry a retry/backoff hint; find them by the
-    # code argument referencing RATE_LIMITED.
+def _rate_sites(src: str, file_index: int | None = None) -> list[dict[str, Any]]:
+    """Return RATE_LIMITED error sites with their retry-hint status."""
     rate_sites: list[dict[str, Any]] = []
     tree = ast.parse(src)
     for node in ast.walk(tree):
@@ -260,15 +228,72 @@ def audit_errors(src: str) -> dict[str, Any]:
                 ),
                 "",
             )
-            rate_sites.append(
-                {
-                    "line": node.lineno,
-                    "message": msg,
-                    "has_retry_hint": any(m in msg.lower() for m in RETRY_MARKERS),
-                }
-            )
+            row: dict[str, Any] = {
+                "line": node.lineno,
+                "message": msg,
+                "has_retry_hint": any(m in msg.lower() for m in RETRY_MARKERS),
+            }
+            if file_index is not None:
+                row["file_index"] = file_index
+            rate_sites.append(row)
+    return rate_sites
 
+
+def audit_errors(src: str | list[str]) -> dict[str, Any]:
+    """Audit every error call site against the D-工-4 conventions.
+
+    Parameters
+    ----------
+    src:
+        One source text, or a list of source texts (the MCP corpus:
+        ``server.py`` + ``context.py`` + ``tools/*.py``). A list is audited
+        file-by-file — never concatenated, so per-file line numbers survive.
+
+    Returns
+    -------
+    dict
+        With keys ``total_sites``, ``summary``, ``violations``
+        (``raw_exception``, ``no_fix_hint``, ``rate_limited_no_retry``),
+        and ``sites``. Sorted deterministically by ``(file_index, line)``;
+        ``file_index`` appears only for list input.
+    """
+    multi = not isinstance(src, str)
+    sources = list(src) if multi else [src]
+
+    sites: list[dict[str, Any]] = []
+    helper_template_ok = False
+    rate_sites: list[dict[str, Any]] = []
+    for index, source in enumerate(sources):
+        file_sites = _call_sites(source)
+        if multi:
+            for site in file_sites:
+                site["file_index"] = index
+        sites.extend(file_sites)
+        helper_template_ok = helper_template_ok or _helper_template_ok(source)
+        rate_sites.extend(_rate_sites(source, index if multi else None))
+
+    sites.sort(key=lambda s: (s.get("file_index", 0), s["line"]))
+
+    raw_exception = [s for s in sites if s["call"] == "_error_dict" or s["raw"]]
+    no_hint = [
+        s
+        for s in sites
+        if s["call"] in ("error_response", "error_dict")
+        and s["message"]
+        and not any(m in s["message"].lower() for m in HINT_MARKERS)
+    ]
+    # _error_from_exc sites must pass a non-empty operation context; the
+    # fix-hint part is guaranteed by the helper template (checked below).
+    from_exc_missing_context = [
+        s for s in sites if s["call"] == "_error_from_exc" and not s["message"]
+    ]
     rate_limited_no_retry = [s for s in rate_sites if not s["has_retry_hint"]]
+
+    def _loc(site: dict[str, Any]) -> dict[str, Any]:
+        row: dict[str, Any] = {"line": site["line"]}
+        if multi:
+            row["file_index"] = site["file_index"]
+        return row
 
     summary = {
         "total_sites": len(sites),
@@ -284,13 +309,19 @@ def audit_errors(src: str) -> dict[str, Any]:
         "total_sites": len(sites),
         "summary": summary,
         "violations": {
-            "raw_exception": [s["line"] for s in raw_exception],
+            "raw_exception": [_loc(s) for s in raw_exception]
+            if multi
+            else [s["line"] for s in raw_exception],
             "no_fix_hint": [
-                {"line": s["line"], "call": s["call"], "message": s["message"]} for s in no_hint
+                {**_loc(s), "call": s["call"], "message": s["message"]} for s in no_hint
             ],
-            "from_exc_missing_context": [s["line"] for s in from_exc_missing_context],
+            "from_exc_missing_context": (
+                [_loc(s) for s in from_exc_missing_context]
+                if multi
+                else [s["line"] for s in from_exc_missing_context]
+            ),
             "rate_limited_no_retry": [
-                {"line": s["line"], "message": s["message"]} for s in rate_limited_no_retry
+                {**_loc(s), "message": s["message"]} for s in rate_limited_no_retry
             ],
         },
         "sites": sites,

@@ -29,6 +29,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.mcp._source_corpus import source_corpus
+
 ROOT = Path(__file__).resolve().parents[2]
 SERVER_SRC = ROOT / "src" / "autoinfo" / "mcp" / "server.py"
 AUDIT_SCRIPT = ROOT / "scripts" / "error_message_audit.py"
@@ -55,7 +57,7 @@ def error_audit():
 
 @pytest.fixture(scope="module")
 def result(error_audit):
-    return error_audit.audit_errors(SERVER_SRC.read_text(encoding="utf-8"))
+    return error_audit.audit_errors([text for _path, text in source_corpus()])
 
 
 def test_all_error_sites_parsed(result):
@@ -103,13 +105,18 @@ def test_no_raw_exception_sites(result):
 
 def test_raw_exception_lines_match_raw_producing_calls(result):
     raw = result["violations"]["raw_exception"]
-    by_line = {s["line"]: s["call"] for s in result["sites"]}
-    for line in raw:
-        assert by_line[line] in (
+    by_key = {(s.get("file_index", 0), s["line"]): s["call"] for s in result["sites"]}
+    for location in raw:
+        key = (
+            (location["file_index"], location["line"])
+            if isinstance(location, dict)
+            else (0, location)
+        )
+        assert by_key[key] in (
             "_error_dict",
             "error_response",
             "error_dict",
-        ), line
+        ), location
 
 
 def test_planted_positional_raw_exception_is_flagged(error_audit):
@@ -169,6 +176,10 @@ def test_rate_limited_reporting_shape(result):
     assert result["summary"]["rate_limited_sites"] == 0
 
 
-def test_sites_sorted_by_line(result):
-    lines = [s["line"] for s in result["sites"]]
-    assert lines == sorted(lines)
+def test_sites_sorted_per_file(result):
+    per_file: dict[int, list[int]] = {}
+    for site in result["sites"]:
+        per_file.setdefault(site.get("file_index", 0), []).append(site["line"])
+    assert per_file
+    for lines in per_file.values():
+        assert lines == sorted(lines)

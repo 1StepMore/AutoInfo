@@ -634,7 +634,7 @@ class TestCEFRClassification:
         # actually looks up, then assert the completion mock was called.
         with (
             patch(
-                "autoinfo.mcp.server._config_path",
+                "autoinfo.mcp.context._config_path",
                 return_value=tmp_project / ".autoinfo" / "config.yaml",
             ),
             patch.object(

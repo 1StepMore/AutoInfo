@@ -470,7 +470,7 @@ class TestMcpHandler:
         with patch("autoinfo.kb.KBStore", return_value=mock_store):
             yield
 
-    @patch("autoinfo.mcp.server.logger")
+    @patch("autoinfo.mcp.context.logger")
     def test_handler_returns_success_with_content(
         self, mock_logger: MagicMock, kb_store_with_entries: Iterator[None]
     ) -> None:
@@ -489,7 +489,7 @@ class TestMcpHandler:
         assert result["data"]["format"] == "markdown"
         assert "# Weekly Digest" in result["data"]["content"]
 
-    @patch("autoinfo.mcp.server.logger")
+    @patch("autoinfo.mcp.context.logger")
     def test_handler_json_format_parses_content(
         self, mock_logger: MagicMock, kb_store_with_entries: Iterator[None]
     ) -> None:
@@ -508,7 +508,7 @@ class TestMcpHandler:
         assert result["data"]["content"]["digest_type"] == "digest"
         assert result["data"]["content"]["entry_count"] == 0
 
-    @patch("autoinfo.mcp.server.logger")
+    @patch("autoinfo.mcp.context.logger")
     def test_handler_propagates_validation_error(
         self, mock_logger: MagicMock, kb_store_with_entries: Iterator[None]
     ) -> None:
@@ -524,7 +524,7 @@ class TestMcpHandler:
         assert result["success"] is False
         assert result["error"]["code"] == "ValidationError"
 
-    @patch("autoinfo.mcp.server.logger")
+    @patch("autoinfo.mcp.context.logger")
     def test_handler_returns_error_for_exception(
         self, mock_logger: MagicMock, kb_store_with_entries: Iterator[None]
     ) -> None:
@@ -540,7 +540,7 @@ class TestMcpHandler:
         assert result["success"] is False
         assert result["error"]["code"] == "InternalError"
 
-    @patch("autoinfo.mcp.server.logger")
+    @patch("autoinfo.mcp.context.logger")
     def test_handler_digest_with_product_passes_registry_template(
         self, mock_logger: MagicMock, kb_store_with_entries: Iterator[None]
     ) -> None:
@@ -564,7 +564,7 @@ class TestMcpHandler:
         assert "# Magazine Digest" in result["data"]["content"]
         assert mock_generate.call_args.kwargs["product_template"] is _row["template"]
 
-    @patch("autoinfo.mcp.server.logger")
+    @patch("autoinfo.mcp.context.logger")
     def test_handler_digest_unknown_product_returns_error_envelope(
         self, mock_logger: MagicMock, kb_store_with_entries: Iterator[None]
     ) -> None:
@@ -582,7 +582,7 @@ class TestMcpHandler:
         for name in _valid:
             assert name in result["error"]["message"]
 
-    @patch("autoinfo.mcp.server.logger")
+    @patch("autoinfo.mcp.context.logger")
     def test_handler_digest_without_product_unchanged(
         self, mock_logger: MagicMock, kb_store_with_entries: Iterator[None]
     ) -> None:

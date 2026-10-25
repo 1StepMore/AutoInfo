@@ -22,6 +22,7 @@ import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams
 
 from autoinfo.config import ConfigNotFoundError
+from autoinfo.mcp import context as mcp_context
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.errors import ErrorCode
 from autoinfo.mcp.server import (
@@ -103,12 +104,12 @@ def _mock_load_config(config_dict: dict | None = None):
     from autoinfo.config import _dict_to_config
 
     data = config_dict or _MINIMAL_CONFIG
-    return patch.object(mcp_server, "_load_config", return_value=_dict_to_config(data))
+    return patch.object(mcp_context, "_load_config", return_value=_dict_to_config(data))
 
 
 def _mock_save_config():
     """Patch ``_save_config`` to a no-op."""
-    return patch.object(mcp_server, "_save_config", lambda config: None)
+    return patch.object(mcp_context, "_save_config", lambda config: None)
 
 
 # ======================================================================
@@ -131,7 +132,9 @@ class TestListDomains:
                 assert domain["topic_count"] == 1
 
     def test_handles_missing_config(self) -> None:
-        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
+        with patch.object(
+            mcp_context, "_load_config", side_effect=ConfigNotFoundError("no config")
+        ):
             result = _handle_list_domains()
             assert result["success"] is False
             assert result["error"]["code"] == "ConfigNotFound"
@@ -184,7 +187,9 @@ class TestListAvailableModels:
         assert "task" in model
 
     def test_handles_missing_config(self) -> None:
-        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
+        with patch.object(
+            mcp_context, "_load_config", side_effect=ConfigNotFoundError("no config")
+        ):
             result = _handle_list_available_models()
             assert result["success"] is False
             assert result["error"]["code"] == "ConfigNotFound"
@@ -507,7 +512,7 @@ class TestSearchKnowledgeBaseStub:
     # on `_detect_kb_status()` (`server.py:2068-2079`) — the "empty" branch
     # returns a `count` key, not the legacy `total_count`. Stub the status so
     # the test is hermetic (CI has no `knowledge/` dir → "uninitialized").
-    @patch("autoinfo.mcp.server._detect_kb_status", return_value="empty")
+    @patch("autoinfo.mcp.context._detect_kb_status", return_value="empty")
     def test_returns_result_not_stub(self, mock_status: MagicMock) -> None:
         from autoinfo.mcp.server import _handle_search_knowledge_base
 
@@ -515,7 +520,7 @@ class TestSearchKnowledgeBaseStub:
         assert "entries" in result
         assert "count" in result
 
-    @patch("autoinfo.mcp.server._detect_kb_status", return_value="operational")
+    @patch("autoinfo.mcp.context._detect_kb_status", return_value="operational")
     def test_forwards_custom_fields_filter(self, mock_status: MagicMock) -> None:
         """output-quality-mega todo 25: the faceted filter key
         ``filter_custom_fields`` must reach ``KBStore.search_knowledge_base``
@@ -537,7 +542,7 @@ class TestSearchKnowledgeBaseStub:
             assert kwargs["filter_custom_fields"] == {"product_analysis.action_required": ""}
             assert kwargs["query"] == "IVF"
 
-    @patch("autoinfo.mcp.server._detect_kb_status", return_value="operational")
+    @patch("autoinfo.mcp.context._detect_kb_status", return_value="operational")
     def test_without_custom_fields_filter_defaults_none(self, mock_status: MagicMock) -> None:
         """Default search behaviour unchanged: no filter_custom_fields is sent."""
         from autoinfo.mcp.server import _handle_search_knowledge_base
@@ -727,7 +732,7 @@ class TestNewToolDispatch:
     # TRIAGE #72 (regression): same `count` vs `total_count` shape drift as
     # #71 (`server.py:2074-2078`) — stub `_detect_kb_status` to "empty" so
     # the dispatch path returns the deterministic short-circuit shape.
-    @patch("autoinfo.mcp.server._detect_kb_status", return_value="empty")
+    @patch("autoinfo.mcp.context._detect_kb_status", return_value="empty")
     async def test_implemented_tool_returns_result(self, mock_status: MagicMock) -> None:
         """search_knowledge_base is now implemented, not a stub."""
         handler = mcp_server.app.request_handlers[CallToolRequest]

@@ -21,15 +21,13 @@ from __future__ import annotations
 
 import ast
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.server import call_tool
-
-SERVER_SRC = Path(mcp_server.__file__)
+from tests.mcp._source_corpus import source_corpus
 
 _CANONICAL_SUCCESS_KEYS = frozenset({"success", "data"})
 _CANONICAL_ERROR_KEYS = frozenset({"success", "error"})
@@ -51,30 +49,31 @@ def _response_body(out: list[object]) -> dict:
     raise AssertionError(f"unexpected call_tool result shape: {out!r}")
 
 
-def _handler_returns() -> list[tuple[str, int, list[str]]]:
-    """Return ``(handler_name, lineno, keys)`` for every ``_handle_*``
-    function whose return value is a dict literal."""
-    tree = ast.parse(SERVER_SRC.read_text(encoding="utf-8"))
-    returns: list[tuple[str, int, list[str]]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if not node.name.startswith("_handle_"):
-            continue
-        for child in ast.walk(node):
-            if not isinstance(child, ast.Return):
+def _handler_returns() -> list[tuple[str, str, int, list[str]]]:
+    """Return ``(file, handler_name, lineno, keys)`` for every ``_handle_*``
+    function whose return value is a dict literal, across the source corpus."""
+    returns: list[tuple[str, str, int, list[str]]] = []
+    for path, source in source_corpus():
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            value = child.value
-            if value is None:
+            if not node.name.startswith("_handle_"):
                 continue
-            if isinstance(value, ast.IfExp):
-                # return <A> if <cond> else <dict> — inspect the dict branch
-                for branch in (value.body, value.orelse):
-                    if isinstance(branch, ast.Dict):
-                        returns.append((node.name, child.lineno, _dict_keys(branch)))
-                continue
-            if isinstance(value, ast.Dict):
-                returns.append((node.name, child.lineno, _dict_keys(value)))
+            for child in ast.walk(node):
+                if not isinstance(child, ast.Return):
+                    continue
+                value = child.value
+                if value is None:
+                    continue
+                if isinstance(value, ast.IfExp):
+                    # return <A> if <cond> else <dict> — inspect the dict branch
+                    for branch in (value.body, value.orelse):
+                        if isinstance(branch, ast.Dict):
+                            returns.append((path.name, node.name, child.lineno, _dict_keys(branch)))
+                    continue
+                if isinstance(value, ast.Dict):
+                    returns.append((path.name, node.name, child.lineno, _dict_keys(value)))
     return returns
 
 
@@ -86,48 +85,56 @@ class TestStaticEnvelopeConformance:
     """AST-level check over every handler: zero flat/hybrid return shapes."""
 
     def test_no_handler_returns_flat_error_dict(self) -> None:
-        flat = [(name, lineno) for name, lineno, keys in _handler_returns() if "error_code" in keys]
+        flat = [
+            (name, lineno)
+            for _file, name, lineno, keys in _handler_returns()
+            if "error_code" in keys
+        ]
         assert flat == [], f"Handlers still return flat error dicts (error_code key): {flat}"
 
     def test_no_handler_returns_bare_success_dict(self) -> None:
         # A dict with a success key but without data/error is a bare/hybrid
         # success shape — must be success_response() instead.
         bare = [
-            (name, lineno, keys)
-            for name, lineno, keys in _handler_returns()
+            (file, name, lineno, keys)
+            for file, name, lineno, keys in _handler_returns()
             if "success" in keys and not {"data", "error"} & set(keys)
         ]
         assert bare == [], f"Handlers still return bare success dicts: {bare}"
 
-    def test_no_flat_error_key_anywhere_in_server(self) -> None:
-        source = SERVER_SRC.read_text(encoding="utf-8")
+    def test_no_flat_error_key_anywhere_in_mcp_sources(self) -> None:
         # The only legitimate mentions are inside the _canonicalize() boundary
         # helper, which detects legacy flat dicts forwarded from lower-level
         # helpers. Everywhere else the legacy key is banned. The helper is
         # declared several times — the typing.overload stubs plus the
         # implementation — so strip every definition carrying that name rather
         # than an arbitrary first match, which would land on a stub.
-        tree = ast.parse(source)
-        helpers = [
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef) and n.name == "_canonicalize"
-        ]
-        assert helpers, "server.py no longer defines the _canonicalize() boundary helper"
-        helper_srcs = [ast.get_source_segment(source, h) or "" for h in helpers]
-        # Keep the check from silently going vacuous: the helper itself must
-        # still be the place the legacy key is handled.
-        assert any("error_code" in src for src in helper_srcs), (
-            "_canonicalize() no longer mentions the legacy flat key — re-point "
-            "this test at wherever the legacy-key boundary moved to"
-        )
-        rest = source
-        for helper_src in helper_srcs:
-            rest = rest.replace(helper_src, "")
-        assert "error_code" not in rest, (
-            "server.py references the legacy flat 'error_code' key outside "
-            "the _canonicalize() boundary helper"
-        )
+        helper_seen = False
+        for path, source in source_corpus():
+            tree = ast.parse(source)
+            helpers = [
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, ast.FunctionDef) and n.name == "_canonicalize"
+            ]
+            if not helpers:
+                continue
+            helper_seen = True
+            helper_srcs = [ast.get_source_segment(source, h) or "" for h in helpers]
+            # Keep the check from silently going vacuous: the helper itself
+            # must still be the place the legacy key is handled.
+            assert any("error_code" in src for src in helper_srcs), (
+                f"{path.name}: _canonicalize() no longer mentions the legacy flat "
+                "key — re-point this test at wherever the legacy-key boundary moved to"
+            )
+            rest = source
+            for helper_src in helper_srcs:
+                rest = rest.replace(helper_src, "")
+            assert "error_code" not in rest, (
+                f"{path.name} references the legacy flat 'error_code' key outside "
+                "the _canonicalize() boundary helper"
+            )
+        assert helper_seen, "no MCP source file defines the _canonicalize() boundary helper"
 
 
 class TestRuntimeEnvelopeConformance:

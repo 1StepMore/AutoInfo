@@ -448,6 +448,78 @@ def _meaningful_search_terms(query: str) -> list[str]:
 _db_busy_timeout_ms = db.busy_timeout_ms
 
 
+# ---------------------------------------------------------------------------
+# Git-ignore probe cache (issue #600)
+# ---------------------------------------------------------------------------
+
+_GIT_IGNORE_CACHE: dict[str, bool] = {}
+"""Process-wide cache of ``git check-ignore`` verdicts, keyed by repo path.
+
+Runtime KB files live under gitignored directories (``knowledge/``), so every
+entry's version snapshot used to spawn ``git add``/``git commit`` and fail.
+Probing an ancestor directory once (usually ``knowledge``) lets every entry
+beneath it reuse the verdict without another subprocess.
+"""
+
+
+def _git_check_ignore(rel_path: str, repo_root: str) -> bool:
+    """Return True when *rel_path* is ignored by git (never raises)."""
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", rel_path],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=repo_root,
+        )
+    except Exception:
+        return False
+    return result.returncode == 0
+
+
+def _is_git_ignored(path: str, repo_root: str) -> bool:
+    """Return True when *path* is gitignored, caching each probe (issue #600).
+
+    Ancestors are checked outermost-first: if ``knowledge/`` is ignored, all
+    entries inside it inherit that verdict and no further subprocess is
+    spawned. Paths outside *repo_root* are never treated as ignored so the
+    pre-existing behaviour (attempt add/commit, then fail) is preserved.
+    """
+    if not os.path.isabs(path):
+        # ``git add`` runs with ``cwd=repo_root``, so relative paths mean
+        # relative to the repository root, not to the process CWD.
+        path = os.path.join(repo_root, path)
+    try:
+        rel_path = os.path.normpath(os.path.relpath(path, repo_root))
+    except ValueError:
+        return False
+    if rel_path == os.pardir or rel_path.startswith(os.pardir + os.sep):
+        return False
+
+    parts = rel_path.split(os.sep)
+    for depth in range(1, len(parts)):
+        ancestor = os.sep.join(parts[:depth])
+        key = os.path.join(repo_root, ancestor)
+        ignored = _GIT_IGNORE_CACHE.get(key)
+        if ignored is None:
+            ignored = _git_check_ignore(ancestor, repo_root)
+            _GIT_IGNORE_CACHE[key] = ignored
+            if ignored:
+                logger.debug(
+                    "Gitignored directory — skipping git version records: %s", ancestor
+                )
+        if ignored:
+            _GIT_IGNORE_CACHE[os.path.join(repo_root, rel_path)] = True
+            return True
+
+    key = os.path.join(repo_root, rel_path)
+    ignored = _GIT_IGNORE_CACHE.get(key)
+    if ignored is None:
+        ignored = _git_check_ignore(rel_path, repo_root)
+        _GIT_IGNORE_CACHE[key] = ignored
+    return ignored
+
+
 class SQLiteIndex:
     """Lightweight SQLite metadata index for KB entries.
 
@@ -1117,6 +1189,15 @@ class SQLiteIndex:
                 return ""
 
             repo_root = result.stdout.strip()
+
+            # Gitignored runtime paths (knowledge/) can never be committed —
+            # skip before spawning add/commit for every entry (issue #600).
+            if _is_git_ignored(file_path, repo_root):
+                logger.debug(
+                    "Path is not tracked by git — skipping version record: %s",
+                    file_path,
+                )
+                return ""
 
             # Check that git user is configured
             name_check = subprocess.run(

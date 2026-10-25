@@ -7,7 +7,14 @@ so ``_decorate_tools`` mutation never leaks across calls.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import Any, cast
+
 from mcp.types import Tool
+
+from autoinfo.mcp import context as mcp_context
+from autoinfo.mcp.errors import ErrorCode, error_response, success_response
 
 
 def build_tools() -> list[Tool]:
@@ -335,3 +342,393 @@ def build_tools() -> list[Tool]:
             },
         ),
     ]
+
+
+def _handle_clean_cache(
+    collections: bool = False,
+    outputs: bool = False,
+    everything: bool = False,
+    dry_run: bool = False,
+    confirm: bool = False,
+    actor: str = "agent",
+) -> dict[str, Any]:
+    """Remove cached artifacts and temporary files.
+
+    Parameters
+    ----------
+    collections:
+        Remove cached collections/ contents.
+    outputs:
+        Remove outputs/ contents.
+    everything:
+        Remove ALL cached data (collections + outputs + knowledge + DB).
+    dry_run:
+        Show what would be deleted without deleting (default False).
+
+    Returns
+    -------
+    dict
+        ``{items_removed, dry_run, targets}``.
+    """
+    if everything and not confirm and not dry_run:
+        return error_response(
+            code=ErrorCode.CONFIRMATION_REQUIRED,
+            message="clean_cache(everything=True) requires confirm=true — this deletes the entire knowledge/ directory and database",
+            actionable=True,
+        )
+    import shutil
+
+    targets: list[str] = []
+    total = 0
+
+    if collections or everything:
+        path = Path("collections")
+        if path.is_dir():
+            if dry_run:
+                cnt = sum(1 for _ in path.iterdir())
+            else:
+                cnt = 0
+                for child in path.iterdir():
+                    if child.is_dir():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                    cnt += 1
+            total += cnt
+            targets.append(f"collections ({cnt} items)")
+    if outputs or everything:
+        path = Path("outputs")
+        if path.is_dir():
+            if dry_run:
+                cnt = sum(1 for _ in path.iterdir())
+            else:
+                cnt = 0
+                for child in path.iterdir():
+                    if child.is_dir():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                    cnt += 1
+            total += cnt
+            targets.append(f"outputs ({cnt} items)")
+    if everything:
+        path = Path("knowledge")
+        if path.is_dir():
+            if dry_run:
+                cnt = sum(1 for _ in path.iterdir())
+            else:
+                cnt = 0
+                for child in path.iterdir():
+                    if child.is_dir():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                    cnt += 1
+            total += cnt
+            targets.append(f"knowledge ({cnt} items)")
+
+        db_path = Path("autoinfo.db")
+        if db_path.is_file():
+            if not dry_run:
+                db_path.unlink()
+            total += 1
+            targets.append("autoinfo.db")
+
+    return {
+        "items_removed": total,
+        "dry_run": dry_run,
+        "targets": targets,
+    }
+
+
+def _handle_get_channel_health(
+    channel_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return health status for all or a specific delivery channel."""
+    from autoinfo.delivery import _CHANNEL_REGISTRY
+
+    results: list[dict[str, Any]] = []
+    if channel_name is not None:
+        channel_cls = _CHANNEL_REGISTRY.get(channel_name)
+        if channel_cls is None:
+            return [
+                {
+                    "healthy": False,
+                    "latency_ms": 0.0,
+                    "error": f"unknown channel: {channel_name}",
+                    "channel": channel_name,
+                }
+            ]
+        instance = channel_cls()
+        results.append(instance.health_check())
+    else:
+        for name, channel_cls in _CHANNEL_REGISTRY.items():
+            try:
+                instance = channel_cls()
+                results.append(instance.health_check())
+            except Exception as exc:
+                results.append(
+                    {"healthy": False, "latency_ms": 0.0, "error": str(exc), "channel": name}
+                )
+    return mcp_context._canonicalize(results)
+
+
+def _handle_set_agent_callback(
+    agent_url: str,
+    events: list[str],
+) -> dict[str, Any]:
+    """Register a new agent callback URL for specified events."""
+    from autoinfo.agent_callback import register_agent_callback
+
+    try:
+        callback_id = register_agent_callback(agent_url=agent_url, events=events)
+        return {
+            "callback_id": callback_id,
+            "agent_url": agent_url,
+            "events": events,
+            "created": True,
+        }
+    except ValueError as exc:
+        return mcp_context._error_from_exc(
+            exc, "set_agent_callback failed", code=ErrorCode.VALIDATION_ERROR
+        )
+    except Exception as exc:
+        mcp_context.logger.exception("set_agent_callback failed")
+        return mcp_context._error_from_exc(exc, "set_agent_callback failed")
+
+
+def _handle_list_agent_callbacks() -> dict[str, Any] | list[dict[str, Any]]:
+    """List all registered agent callbacks."""
+    from autoinfo.agent_callback import list_agent_callbacks
+
+    try:
+        return mcp_context._canonicalize(list_agent_callbacks())
+    except Exception as exc:
+        mcp_context.logger.exception("list_agent_callbacks failed")
+        return mcp_context._error_from_exc(exc, "list_agent_callbacks failed")
+
+
+def _handle_remove_agent_callback(callback_id: str) -> dict[str, Any]:
+    """Remove a registered agent callback."""
+    from autoinfo.agent_callback import remove_agent_callback
+
+    try:
+        removed = remove_agent_callback(callback_id)
+        if removed:
+            return {"callback_id": callback_id, "removed": True}
+        return error_response(
+            code=ErrorCode.NOT_FOUND,
+            message=f"Callback '{callback_id}' not found",
+            actionable=True,
+        )
+    except Exception as exc:
+        mcp_context.logger.exception("remove_agent_callback failed")
+        return mcp_context._error_from_exc(exc, "remove_agent_callback failed")
+
+
+def _handle_recommend_content(
+    user_id: str,
+    query: str = "",
+    domain: str = "",
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Handle recommend_content MCP tool."""
+    try:
+        from autoinfo.recommend import ContentBasedEngine
+
+        engine = ContentBasedEngine()
+        items = engine.recommend(
+            user_id=user_id,
+            query=query,
+            domain=domain or None,
+            limit=limit,
+        )
+        return {
+            "user_id": user_id,
+            "query": query,
+            "items": [
+                {
+                    "entry_id": item.entry_id,
+                    "title": item.title,
+                    "score": item.score,
+                    "reason": item.reason,
+                    "source_url": item.source_url,
+                    "domain": item.domain,
+                }
+                for item in items
+            ],
+            "count": len(items),
+        }
+    except Exception as exc:
+        mcp_context.logger.error("recommend_content failed: %s", exc)
+        return mcp_context._error_from_exc(exc, "recommend_content failed")
+
+
+def _handle_simplify_content(
+    content: str,
+    target_level: str,
+    language: str = "en",
+) -> dict[str, Any]:
+    """Handle simplify_content MCP tool."""
+    from autoinfo.output import simplify_text
+
+    result = simplify_text(content, target_level, language)
+
+    if target_level not in (frozenset({"A1", "A2", "B1", "B2", "C1"})):
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=(f"Invalid target_level: '{target_level}'. Must be one of A1, A2, B1, B2, C1."),
+            actionable=True,
+        )
+
+    error_msg = result.get("error")
+    if error_msg and not result["verified"]:
+        return success_response({**result, "warning": error_msg})
+
+    return success_response(result)
+
+
+def _handle_list_validation_scenarios() -> dict[str, Any]:
+    """Handle list_validation_scenarios MCP tool."""
+    from autoinfo.mcp.validation import list_scenarios
+
+    return mcp_context._canonicalize(list_scenarios())
+
+
+async def _handle_run_validation_scenario(
+    scenario: str,
+    steps: list[int] | None = None,
+    save_results: bool = False,
+    timeout: float = 180.0,
+) -> dict[str, Any]:
+    """Handle run_validation_scenario MCP tool."""
+    from autoinfo.mcp.validation import run_scenario, save_scenario_results
+
+    async def _validation_dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        from autoinfo.mcp.server import call_tool
+
+        texts = await call_tool(name, arguments)
+        return cast(dict[str, Any], json.loads(texts[0][0].text))
+
+    try:
+        result = await run_scenario(
+            scenario,
+            dispatch=_validation_dispatch,
+            steps=steps,
+            timeout=timeout,
+        )
+        if save_results:
+            from autoinfo.output.run_report import (
+                build_run_report,
+                persist_run_report,
+            )
+
+            # ``or ""`` keeps this a ``str``: both consumers only test truthiness
+            # (``save_scenario_results`` skips a falsy id; ``build_run_report``
+            # raises on one), so an absent id behaved as "" already.
+            session_id = result.get("session_id") or result.get("trace_id") or ""
+            run_dir = save_scenario_results([result], session_id=session_id)
+            result["saved_run"] = str(run_dir)
+            report = build_run_report(session_id, [result], kind="single")
+            result["report_path"] = str(persist_run_report(report))
+        return result
+    except ValueError as exc:
+        return mcp_context._error_from_exc(
+            exc,
+            "run_validation_scenario failed",
+            code=ErrorCode.VALIDATION_ERROR,
+        )
+
+
+def _handle_get_coverage_report() -> dict[str, Any]:
+    """Handle get_coverage_report MCP tool (register T-A-02/T-A-03/T-A-07).
+
+    Delegates to ``scripts/stage_user_coverage.py::build_report`` so the MCP
+    surface and the CLI report are the same classification (one source of
+    truth).  The script reads live scenario tags, the Todo 23 disposition
+    tables and the catalog matrix at call time — no cached classification.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[4]
+    script = root / "scripts" / "stage_user_coverage.py"
+    try:
+        spec = importlib.util.spec_from_file_location("_autoinfo_stage_user_coverage", script)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load coverage script at {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        # The script is loaded dynamically, so its ``build_report`` return
+        # type is invisible to mypy; the report is a plain JSON-able dict.
+        report: dict[str, Any] = module.build_report(root=root)
+        return mcp_context._canonicalize(report)
+    except Exception as exc:  # noqa: BLE001 - surface a typed error, never a silent pass
+        return mcp_context._error_from_exc(
+            exc,
+            "get_coverage_report failed",
+            code=ErrorCode.VALIDATION_ERROR,
+        )
+
+
+async def _handle_run_all_validation_scenarios(
+    save_results: bool = True,
+    timeout: float = 180.0,
+) -> dict[str, Any]:
+    """Handle run_all_validation_scenarios MCP tool (R-S-05).
+
+    Runs the full live scenario library once and persists a single aggregate
+    run (``run_type="suite"``) whose ``scenarios[]`` array carries every
+    per-scenario result, so ``scripts/validation_report.py`` renders the whole
+    suite from one run without external aggregation scripting.
+    """
+    from autoinfo.mcp.validation import run_all_scenarios
+
+    async def _validation_dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        from autoinfo.mcp.server import call_tool
+
+        texts = await call_tool(name, arguments)
+        return cast(dict[str, Any], json.loads(texts[0][0].text))
+
+    try:
+        return await run_all_scenarios(
+            dispatch=_validation_dispatch,
+            timeout=timeout,
+            save=save_results,
+        )
+    except Exception as exc:  # noqa: BLE001 - typed envelope, never a silent pass
+        return mcp_context._error_from_exc(
+            exc,
+            "run_all_validation_scenarios failed",
+            code=ErrorCode.VALIDATION_ERROR,
+        )
+
+
+def _handle_get_run_decisions(session_id: str) -> dict[str, Any]:
+    """Handle get_run_decisions MCP tool (TR-A-01/TR-A-02, B2.6/F69).
+
+    Return the structured decision trail for one run/session correlation id:
+    every scenario verdict, every step decision in execution order, and the
+    anomaly list (failures, timeouts, unconfigured/recovered steps, warnings).
+    Reads the persisted report under ``validation-runs/sessions/<id>.json``;
+    when no separate report exists it falls back to scanning saved runs, so an
+    already-persisted run is still queryable.  Use after
+    ``run_validation_scenario(save_results=true)`` or
+    ``run_all_validation_scenarios()`` to reconstruct what happened without
+    re-running anything.
+    """
+    from autoinfo.output.run_report import load_run_report
+
+    report = load_run_report(session_id)
+    if report is None:
+        return error_response(
+            code=ErrorCode.NOT_FOUND,
+            message=(
+                f"No run report found for session_id '{session_id}'. Run "
+                "run_validation_scenario(save_results=true) or "
+                "run_all_validation_scenarios() first, then query the "
+                "returned session_id."
+            ),
+            actionable=True,
+        )
+    return success_response(report)

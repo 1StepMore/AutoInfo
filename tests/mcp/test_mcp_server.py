@@ -1081,8 +1081,8 @@ class TestGenerateOutputPreviewFallback:
 
 
 class TestTestSourceFields:
-    @patch("autoinfo.mcp.server.httpx.get")
-    @patch("autoinfo.mcp.server.httpx.head")
+    @patch("autoinfo.mcp.tools.sources.httpx.get")
+    @patch("autoinfo.mcp.tools.sources.httpx.head")
     def test_suggested_fields_for_api(self, mock_head: MagicMock, mock_get: MagicMock) -> None:
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -1099,8 +1099,8 @@ class TestTestSourceFields:
         assert "suggested_extract_fields" in result
         assert result["suggested_extract_fields"] == ["pmid", "doi", "authors", "journal"]
 
-    @patch("autoinfo.mcp.server.httpx.get")
-    @patch("autoinfo.mcp.server.httpx.head")
+    @patch("autoinfo.mcp.tools.sources.httpx.get")
+    @patch("autoinfo.mcp.tools.sources.httpx.head")
     def test_suggested_fields_for_rss(self, mock_head: MagicMock, mock_get: MagicMock) -> None:
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -1127,8 +1127,8 @@ class TestTestSourceFields:
 
 
 class TestTestSourceKeyWarning:
-    @patch("autoinfo.mcp.server.httpx.get")
-    @patch("autoinfo.mcp.server.httpx.head")
+    @patch("autoinfo.mcp.tools.sources.httpx.get")
+    @patch("autoinfo.mcp.tools.sources.httpx.head")
     def test_warns_when_required_key_missing(
         self,
         mock_head: MagicMock,
@@ -1155,8 +1155,8 @@ class TestTestSourceKeyWarning:
         assert "AUTOINFO_NYT_API_KEY" in result["warning"]
         assert "docs/dev/required-api-keys.md" in result["warning"]
 
-    @patch("autoinfo.mcp.server.httpx.get")
-    @patch("autoinfo.mcp.server.httpx.head")
+    @patch("autoinfo.mcp.tools.sources.httpx.get")
+    @patch("autoinfo.mcp.tools.sources.httpx.head")
     def test_no_warning_when_key_configured(
         self,
         mock_head: MagicMock,
@@ -1181,8 +1181,8 @@ class TestTestSourceKeyWarning:
         assert result["key_configured"] is True
         assert "warning" not in result
 
-    @patch("autoinfo.mcp.server.httpx.get")
-    @patch("autoinfo.mcp.server.httpx.head")
+    @patch("autoinfo.mcp.tools.sources.httpx.get")
+    @patch("autoinfo.mcp.tools.sources.httpx.head")
     def test_keyless_source_reports_no_requirement(
         self,
         mock_head: MagicMock,
@@ -1210,7 +1210,7 @@ class TestTestSourceKeyWarning:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.delenv("AUTOINFO_NYT_API_KEY", raising=False)
-        with patch("autoinfo.mcp.server.httpx.get", side_effect=ConnectionError("refused")):
+        with patch("autoinfo.mcp.tools.sources.httpx.get", side_effect=ConnectionError("refused")):
             result = _handle_test_source(
                 url="https://api.nytimes.com/svc",
                 type="nyt",

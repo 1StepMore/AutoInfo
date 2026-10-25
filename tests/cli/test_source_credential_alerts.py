@@ -51,9 +51,7 @@ def _write_config(
     config_dir = tmp_path / ".autoinfo"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "config.yaml"
-    urls_yaml = (
-        f"    webhook_urls: {json.dumps(webhook_urls)}" if webhook_urls else ""
-    )
+    urls_yaml = f"    webhook_urls: {json.dumps(webhook_urls)}" if webhook_urls else ""
     config_path.write_text(
         "project:\n  name: Test\n"
         "llm:\n  provider: openai\n  model: gpt-4\n  api_key: key\n"
@@ -68,9 +66,7 @@ def _write_config(
 
 
 _NYT_SOURCE_YAML = (
-    "      - name: NYT\n"
-    "        type: nyt\n"
-    "        url: https://api.nytimes.com/svc\n"
+    "      - name: NYT\n        type: nyt\n        url: https://api.nytimes.com/svc\n"
 )
 
 
@@ -168,9 +164,7 @@ class TestCheckSourceCredentials:
             monkeypatch.delenv("AUTOINFO_NYT_API_KEY", raising=False)
         assert missing == []
 
-    def test_env_ref_setting_unset_reported(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_env_ref_setting_unset_reported(self, tmp_path: Path, monkeypatch) -> None:
         """A ${ENV_VAR} api_key setting with the var unset is reported."""
         monkeypatch.delenv("FINNHUB_API_KEY", raising=False)
         config_path = _write_config(
@@ -190,9 +184,7 @@ class TestCheckSourceCredentials:
         assert missing[0]["source"] == "Finnhub"
         assert missing[0]["key_ref"] == "FINNHUB_API_KEY"
 
-    def test_env_ref_setting_set_not_reported(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_env_ref_setting_set_not_reported(self, tmp_path: Path, monkeypatch) -> None:
         """The env-ref source is not reported when the variable is set."""
         monkeypatch.setenv("FINNHUB_API_KEY", "secret-value")
         config_path = _write_config(
@@ -276,9 +268,7 @@ class TestCheckSourceCredentials:
             monkeypatch.delenv("AUTOINFO_UNPAYWALL_EMAIL", raising=False)
         assert missing == []
 
-    def test_requires_key_flag_generic_api_reported(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_requires_key_flag_generic_api_reported(self, tmp_path: Path, monkeypatch) -> None:
         """A generic api source with requires_key: true and no canonical env var is flagged."""
         monkeypatch.delenv("ALPHA_VANTAGE_API_KEY", raising=False)
         config_path = _write_config(
@@ -297,9 +287,7 @@ class TestCheckSourceCredentials:
         assert missing[0]["source"] == "Alpha Vantage"
         assert missing[0]["source_type"] == "api"
 
-    def test_requires_key_flag_with_env_ref_reported(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_requires_key_flag_with_env_ref_reported(self, tmp_path: Path, monkeypatch) -> None:
         """requires_key: true falls back to any unset ${ENV_VAR} ref in settings."""
         monkeypatch.delenv("WANFANG_APP_KEY", raising=False)
         config_path = _write_config(
@@ -320,9 +308,7 @@ class TestCheckSourceCredentials:
         assert len(missing) == 1
         assert missing[0]["key_ref"] == "WANFANG_APP_KEY"
 
-    def test_requires_key_flag_with_literal_credential_not_reported(
-        self, tmp_path: Path
-    ) -> None:
+    def test_requires_key_flag_with_literal_credential_not_reported(self, tmp_path: Path) -> None:
         """requires_key: true with a literal credential in settings is never flagged."""
         config_path = _write_config(
             tmp_path,
@@ -352,10 +338,13 @@ class TestSourceKeyMapConsolidation:
         """alerts and mcp.server must reference the identical constant (no drift)."""
         from autoinfo import alerts
         from autoinfo.config import SOURCE_KEY_ENV_VARS
-        from autoinfo.mcp import server as mcp_server
+        from autoinfo.mcp import context as mcp_context
 
         assert alerts.SOURCE_KEY_ENV_VARS is SOURCE_KEY_ENV_VARS
-        assert mcp_server.SOURCE_KEY_ENV_VARS is SOURCE_KEY_ENV_VARS
+        # #581 phase 3: the MCP-side consumer is the shared helper tier; the
+        # handler that uses the map now lives in tools/sources.py and reads it
+        # through mcp_context.
+        assert mcp_context.SOURCE_KEY_ENV_VARS is SOURCE_KEY_ENV_VARS
         assert len(SOURCE_KEY_ENV_VARS) == 11
 
     def test_map_covers_all_requires_key_collectors(self) -> None:
@@ -413,10 +402,9 @@ class TestCheckSourceAlertsDispatch:
 
             from autoinfo.delivery import WebhookDeliveryChannel
 
-            with patch(
-                "autoinfo.alerts.get_config_path", return_value=config_path
-            ), patch.object(
-                WebhookDeliveryChannel, "_post_webhook", staticmethod(_fake_post)
+            with (
+                patch("autoinfo.alerts.get_config_path", return_value=config_path),
+                patch.object(WebhookDeliveryChannel, "_post_webhook", staticmethod(_fake_post)),
             ):
                 results = check_source_alerts("medical-research")
 
@@ -466,9 +454,7 @@ class TestCheckSourceAlertsDispatch:
                 results = check_source_alerts("medical-research")
         assert results == []
 
-    def test_no_missing_credentials_no_dispatch(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_no_missing_credentials_no_dispatch(self, tmp_path: Path, monkeypatch) -> None:
         """With the env var set, nothing is dispatched."""
         monkeypatch.setenv("AUTOINFO_NYT_API_KEY", "sk-test-12345")
         config_path = _write_config(
@@ -483,9 +469,7 @@ class TestCheckSourceAlertsDispatch:
                     kind="source_credential_missing",
                     channel="webhook",
                 )
-                with patch(
-                    "autoinfo.alerts.get_config_path", return_value=config_path
-                ):
+                with patch("autoinfo.alerts.get_config_path", return_value=config_path):
                     results = check_source_alerts("medical-research")
         finally:
             monkeypatch.delenv("AUTOINFO_NYT_API_KEY", raising=False)
@@ -522,10 +506,9 @@ class TestCheckSourceAlertsDispatch:
                 kind="source_credential_missing",
                 channel="webhook",
             )
-            with patch(
-                "autoinfo.alerts.get_config_path", return_value=config_path
-            ), patch.object(
-                WebhookDeliveryChannel, "_post_webhook", staticmethod(_fake_post)
+            with (
+                patch("autoinfo.alerts.get_config_path", return_value=config_path),
+                patch.object(WebhookDeliveryChannel, "_post_webhook", staticmethod(_fake_post)),
             ):
                 results = check_source_alerts("medical-research", missing=missing)
         assert len(results) == 1
@@ -602,9 +585,7 @@ class TestSourceRequiresKeyCallbackEvent:
         assert listed[0]["callback_id"] == cid
         assert listed[0]["events"] == ["new_digest", "new_report"]
 
-    def test_notify_delivers_canonical_envelope_no_key_value(
-        self, ac_module, monkeypatch
-    ) -> None:
+    def test_notify_delivers_canonical_envelope_no_key_value(self, ac_module, monkeypatch) -> None:
         """Delivery: canonical 5-key envelope; payload carries key_ref only."""
         captured: dict[str, list[httpx.Request]] = {}
         _patch_client(monkeypatch, _make_capture_transport(captured))

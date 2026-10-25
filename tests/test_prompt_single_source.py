@@ -64,7 +64,7 @@ def test_keyword_prompt_defined_once() -> None:
 
     assert hits == [], f"keyword prompt literal back inline in {hits}"
 
-    for consumer in ("cli/keywords.py", "mcp/server.py"):
+    for consumer in ("cli/keywords.py", "mcp/tools/sources.py"):
         source = (_SRC / consumer).read_text(encoding="utf-8")
         assert "keyword_suggestion_system_prompt(" in source, (
             f"{consumer} must call the shared builder, not inline the literal"

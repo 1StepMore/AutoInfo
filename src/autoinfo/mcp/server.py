@@ -780,67 +780,6 @@ def _handle_get_domain_config(name: str) -> dict[str, Any]:
     }
 
 
-def _handle_set_domain_webhooks(
-    domain: str,
-    webhook_urls: list[str],
-) -> dict[str, Any]:
-    """Set webhook URLs for a domain. Replaces any existing URLs."""
-    # -- Validate URLs ----------------------------------------------------
-    invalid: list[str] = []
-    for url in webhook_urls:
-        if not url.startswith(("http://", "https://")):
-            invalid.append(url)
-    if invalid:
-        return error_response(
-            code=ErrorCode.VALIDATION_ERROR,
-            message=f"Invalid webhook URLs (must start with http:// or https://): {invalid}",
-            actionable=True,
-        )
-
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(config, domain)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            actionable=True,
-        )
-
-    domain_cfg.webhook_urls = list(webhook_urls)
-    mcp_context._save_config(config)
-
-    return {
-        "domain": domain,
-        "webhook_urls": domain_cfg.webhook_urls,
-        "updated": True,
-    }
-
-
-def _handle_get_domain_webhooks(domain: str) -> dict[str, Any]:
-    """Return the configured webhook URLs for a domain."""
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(config, domain)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            actionable=True,
-        )
-
-    return {
-        "domain": domain,
-        "webhook_urls": list(getattr(domain_cfg, "webhook_urls", [])),
-    }
-
-
 def _handle_add_domain(name: str, description: str = "") -> dict[str, Any]:
     """Create a new domain configuration (idempotent — returns existing config if domain already exists)."""
     try:
@@ -4106,152 +4045,6 @@ def _handle_list_active_collections(domain: str = "") -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Gate config handlers
-# ---------------------------------------------------------------------------
-
-
-def _handle_get_gate_config(domain: str, gate: str) -> dict[str, Any]:
-    """Return gate configuration for a domain.
-
-    Checks both quality gates (G0-G5 etc.) and delivery gates (D1-D3 etc.),
-    falling back to global defaults when the gate is not set at the domain level.
-    """
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(config, domain)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            actionable=True,
-        )
-
-    from dataclasses import asdict as _asdict
-
-    # Normalise the queried gate name to its canonical long form — config
-    # keys are stored as e.g. "G3-RelevanceScoring" (short "G3" accepted).
-    from autoinfo.config import _GATE_CONFIG_KEY_MAP
-
-    gate_key = _GATE_CONFIG_KEY_MAP.get(gate, gate)
-
-    # Check quality gates first, then delivery gates, then global defaults
-    gate_config: dict[str, Any] | None = None
-    gate_type: str = ""
-
-    if gate_key in domain_cfg.quality_gates:
-        gate_config = _asdict(domain_cfg.quality_gates[gate_key])
-        gate_type = "quality"
-    elif gate_key in domain_cfg.delivery_gates:
-        gate_config = _asdict(domain_cfg.delivery_gates[gate_key])
-        gate_type = "delivery"
-    elif gate_key in config.quality_gates:
-        gate_config = _asdict(config.quality_gates[gate_key])
-        gate_type = "quality"
-    elif gate_key in config.delivery_gates:
-        gate_config = _asdict(config.delivery_gates[gate_key])
-        gate_type = "delivery"
-
-    if gate_config is None:
-        return error_response(
-            code=ErrorCode.GATE_NOT_FOUND,
-            message=f"Gate '{gate}' is not configured for domain '{domain}'",
-            actionable=True,
-        )
-
-    # Remove internal fields from serialization
-    gate_config.pop("name", None)
-
-    return {
-        "domain": domain,
-        "gate": gate,
-        "gate_type": gate_type,
-        "config": gate_config,
-    }
-
-
-def _handle_set_gate_config(
-    domain: str,
-    gate: str,
-    config: dict[str, Any],
-) -> dict[str, Any]:
-    """Update gate configuration for a domain.
-
-    *config* should contain gate-specific fields (e.g. ``action``, ``threshold``
-    for quality gates; ``enabled``, ``action_on_failure`` for delivery gates).
-    """
-    try:
-        cfg = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(cfg, domain)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            actionable=True,
-        )
-
-    from autoinfo.config import DeliveryGateConfig, QualityGateConfig
-
-    # Determine if this is a quality or delivery gate. CurationGate is
-    # always a quality gate: its dict carries ``enabled`` (the G4 switch),
-    # which the generic heuristic below would otherwise misread as delivery.
-    is_delivery = (
-        gate in domain_cfg.delivery_gates
-        or ("action_on_failure" in config)
-        or (gate != "CurationGate" and "enabled" in config and "category" not in config)
-    )
-    is_quality = (gate in domain_cfg.quality_gates) or not is_delivery
-
-    new_gc: QualityGateConfig | None = None
-    new_dc: DeliveryGateConfig | None = None
-
-    if is_quality:
-        new_gc = QualityGateConfig(
-            name=gate,
-            category=str(config.get("category", "soft")),
-            retries=int(config.get("retries", 0)),
-            retry_models=list(config.get("retry_models", [])),
-            action=str(config.get("action", "flag")),
-            threshold=config.get("threshold", None),
-            enabled=bool(config.get("enabled", True)),
-        )
-        domain_cfg.quality_gates[gate] = new_gc
-    else:
-        new_dc = DeliveryGateConfig(
-            name=gate,
-            enabled=bool(config.get("enabled", True)),
-            action_on_failure=str(config.get("action_on_failure", "block")),
-        )
-        domain_cfg.delivery_gates[gate] = new_dc
-
-    mcp_context._save_config(cfg)
-
-    # Both branches of is_quality/is_delivery set one of new_gc/new_dc
-    if is_quality and new_gc is not None:
-        from dataclasses import asdict as _asdict
-
-        config_dict = _asdict(new_gc)
-    elif new_dc is not None:
-        from dataclasses import asdict as _asdict
-
-        config_dict = _asdict(new_dc)
-    else:
-        config_dict = {}
-
-    return {
-        "domain": domain,
-        "gate": gate,
-        "updated": True,
-        "config": config_dict,
-    }
-
-
-# ---------------------------------------------------------------------------
 # Budget threshold handlers (F45)
 # ---------------------------------------------------------------------------
 
@@ -4346,126 +4139,6 @@ def _handle_set_budget_thresholds(
         "auto_remediation_enabled": config.cost_alerts.auto_remediation_enabled,
         "alert_webhook": config.cost_alerts.alert_webhook,
         "updated": True,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Product handlers
-# ---------------------------------------------------------------------------
-
-
-def _handle_get_product(domain: str, product_type: str) -> dict[str, Any]:
-    """Return product configuration for a domain and product type.
-
-    *product_type* is ``"RAW"`` or ``"PROCESSED"``.  Products are derived
-    from the domain's configuration (sources, quality gates, delivery
-    channels, etc.).
-    """
-    try:
-        cfg = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(cfg, domain)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            actionable=True,
-        )
-
-    product_type_upper = product_type.upper()
-    if product_type_upper not in ("RAW", "PROCESSED"):
-        return error_response(
-            code=ErrorCode.VALIDATION_ERROR,
-            message=f"Invalid product_type '{product_type}'. Must be 'RAW' or 'PROCESSED'.",
-            actionable=True,
-        )
-
-    if product_type_upper == "RAW":
-        product = {
-            "id": f"{domain}-raw",
-            "domain": domain,
-            "type": "raw",
-            "name": f"{domain} RAW Feed",
-            "config": {
-                "sources": [
-                    {"name": s.name, "type": s.type, "url": s.url} for s in domain_cfg.sources
-                ],
-                "extract_fields": list(getattr(domain_cfg, "extract_fields", [])),
-            },
-            "templates": [],
-            "delivery_channels": ["api"],
-            "quality_gates": list(domain_cfg.quality_gates.keys()),
-            "variants": ["api_feed", "webhook", "bulk_export"],
-        }
-    else:
-        product = {
-            "id": f"{domain}-processed",
-            "domain": domain,
-            "type": "processed",
-            "name": f"{domain} PROCESSED Output",
-            "config": {
-                "delivery_gates": {
-                    dg: _gate_to_dict(gc) for dg, gc in domain_cfg.delivery_gates.items()
-                },
-                "webhook_urls": list(getattr(domain_cfg, "webhook_urls", [])),
-                "search_mode": getattr(domain_cfg, "search_mode", "keyword"),
-            },
-            "templates": ["digest", "report", "tutorial", "presentation"],
-            "delivery_channels": ["webhook", "smtp", "api", "export"],
-            "quality_gates": list(domain_cfg.quality_gates.keys()),
-        }
-
-    return {"product": product}
-
-
-def _handle_list_products(domain: str) -> dict[str, Any]:
-    """List all configured products for a domain.
-
-    Returns both RAW and PROCESSED product types derived from the
-    domain's configuration.
-    """
-    try:
-        cfg = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(cfg, domain)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            actionable=True,
-        )
-
-    raw_product = {
-        "id": f"{domain}-raw",
-        "domain": domain,
-        "type": "raw",
-        "name": f"{domain} RAW Feed",
-        "source_count": len(domain_cfg.sources),
-        "extract_fields": list(getattr(domain_cfg, "extract_fields", [])),
-        "quality_gate_count": len(domain_cfg.quality_gates),
-        "variants": ["api_feed", "webhook", "bulk_export"],
-    }
-
-    processed_product = {
-        "id": f"{domain}-processed",
-        "domain": domain,
-        "type": "processed",
-        "name": f"{domain} PROCESSED Output",
-        "delivery_channel_count": len(
-            list(getattr(domain_cfg, "webhook_urls", [])) + ["smtp", "api", "export"]
-        ),
-        "delivery_gate_count": len(domain_cfg.delivery_gates),
-        "templates": ["digest", "report", "tutorial", "presentation"],
-    }
-
-    return {
-        "domain": domain,
-        "products": [raw_product, processed_product],
-        "count": 2,
     }
 
 
@@ -7194,6 +6867,16 @@ from autoinfo.mcp.context import _validate_source_type as _validate_source_type
 from autoinfo.mcp.context import _validate_url as _validate_url
 from autoinfo.mcp.context import _with_job_db as _with_job_db
 from autoinfo.mcp.context import logger as logger
+from autoinfo.mcp.tools.config_admin import (
+    _handle_get_domain_webhooks as _handle_get_domain_webhooks,
+)
+from autoinfo.mcp.tools.config_admin import _handle_get_gate_config as _handle_get_gate_config
+from autoinfo.mcp.tools.config_admin import _handle_get_product as _handle_get_product
+from autoinfo.mcp.tools.config_admin import _handle_list_products as _handle_list_products
+from autoinfo.mcp.tools.config_admin import (
+    _handle_set_domain_webhooks as _handle_set_domain_webhooks,
+)
+from autoinfo.mcp.tools.config_admin import _handle_set_gate_config as _handle_set_gate_config
 from autoinfo.mcp.tools.kb_lifecycle import (
     _handle_calculate_freshness_score as _handle_calculate_freshness_score,
 )

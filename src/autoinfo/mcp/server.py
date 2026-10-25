@@ -36,8 +36,6 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from autoinfo import __version__
-from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.config import (
     SOURCE_KEY_ENV_VARS,
     ConfigNotFoundError,
@@ -68,128 +66,6 @@ from autoinfo.mcp.errors import ErrorCode, error_response, success_response
 # These are plain (sync) functions so they can be tested without an async
 # test harness.  The ``call_tool`` handler wraps them in ``TextContent``.
 # ---------------------------------------------------------------------------
-
-
-def _handle_health_check() -> dict[str, Any]:
-    """Quick status ping.
-
-    Returns a canonical success envelope whose ``data`` is a **structured**
-    object (``status`` / ``version`` / ``tools_count``) — never an opaque
-    text blob.  Per ADR-0005 (T-S-09), this is the intentional exception to
-    the text-payload metadata rule: there is no text payload to label, so no
-    ``content_type``/``length`` metadata is emitted.  Text-format tools
-    (``get_prometheus_metrics``, ``get_feeds``) carry the metadata block
-    instead.
-    """
-    return success_response(
-        {
-            "status": "ok",
-            "version": __version__,
-            "tools_count": len([name for name in globals() if name.startswith("_handle_")]),
-        }
-    )
-
-
-def _handle_get_tool_count() -> dict[str, Any]:
-    """Return the number of registered MCP tools."""
-    return {
-        "tools_count": len([name for name in globals() if name.startswith("_handle_")]),
-    }
-
-
-def _handle_diagnose_system() -> dict[str, Any]:
-    """Comprehensive system diagnostics — llm, sources, disk, db."""
-    result: dict[str, Any] = {
-        "llm": {"configured": False},
-        "sources": {"count": 0, "items": []},
-        "disk": {},
-        "db": {"exists": False},
-        "fallback_health": {
-            "configured": False,
-            "count": 0,
-            "entries": [],
-            "primary": {
-                "model": "",
-                "provider": "",
-                "reasoning_model": False,
-                "json_mode": False,
-            },
-        },
-    }
-
-    # -- Config -----------------------------------------------------------
-    config_path = None
-    try:
-        from autoinfo.config import get_config_path, llm_fallback_health, load_config
-
-        config_path = get_config_path()
-        if config_path:
-            config = load_config(config_path)
-            result["llm"] = {
-                "configured": True,
-                "provider": config.llm.provider,
-                "model": config.llm.model,
-                "key_configured": bool(
-                    config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY")
-                ),
-            }
-            result["fallback_health"] = llm_fallback_health(config)
-            sources = []
-            for d in config.domains:
-                if d.active:
-                    for s in d.sources:
-                        sources.append(
-                            {
-                                "name": s.name,
-                                "type": s.type,
-                                "domain": d.name,
-                                "quality_tier": s.quality_tier,
-                                "tos_classification": s.tos_classification,
-                            }
-                        )
-            result["sources"] = {"count": len(sources), "items": sources}
-    except Exception as exc:
-        result["config_error"] = str(exc)
-
-    # -- Disk -------------------------------------------------------------
-    collections_dir = Path("collections")
-    knowledge_dir = Path("knowledge")
-    result["disk"] = {
-        "collections_dir_exists": collections_dir.is_dir(),
-        "knowledge_dir_exists": knowledge_dir.is_dir(),
-    }
-
-    # -- DB ---------------------------------------------------------------
-    db_path = knowledge_dir.parent / "autoinfo.db"
-    result["db"] = {"exists": db_path.is_file()}
-
-    # -- Health Score -----------------------------------------------------
-    # Adapt MCP result schema to match doctor.py calculate_health_score contract:
-    #   llm.status (ok/error) from llm.key_configured
-    #   config.status (ok/error) from config_path presence
-    #   sources list from sources.items
-    llm_cfg = result["llm"]
-    llm_status = "ok" if llm_cfg.get("key_configured", False) else "error"
-    config_status = "ok" if config_path and "config_error" not in result else "error"
-    source_items: Any = result["sources"].get("items", [])
-    if not isinstance(source_items, list):
-        source_items = []
-
-    health_dict: dict[str, Any] = {
-        "python": {"status": "ok"},
-        "config": {"status": config_status},
-        "llm": {
-            "status": llm_status,
-            "key_configured": llm_cfg.get("key_configured", False),
-        },
-        "sources": [{"status": "ok"} for _ in source_items],
-    }
-    result["health_score"] = calculate_health_score(health_dict)
-
-    # -- Phase Detection --------------------------------------------------
-    result["phase"] = _detect_phase(result, config_path, collections_dir, knowledge_dir)
-
-    return _canonicalize(result)
 
 
 def _handle_collect_sources(
@@ -537,31 +413,6 @@ def _handle_get_processing_progress(domain: str = "", job_id: str = "") -> dict[
     return {"status": "idle", "is_complete": True}
 
 
-# ---------------------------------------------------------------------------
-# Discovery tools
-# ---------------------------------------------------------------------------
-
-
-def _handle_list_domains() -> dict[str, Any]:
-    """List all configured domains with source/topic counts."""
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domains = []
-    for d in config.domains:
-        domains.append(
-            {
-                "name": d.name,
-                "active": d.active,
-                "source_count": len(d.sources),
-                "topic_count": len(d.topics),
-            }
-        )
-    return {"domains": domains, "count": len(domains)}
-
-
 # -- Platform metadata (static) -------------------------------------------
 
 # Curated metadata for well-known source types; anything missing from this
@@ -584,321 +435,6 @@ def _handle_list_domains() -> dict[str, Any]:
 
 # Source settings keys that carry a credential directly, satisfying the
 # requirement without any env var.
-
-
-def _handle_list_available_platforms() -> dict[str, Any]:
-    """List all supported source platform types with descriptions."""
-    return {"platforms": PLATFORMS}
-
-
-def _handle_activate_domain(name: str) -> dict[str, Any]:
-    """Activate a domain (set domain.active = True)."""
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(config, name)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
-            actionable=True,
-        )
-
-    if domain_cfg.active:
-        return {
-            "domain": name,
-            "active": True,
-            "message": f"Domain '{name}' is already active",
-        }
-
-    domain_cfg.active = True
-    mcp_context._save_config(config)
-    return {
-        "domain": name,
-        "active": True,
-        "message": f"Domain '{name}' activated",
-    }
-
-
-def _handle_deactivate_domain(name: str) -> dict[str, Any]:
-    """Deactivate a domain (set domain.active = False)."""
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(config, name)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
-            actionable=True,
-        )
-
-    if not domain_cfg.active:
-        return {
-            "domain": name,
-            "active": False,
-            "message": f"Domain '{name}' is already inactive",
-        }
-
-    domain_cfg.active = False
-    mcp_context._save_config(config)
-    return {
-        "domain": name,
-        "active": False,
-        "message": f"Domain '{name}' deactivated",
-    }
-
-
-def _handle_remove_domain(name: str, confirm: bool = True, actor: str = "agent") -> dict[str, Any]:
-    """Remove a domain configuration. Preserves all collected data on disk."""
-    if not confirm:
-        return error_response(
-            code=ErrorCode.CONFIRMATION_REQUIRED,
-            message="This operation is destructive and requires confirmation. Pass confirm=True to proceed.",
-            actionable=True,
-        )
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(config, name)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
-            actionable=True,
-        )
-
-    config.domains.remove(domain_cfg)
-    mcp_context._save_config(config)
-    return {"removed": True, "domain": name}
-
-
-def _handle_get_domain_config(name: str) -> dict[str, Any]:
-    """Return full domain config including sources, topics, extract_fields."""
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(config, name)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{name}' is not configured. Use add_domain(name='{name}') to create it.",
-            actionable=True,
-        )
-
-    sources = [
-        {
-            "name": s.name,
-            "type": s.type,
-            "url": s.url,
-            "quality_tier": s.quality_tier,
-            "tos_classification": s.tos_classification,
-            "requires_key": s.requires_key,
-        }
-        for s in domain_cfg.sources
-    ]
-    topics = [
-        {
-            "name": t.name,
-            "keywords": t.keywords,
-            "group": t.group,
-            "relevance_threshold": t.relevance_threshold,
-        }
-        for t in domain_cfg.topics
-    ]
-
-    return {
-        "domain": domain_cfg.name,
-        "active": domain_cfg.active,
-        "search_mode": domain_cfg.search_mode,
-        "extract_fields": domain_cfg.extract_fields,
-        "sources": sources,
-        "source_count": len(sources),
-        "topics": topics,
-        "topic_count": len(topics),
-    }
-
-
-def _handle_add_domain(name: str, description: str = "") -> dict[str, Any]:
-    """Create a new domain configuration (idempotent — returns existing config if domain already exists)."""
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(config, name)
-    if domain_cfg is not None:
-        return {
-            "domain": name,
-            "name": name,
-            "description": domain_cfg.description,
-            "sources": domain_cfg.sources,
-            "topics": domain_cfg.topics,
-            "active": domain_cfg.active,
-            "created": False,
-        }
-
-    from autoinfo.config import DomainConfig
-
-    new_domain = DomainConfig(name=name, description=description or "", active=True)
-    config.domains.append(new_domain)
-    mcp_context._save_config(config)
-    return {
-        "domain": name,
-        "name": name,
-        "description": description or "",
-        "sources": [],
-        "topics": [],
-        "active": True,
-        "created": True,
-    }
-
-
-def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
-    """Return the schema / structure for a given domain."""
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    domain_cfg = _find_domain(config, domain)
-    if domain_cfg is None:
-        return error_response(
-            code=ErrorCode.DOMAIN_NOT_FOUND,
-            message=f"Domain '{domain}' is not configured. Use add_domain(name='{domain}') to create it.",
-            actionable=True,
-        )
-
-    sources = [
-        {
-            "name": s.name,
-            "type": s.type,
-            "url": s.url,
-            "quality_tier": s.quality_tier,
-            "tos_classification": s.tos_classification,
-            "requires_key": s.requires_key,
-        }
-        for s in domain_cfg.sources
-    ]
-    topics = [{"name": t.name, "keywords": t.keywords} for t in domain_cfg.topics]
-
-    extract_fields_schema: dict[str, dict[str, str]] = {
-        "tl_dr": {"type": "string", "description": "One-sentence summary"},
-        "key_points": {"type": "array", "description": "Bullet-point key findings"},
-        "entities": {"type": "array", "description": "Extracted entities with types"},
-        "relevance_score": {"type": "number", "description": "Relevance 0-100"},
-    }
-
-    # Include any custom extract_fields from the domain config
-    for field_name in domain_cfg.extract_fields:
-        if field_name not in extract_fields_schema:
-            extract_fields_schema[field_name] = {
-                "type": "string",
-                "description": field_name.replace("_", " ").title(),
-            }
-
-    return {
-        "domain": domain,
-        "extract_fields": extract_fields_schema,
-        "output_templates": [
-            {
-                "name": "digest",
-                "description": "Scheduled knowledge digests",
-                "access_level": "free",
-            },
-            {
-                "name": "report",
-                "description": "Thematic structured reports",
-                "access_level": "free",
-            },
-            {"name": "tutorial", "description": "Learning path tutorials", "access_level": "free"},
-            {
-                "name": "presentation",
-                "description": "Slide-based presentations",
-                "access_level": "free",
-            },
-        ],
-        "topics": topics,
-        "sources": sources,
-    }
-
-
-def _handle_list_available_models() -> dict[str, Any]:
-    """List available LLM models from configuration.
-
-    Returns the full model pool: the primary model first, then every
-    configured fallback entry (``task: fallback:<model>``), then every
-    per-task model override (``task: <task name>``).  The primary entry
-    keeps its historical shape (task/provider/model/api_key_configured);
-    fallback and task entries are appended with additional fields
-    (``inherits_provider``, ``max_tokens``).  ``count`` always equals
-    ``len(models)``.
-    """
-    try:
-        config = mcp_context._load_config()
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to load the project configuration")
-
-    api_key_configured = bool(config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY"))
-
-    models: list[dict[str, Any]] = [
-        {
-            "task": "default",
-            "provider": config.llm.provider,
-            "model": config.llm.model,
-            "api_key_configured": api_key_configured,
-        },
-    ]
-
-    # Fallback chain entries — appended after the primary.  An empty
-    # provider means the entry inherits the primary provider at call time
-    # (call_with_fallback, llm.py:714-727); the key is inherited too.
-    for fb in config.llm.fallback:
-        models.append(
-            {
-                "task": f"fallback:{fb.model}",
-                "provider": fb.provider,
-                "model": fb.model,
-                "api_key_configured": bool(
-                    fb.api_key or config.llm.api_key or os.environ.get("AUTOINFO_LLM_API_KEY")
-                ),
-                "inherits_provider": not bool(fb.provider),
-            }
-        )
-
-    # Per-task model overrides — appended last.  Tasks inherit the
-    # primary provider/model/key when their own fields are empty.
-    for task_name, tc in config.llm.tasks.items():
-        models.append(
-            {
-                "task": task_name,
-                "provider": tc.provider,
-                "model": tc.model,
-                "api_key_configured": api_key_configured,
-                "inherits_provider": not bool(tc.provider),
-                "max_tokens": tc.max_tokens,
-            }
-        )
-
-    return {"models": models, "count": len(models)}
-
-
-def _handle_get_effective_llm_config(task: str | None = None) -> dict[str, Any]:
-    """Resolve effective LLM config for a given task."""
-    from autoinfo.config import get_effective_llm_config
-
-    try:
-        return _canonicalize(get_effective_llm_config(task=task))
-    except Exception as exc:
-        return _error_from_exc(exc, "Failed to resolve the effective LLM configuration")
 
 
 # ---------------------------------------------------------------------------
@@ -4889,6 +4425,23 @@ from autoinfo.mcp.tools.scheduling import (
 )
 from autoinfo.mcp.tools.scheduling import _handle_remove_schedule as _handle_remove_schedule
 from autoinfo.mcp.tools.scheduling import _handle_run_schedules as _handle_run_schedules
+from autoinfo.mcp.tools.system import _handle_activate_domain as _handle_activate_domain
+from autoinfo.mcp.tools.system import _handle_add_domain as _handle_add_domain
+from autoinfo.mcp.tools.system import _handle_deactivate_domain as _handle_deactivate_domain
+from autoinfo.mcp.tools.system import _handle_diagnose_system as _handle_diagnose_system
+from autoinfo.mcp.tools.system import _handle_get_domain_config as _handle_get_domain_config
+from autoinfo.mcp.tools.system import _handle_get_domain_schema as _handle_get_domain_schema
+from autoinfo.mcp.tools.system import (
+    _handle_get_effective_llm_config as _handle_get_effective_llm_config,
+)
+from autoinfo.mcp.tools.system import _handle_get_tool_count as _handle_get_tool_count
+from autoinfo.mcp.tools.system import _handle_health_check as _handle_health_check
+from autoinfo.mcp.tools.system import _handle_list_available_models as _handle_list_available_models
+from autoinfo.mcp.tools.system import (
+    _handle_list_available_platforms as _handle_list_available_platforms,
+)
+from autoinfo.mcp.tools.system import _handle_list_domains as _handle_list_domains
+from autoinfo.mcp.tools.system import _handle_remove_domain as _handle_remove_domain
 
 if __name__ == "__main__":
     import argparse

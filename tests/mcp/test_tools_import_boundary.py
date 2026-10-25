@@ -29,6 +29,10 @@ from tests.mcp._source_corpus import MCP_DIR
 
 TOOLS_DIR = MCP_DIR / "tools"
 CONTEXT_PY = MCP_DIR / "context.py"
+# The plan allows exactly two escape hatches from a tools module back into the
+# hub, keyed by the imported symbol (not the enclosing function):
+#   misc.py   -> call_tool      (validation scenarios re-enter the dispatcher)
+#   system.py -> _TOOL_DISPATCH (health/tool-count read the live registry)
 FUNCTION_BODY_IMPORT_ALLOWLIST = {
     ("misc.py", "call_tool"),
     ("system.py", "_TOOL_DISPATCH"),
@@ -63,7 +67,7 @@ class _ServerImportVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.function_stack: list[str] = []
         self.module_scope: list[int] = []
-        self.function_body: list[tuple[int, str]] = []
+        self.function_body: list[tuple[int, str, list[str]]] = []
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self.function_stack.append(node.name)
@@ -87,8 +91,9 @@ class _ServerImportVisitor(ast.NodeVisitor):
             return
         if not self.function_stack:
             self.module_scope.append(node.lineno)
-        else:
-            self.function_body.append((node.lineno, self.function_stack[-1]))
+            return
+        names = [alias.name for alias in node.names]
+        self.function_body.append((node.lineno, self.function_stack[-1], names))
 
 
 def _module_level_names(table: symtable.SymbolTable) -> set[str]:
@@ -129,13 +134,16 @@ def test_no_module_scope_server_imports() -> None:
 
 
 def test_function_body_server_imports_are_limited_to_dispatch() -> None:
-    violations: list[tuple[str, int, str]] = []
+    violations: list[tuple[str, int, str, str]] = []
     for path in _tool_paths():
         visitor = _ServerImportVisitor()
         visitor.visit(ast.parse(path.read_text(encoding="utf-8")))
-        for line, function in visitor.function_body:
-            if (path.name, function) not in FUNCTION_BODY_IMPORT_ALLOWLIST:
-                violations.append((path.name, line, function))
+        for line, function, names in visitor.function_body:
+            for name in names:
+                if path.name == "autoinfo.mcp" and name == "server":
+                    violations.append((path.name, line, function, name))
+                elif (path.name, name) not in FUNCTION_BODY_IMPORT_ALLOWLIST:
+                    violations.append((path.name, line, function, name))
     assert violations == [], (
         "function-body autoinfo.mcp.server imports are allowed only for "
         f"{sorted(FUNCTION_BODY_IMPORT_ALLOWLIST)}: {violations}"

@@ -28,10 +28,11 @@ from pathlib import Path
 from typing import Any
 
 from autoinfo.config import get_config_path, load_config
-from autoinfo.output import PRODUCT_TEMPLATES, generate_digest, generate_report, localize_content
+from autoinfo.output import generate_digest, generate_report, localize_content
+from autoinfo.output.templating import PRODUCT_TEMPLATES as PRODUCT_TEMPLATES
 from autoinfo.translation_qa import refine_translation, run_back_translation_pipeline
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 # Kinds that are never sent to the translator.
 PROTECTED_KINDS: frozenset[str] = frozenset(

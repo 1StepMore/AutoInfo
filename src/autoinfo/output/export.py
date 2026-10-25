@@ -48,7 +48,7 @@ from autoinfo import db
 from autoinfo.config import load_config
 from autoinfo.kb import SQLiteIndex
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 
 def export_kb(
@@ -89,17 +89,21 @@ def export_kb(
         If *format* is not one of the supported values, or if
         *format* is ``"sitemap"`` and *base_url* is not provided.
     """
-    from autoinfo.output import (  # noqa: PLC0415 - package seam
-        _get_domain_source_configs,
-        datetime,
-        get_config_path,
-        timezone,
-    )
+    from autoinfo.output import _get_domain_source_configs, datetime, get_config_path, timezone
 
     if format not in (
-        "markdown", "json", "sqlite", "pdf", "rss",
-        "csv", "graphml", "agent", "bundle", "sitemap",
-        "epub", "mobi",
+        "markdown",
+        "json",
+        "sqlite",
+        "pdf",
+        "rss",
+        "csv",
+        "graphml",
+        "agent",
+        "bundle",
+        "sitemap",
+        "epub",
+        "mobi",
     ):
         raise ValueError(
             f"Unsupported export format: '{format}'. "
@@ -110,9 +114,7 @@ def export_kb(
     # --- Locate project root & KB paths ------------------------------------
     config_path = get_config_path()
     if config_path is None or not config_path.is_file():
-        raise FileNotFoundError(
-            "No configuration found. Run 'autoinfo init' first."
-        )
+        raise FileNotFoundError("No configuration found. Run 'autoinfo init' first.")
 
     # config_path is <project>/.autoinfo/config.yaml
     # project_root is <project>/
@@ -157,8 +159,7 @@ def export_kb(
             if url in url_to_source:
                 s = url_to_source[url]
                 entry["attribution"] = (
-                    f"Source: {s.name} ({s.url}) — "
-                    f"Tier {s.quality_tier}, {s.tos_classification}"
+                    f"Source: {s.name} ({s.url}) — Tier {s.quality_tier}, {s.tos_classification}"
                 )
             else:
                 entry["attribution"] = ""
@@ -356,23 +357,25 @@ def _export_json(
         if file_path and Path(file_path).is_file():
             content = Path(file_path).read_text(encoding="utf-8")
 
-        export_data.append({
-            "entry_id": e.get("entry_id"),
-            "title": e.get("title"),
-            "domain": e.get("domain"),
-            "tier": e.get("tier"),
-            "source_url": e.get("source_url"),
-            "source_type": e.get("source_type"),
-            "source_platform": e.get("source_platform"),
-            "attribution": e.get("attribution", ""),
-            "collected_at": e.get("collected_at"),
-            "summary": e.get("summary"),
-            "tags": _parse_tags_list(e.get("tags")),
-            "relevance_score": e.get("relevance_score"),
-            "dedup_status": e.get("dedup_status"),
-            "file_path": file_path,
-            "content": content,
-        })
+        export_data.append(
+            {
+                "entry_id": e.get("entry_id"),
+                "title": e.get("title"),
+                "domain": e.get("domain"),
+                "tier": e.get("tier"),
+                "source_url": e.get("source_url"),
+                "source_type": e.get("source_type"),
+                "source_platform": e.get("source_platform"),
+                "attribution": e.get("attribution", ""),
+                "collected_at": e.get("collected_at"),
+                "summary": e.get("summary"),
+                "tags": _parse_tags_list(e.get("tags")),
+                "relevance_score": e.get("relevance_score"),
+                "dedup_status": e.get("dedup_status"),
+                "file_path": file_path,
+                "content": content,
+            }
+        )
 
     out_path.write_text(
         json.dumps(export_data, ensure_ascii=False, indent=2),
@@ -492,10 +495,7 @@ def _export_pdf(
     try:
         import markdown as md_lib  # noqa: PLC0415
     except (ImportError, ModuleNotFoundError) as exc:
-        raise ValueError(
-            "markdown library is not installed.\n"
-            f"Original error: {exc}"
-        ) from exc
+        raise ValueError(f"markdown library is not installed.\nOriginal error: {exc}") from exc
 
     out_name = f"autoinfo-export-{domain_label}-{timestamp}.pdf"
     out_path = export_dir / out_name
@@ -528,8 +528,7 @@ def _export_pdf(
         html_parts.append("<h1>AutoInfo Knowledge Base Export</h1>")
 
     html_parts.append(
-        f"<p class='meta'>Exported: {html.escape(timestamp)}  |  "
-        f"Entries: {len(entries)}</p>"
+        f"<p class='meta'>Exported: {html.escape(timestamp)}  |  Entries: {len(entries)}</p>"
     )
 
     for e in entries:
@@ -566,14 +565,10 @@ def _export_pdf(
 
         summary = e.get("summary", "")
         if summary:
-            html_parts.append(
-                f"<p><strong>Summary:</strong> {html.escape(summary[:1000])}</p>"
-            )
+            html_parts.append(f"<p><strong>Summary:</strong> {html.escape(summary[:1000])}</p>")
 
         if content:
-            content_html = md_lib.markdown(
-                content, extensions=["fenced_code", "tables"]
-            )
+            content_html = md_lib.markdown(content, extensions=["fenced_code", "tables"])
             html_parts.append(f"<div class='entry-content'>{content_html}</div>")
 
         html_parts.append("</div>")
@@ -654,8 +649,8 @@ def _export_epub(
         ``entries_count``, ``domain``, ``success``, plus ``data_b64``
         (base64-encoded EPUB bytes).
     """
-    from autoinfo.output import _domain_display_name  # noqa: PLC0415 - stays in autoinfo.output
     from autoinfo.output.ebook import render_epub  # noqa: PLC0415
+    from autoinfo.output.entries import _domain_display_name as _domain_display_name
 
     chapters: list[tuple[str, str]] = []
     for e in entries:
@@ -714,8 +709,8 @@ def _export_mobi(
         ``entries_count``, ``domain``, ``success``, plus ``data_b64``
         (base64-encoded MOBI bytes).
     """
-    from autoinfo.output import _domain_display_name  # noqa: PLC0415 - stays in autoinfo.output
     from autoinfo.output.ebook import render_epub, render_mobi  # noqa: PLC0415
+    from autoinfo.output.entries import _domain_display_name as _domain_display_name
 
     chapters: list[tuple[str, str]] = []
     for e in entries:
@@ -778,7 +773,7 @@ def _export_rss(
         Standard export result dict with keys: ``format``, ``path``,
         ``entries_count``, ``domain``, ``success``.
     """
-    from autoinfo.output import datetime, timezone  # noqa: PLC0415 - package seam
+    from autoinfo.output import datetime, timezone
 
     # Create domain subdirectory under exports/
     domain_dir = export_dir / (domain if domain else "all")
@@ -794,13 +789,9 @@ def _export_rss(
     title_text = domain_label if domain_label != "*" else "AutoInfo Knowledge Base"
     ET.SubElement(channel, "title").text = f"AutoInfo - {title_text}"
     ET.SubElement(channel, "link").text = "https://autoinfo.ai"
-    ET.SubElement(channel, "description").text = (
-        f"Knowledge base feed for {title_text}"
-    )
+    ET.SubElement(channel, "description").text = f"Knowledge base feed for {title_text}"
     ET.SubElement(channel, "language").text = "en"
-    ET.SubElement(channel, "lastBuildDate").text = format_datetime(
-        datetime.now(timezone.utc)
-    )
+    ET.SubElement(channel, "lastBuildDate").text = format_datetime(datetime.now(timezone.utc))
     ET.SubElement(channel, "generator").text = "AutoInfo v1.5"
 
     for e in entries:
@@ -882,7 +873,7 @@ def _export_sitemap(
     ValueError
         If *base_url* is not provided.
     """
-    from autoinfo.output import datetime, timezone  # noqa: PLC0415 - package seam
+    from autoinfo.output import datetime, timezone
     from autoinfo.output.seo import generate_sitemap
 
     if not base_url:
@@ -916,12 +907,14 @@ def _export_sitemap(
             except (ValueError, TypeError):
                 pass
 
-        sitemap_entries.append({
-            "url": url,
-            "lastmod": lastmod,
-            "changefreq": "weekly",
-            "priority": 0.8,
-        })
+        sitemap_entries.append(
+            {
+                "url": url,
+                "lastmod": lastmod,
+                "changefreq": "weekly",
+                "priority": 0.8,
+            }
+        )
 
     xml = generate_sitemap(
         domain=domain or "",
@@ -1020,7 +1013,7 @@ def _export_graphml(
     """
     from xml.etree import ElementTree as _ET  # noqa: N814
 
-    from autoinfo.output import KBStore  # noqa: PLC0415 - package seam
+    from autoinfo.output import KBStore
 
     store = KBStore()
     data = store.export_knowledge_graph(domain=domain or "")
@@ -1108,25 +1101,24 @@ def _export_agent_json(
     domain_label: str,
 ) -> dict[str, Any]:
     """Export KB entries as agent-native JSON-LD (``@type: KnowledgeBaseExport``)."""
-    from autoinfo.output import (  # noqa: PLC0415 - package seam
-        _JSONLD_BASE_EXPORT,
-        datetime,
-        timezone,
-    )
+    from autoinfo.output import datetime, timezone
+    from autoinfo.output.contracts import _JSONLD_BASE_EXPORT as _JSONLD_BASE_EXPORT
 
     agent_entries: list[dict[str, Any]] = []
     for e in entries[:200]:
-        agent_entries.append({
-            "entry_id": e.get("entry_id", ""),
-            "title": e.get("title", ""),
-            "summary": e.get("summary", ""),
-            "source_url": e.get("source_url", ""),
-            "source_platform": e.get("source_platform", ""),
-            "tier": e.get("tier", ""),
-            "tags": _parse_tags_list(e.get("tags")),
-            "relevance_score": e.get("relevance_score"),
-            "collected_at": e.get("collected_at", ""),
-        })
+        agent_entries.append(
+            {
+                "entry_id": e.get("entry_id", ""),
+                "title": e.get("title", ""),
+                "summary": e.get("summary", ""),
+                "source_url": e.get("source_url", ""),
+                "source_platform": e.get("source_platform", ""),
+                "tier": e.get("tier", ""),
+                "tags": _parse_tags_list(e.get("tags")),
+                "relevance_score": e.get("relevance_score"),
+                "collected_at": e.get("collected_at", ""),
+            }
+        )
 
     output: dict[str, Any] = {
         **_JSONLD_BASE_EXPORT,
@@ -1135,8 +1127,14 @@ def _export_agent_json(
         "entries": agent_entries,
         "schema_summary": {
             "fields": [
-                "entry_id", "title", "summary", "source_url",
-                "source_platform", "tier", "tags", "relevance_score",
+                "entry_id",
+                "title",
+                "summary",
+                "source_url",
+                "source_platform",
+                "tier",
+                "tags",
+                "relevance_score",
                 "collected_at",
             ],
             "entry_schema_version": "1.0",
@@ -1181,7 +1179,7 @@ def _export_bundle(
         Standard export result dict with additional key ``formats`` listing
         the formats actually included in the bundle.
     """
-    from autoinfo.output import _build_bundle_pdf  # noqa: PLC0415 - package seam
+    from autoinfo.output import _build_bundle_pdf
 
     out_name = f"bundle-{domain_label}-{timestamp}.zip"
     out_path = export_dir / out_name
@@ -1192,7 +1190,6 @@ def _export_bundle(
     pdf_skipped = False
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-
         # --- 1. JSON data ----------------------------------------------------
         json_content = _build_bundle_json(entries)
         zf.writestr("data.json", json_content)
@@ -1204,9 +1201,7 @@ def _export_bundle(
         included_formats.append("md")
 
         # --- 3. Metadata YAML ------------------------------------------------
-        yaml_content = _build_bundle_metadata(
-            domain_label, timestamp, entries, included_formats
-        )
+        yaml_content = _build_bundle_metadata(domain_label, timestamp, entries, included_formats)
         zf.writestr("metadata.yaml", yaml_content)
         included_formats.append("yaml")
 
@@ -1238,8 +1233,7 @@ def _export_bundle(
     }
     if pdf_skipped:
         result["warning"] = (
-            "PDF was skipped — weasyprint not available. "
-            "Install with: pip install weasyprint"
+            "PDF was skipped — weasyprint not available. Install with: pip install weasyprint"
         )
     # Empty-state guard (issue #301): signal when the bundle has no entries
     # so callers never silently ship an empty deliverable.
@@ -1259,23 +1253,25 @@ def _build_bundle_json(entries: list[dict[str, Any]]) -> str:
         if file_path and Path(file_path).is_file():
             content = Path(file_path).read_text(encoding="utf-8")
 
-        export_data.append({
-            "entry_id": e.get("entry_id"),
-            "title": e.get("title"),
-            "domain": e.get("domain"),
-            "tier": e.get("tier"),
-            "source_url": e.get("source_url"),
-            "source_type": e.get("source_type"),
-            "source_platform": e.get("source_platform"),
-            "attribution": e.get("attribution", ""),
-            "collected_at": e.get("collected_at"),
-            "summary": e.get("summary"),
-            "tags": json.loads(e.get("tags", "[]")) if e.get("tags") else [],
-            "relevance_score": e.get("relevance_score"),
-            "dedup_status": e.get("dedup_status"),
-            "file_path": file_path,
-            "content": content,
-        })
+        export_data.append(
+            {
+                "entry_id": e.get("entry_id"),
+                "title": e.get("title"),
+                "domain": e.get("domain"),
+                "tier": e.get("tier"),
+                "source_url": e.get("source_url"),
+                "source_type": e.get("source_type"),
+                "source_platform": e.get("source_platform"),
+                "attribution": e.get("attribution", ""),
+                "collected_at": e.get("collected_at"),
+                "summary": e.get("summary"),
+                "tags": json.loads(e.get("tags", "[]")) if e.get("tags") else [],
+                "relevance_score": e.get("relevance_score"),
+                "dedup_status": e.get("dedup_status"),
+                "file_path": file_path,
+                "content": content,
+            }
+        )
 
     return json.dumps(export_data, ensure_ascii=False, indent=2)
 
@@ -1363,16 +1359,12 @@ def _build_bundle_pdf(
     try:
         import weasyprint  # noqa: PLC0415
     except (ImportError, ModuleNotFoundError) as exc:
-        raise ValueError(
-            "weasyprint is not installed. PDF export requires weasyprint."
-        ) from exc
+        raise ValueError("weasyprint is not installed. PDF export requires weasyprint.") from exc
 
     try:
         import markdown as md_lib  # noqa: PLC0415
     except (ImportError, ModuleNotFoundError) as exc:
-        raise ValueError(
-            "markdown library is not installed."
-        ) from exc
+        raise ValueError("markdown library is not installed.") from exc
 
     # Build HTML document
     html_parts: list[str] = [
@@ -1402,8 +1394,7 @@ def _build_bundle_pdf(
         html_parts.append("<h1>AutoInfo Knowledge Base Export</h1>")
 
     html_parts.append(
-        f"<p class='meta'>Exported: {html.escape(timestamp)}  |  "
-        f"Entries: {len(entries)}</p>"
+        f"<p class='meta'>Exported: {html.escape(timestamp)}  |  Entries: {len(entries)}</p>"
     )
 
     for e in entries:
@@ -1416,7 +1407,7 @@ def _build_bundle_pdf(
             if raw.startswith("---"):
                 end_idx = raw.find("---", 3)
                 if end_idx != -1:
-                    content = raw[end_idx + 3:].strip()
+                    content = raw[end_idx + 3 :].strip()
                 else:
                     content = raw
             else:
@@ -1440,14 +1431,10 @@ def _build_bundle_pdf(
 
         summary = e.get("summary", "")
         if summary:
-            html_parts.append(
-                f"<p><strong>Summary:</strong> {html.escape(summary[:1000])}</p>"
-            )
+            html_parts.append(f"<p><strong>Summary:</strong> {html.escape(summary[:1000])}</p>")
 
         if content:
-            content_html = md_lib.markdown(
-                content, extensions=["fenced_code", "tables"]
-            )
+            content_html = md_lib.markdown(content, extensions=["fenced_code", "tables"])
             html_parts.append(f"<div class='entry-content'>{content_html}</div>")
 
         html_parts.append("</div>")
@@ -1468,9 +1455,7 @@ def _build_bundle_pdf(
         )
     except Exception as exc:
         logger.error("Bundle PDF generation failed: %s", exc)
-        raise ValueError(
-            f"PDF generation failed: {exc}"
-        ) from exc
+        raise ValueError(f"PDF generation failed: {exc}") from exc
 
 
 # DDL for the entries table — used as fallback when no source DB exists

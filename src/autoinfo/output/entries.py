@@ -36,7 +36,7 @@ from typing import Any, Final
 
 import yaml
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 
 # ---------------------------------------------------------------------------
@@ -800,7 +800,7 @@ def _converge_near_duplicates(entries: list[dict[str, Any]]) -> list[dict[str, A
     order in which candidates are promoted to representatives.  Returns a
     NEW list; input dicts are never mutated and never dropped from the KB.
     """
-    from autoinfo.output import datetime  # noqa: PLC0415 - package seam
+    from autoinfo.output import datetime
 
     if not entries:
         return []
@@ -1089,7 +1089,7 @@ def _resolve_gloss_language(domain: str, default: str = "en") -> str:
     ``gloss_language`` (e.g. ``zh`` for Simplified Chinese); falls back to
     *default* (``en``) when unset.
     """
-    from autoinfo.output import get_config_path, load_config  # noqa: PLC0415 - package seam
+    from autoinfo.output import get_config_path, load_config
 
     try:
         config_path = get_config_path()
@@ -1126,11 +1126,7 @@ def _resolve_effective_language(language: str, domain: str, *, cross_domain: boo
     one domain's default across multiple domains: an explicit param wins,
     otherwise no filtering.
     """
-    from autoinfo.output import (  # noqa: PLC0415 - package seam
-        _seed_domain_default_language,
-        get_config_path,
-        load_config,
-    )
+    from autoinfo.output import _seed_domain_default_language, get_config_path, load_config
 
     if language:
         return language
@@ -1178,7 +1174,7 @@ def _seed_domain_default_language(domain: str) -> str:
     Returns ``""`` when the seed file is absent or carries no
     ``default_language``.
     """
-    from autoinfo.output import _DEMO_DOMAINS_DIR  # noqa: PLC0415 - package seam
+    from autoinfo.output.sources import _DEMO_DOMAINS_DIR as _DEMO_DOMAINS_DIR
 
     seed_path = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     if not seed_path.is_file():
@@ -1205,7 +1201,7 @@ def _cross_domain_shared_language(domains: list[str]) -> str:
     """
     if not domains:
         return ""
-    from autoinfo.output import _is_lang_learning_domain
+    from autoinfo.output.sources import _is_lang_learning_domain as _is_lang_learning_domain
 
     langs: set[str] = set()
     for d in domains:
@@ -1236,7 +1232,7 @@ def _get_domain_exclude_keywords(domain: str) -> list[str]:
     "no filtering".  The seed file is read once per call (tiny YAML); an
     absent file yields ``[]``.
     """
-    from autoinfo.output import get_config_path, load_config  # noqa: PLC0415 - package seam
+    from autoinfo.output import get_config_path, load_config
 
     config_path = get_config_path()
     if config_path is None or not config_path.is_file():
@@ -1279,7 +1275,7 @@ def _seed_domain_exclude_keywords(domain: str) -> list[str]:
     field still filter cross-domain noise without a config migration.
     Returns ``[]`` when the seed file is absent or unreadable.
     """
-    from autoinfo.output import _DEMO_DOMAINS_DIR  # noqa: PLC0415 - package seam
+    from autoinfo.output.sources import _DEMO_DOMAINS_DIR as _DEMO_DOMAINS_DIR
 
     seed_path = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     if not seed_path.is_file():
@@ -1300,7 +1296,7 @@ def _seed_domain_relevance_floor(domain: str) -> int:
     migration (same pattern as the exclude_keywords seed, #319).  Returns 0
     (disabled) when the seed file is absent or declares no floor.
     """
-    from autoinfo.output import _DEMO_DOMAINS_DIR  # noqa: PLC0415 - package seam
+    from autoinfo.output.sources import _DEMO_DOMAINS_DIR as _DEMO_DOMAINS_DIR
 
     seed_path = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     if not seed_path.is_file():
@@ -1327,7 +1323,7 @@ def _get_domain_relevance_floor(domain: str) -> int:
     declare-or-seed pattern as exclude_keywords (#319).  An explicitly
     declared value always wins.  Returns 0 (disabled) when unset everywhere.
     """
-    from autoinfo.output import get_config_path, load_config  # noqa: PLC0415 - package seam
+    from autoinfo.output import get_config_path, load_config
 
     config_path = get_config_path()
     if config_path and config_path.is_file():
@@ -1404,10 +1400,7 @@ def _filter_entries_by_domain_exclusions(
     curated/imported/promoted content and unseeded domains are unaffected).
     Returns the input unchanged when no domain declares exclusions or a floor.
     """
-    from autoinfo.output import (  # noqa: PLC0415 - package seam
-        _get_domain_exclude_keywords,
-        _get_domain_relevance_floor,
-    )
+    from autoinfo.output import _get_domain_exclude_keywords
 
     if not entries:
         return entries

@@ -39,9 +39,7 @@ from typing import Final
 
 ENV_VAR: Final[str] = "AUTOINFO_FAULT_INJECT"
 
-_SCOPES: Final[frozenset[str]] = frozenset(
-    {"digest", "group", "summary", "report"}
-)
+_SCOPES: Final[frozenset[str]] = frozenset({"digest", "group", "summary", "report"})
 _KINDS: Final[frozenset[str]] = frozenset(
     {"fail", "timeout", "truncate", "malformed_json", "empty"}
 )

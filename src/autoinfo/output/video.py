@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 # Directory containing the ported AutoMedia assets (themes + templates).
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "video_assets")

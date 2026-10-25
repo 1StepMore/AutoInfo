@@ -20,18 +20,20 @@ import base64
 import html
 import json
 import logging
-import os
 import re
-import time
 import uuid
-from dataclasses import dataclass, field
 from datetime import date, timedelta
 from datetime import datetime as datetime
 from datetime import timezone as timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Final, Literal, cast
-from urllib.parse import urlsplit
+from typing import TYPE_CHECKING, Any, Final, cast
 
+from autoinfo.output.audience import _AUDIENCE_DESCRIPTIONS as _AUDIENCE_DESCRIPTIONS
+from autoinfo.output.audience import _REPORT_AUDIENCE_DESCRIPTIONS as _REPORT_AUDIENCE_DESCRIPTIONS
+from autoinfo.output.audience import _REPORT_AUDIENCE_PROMPTS as _REPORT_AUDIENCE_PROMPTS
+from autoinfo.output.audience import _VALID_AUDIENCES as _VALID_AUDIENCES
+from autoinfo.output.audience import _VALID_REPORT_AUDIENCES as _VALID_REPORT_AUDIENCES
+from autoinfo.output.audience import _normalize_report_audience as _normalize_report_audience
 from autoinfo.output.audio import (
     DEFAULT_LOCAL_TTS_VOICE as DEFAULT_LOCAL_TTS_VOICE,
 )
@@ -62,6 +64,35 @@ from autoinfo.output.audio import (
 from autoinfo.output.audio import (
     _strip_markdown as _strip_markdown,
 )
+from autoinfo.output.contracts import _DELIVERY_GATES_BYPASS as _DELIVERY_GATES_BYPASS
+from autoinfo.output.contracts import _JSONLD_BASE_EXPORT as _JSONLD_BASE_EXPORT
+from autoinfo.output.contracts import _JSONLD_DIGEST as _JSONLD_DIGEST
+from autoinfo.output.contracts import _JSONLD_PRESENTATION as _JSONLD_PRESENTATION
+from autoinfo.output.contracts import _JSONLD_TUTORIAL as _JSONLD_TUTORIAL
+from autoinfo.output.contracts import _PRODUCT_ANALYSIS_FIELDS as _PRODUCT_ANALYSIS_FIELDS
+from autoinfo.output.contracts import DeliveryOutput as DeliveryOutput
+from autoinfo.output.contracts import ReportData as ReportData
+from autoinfo.output.contracts import ReportSection as ReportSection
+from autoinfo.output.contracts import StaleSourceError as StaleSourceError
+from autoinfo.output.contracts import _DeliveryGatesBypass as _DeliveryGatesBypass
+from autoinfo.output.gates import _MIN_PRODUCT_CONTENT_CHARS as _MIN_PRODUCT_CONTENT_CHARS
+from autoinfo.output.gates import _MIN_PRODUCT_HEADINGS as _MIN_PRODUCT_HEADINGS
+from autoinfo.output.gates import _MIN_SUBSTANTIVE_SUMMARY_CHARS as _MIN_SUBSTANTIVE_SUMMARY_CHARS
+from autoinfo.output.gates import _PRODUCT_JUDGE_ENABLED as _PRODUCT_JUDGE_ENABLED
+from autoinfo.output.gates import _SYNTHETIC_ENTRY_MARKERS as _SYNTHETIC_ENTRY_MARKERS
+from autoinfo.output.gates import _apply_delivery_gates as _apply_delivery_gates
+from autoinfo.output.gates import _apply_min_content_guard as _apply_min_content_guard
+from autoinfo.output.gates import _build_product_judge_prompt as _build_product_judge_prompt
+from autoinfo.output.gates import _escalate_product_judge_prompt as _escalate_product_judge_prompt
+from autoinfo.output.gates import _is_substantive_entry as _is_substantive_entry
+from autoinfo.output.gates import _llm_key_available as _llm_key_available
+from autoinfo.output.gates import _parse_product_judge_verdict as _parse_product_judge_verdict
+from autoinfo.output.gates import _product_body_text_len as _product_body_text_len
+from autoinfo.output.gates import _product_heading_count as _product_heading_count
+from autoinfo.output.gates import _product_judge_enabled as _product_judge_enabled
+from autoinfo.output.gates import _resolve_delivery_gate_configs as _resolve_delivery_gate_configs
+from autoinfo.output.gates import _run_product_judge as _run_product_judge
+from autoinfo.output.gates import _sections_from_rendered_body as _sections_from_rendered_body
 from autoinfo.output.grouping import (
     _SOURCE_TYPE_THEME_LABEL as _SOURCE_TYPE_THEME_LABEL,
 )
@@ -197,6 +228,55 @@ from autoinfo.output.render import (
 from autoinfo.output.render import (
     is_no_data_product as is_no_data_product,
 )
+from autoinfo.output.report import (
+    _DEDICATED_PRODUCT_PROMPT_MAX_FINDING_CHARS as _DEDICATED_PRODUCT_PROMPT_MAX_FINDING_CHARS,
+)
+from autoinfo.output.report import (
+    _DEDICATED_PRODUCT_PROMPT_MAX_FINDINGS as _DEDICATED_PRODUCT_PROMPT_MAX_FINDINGS,
+)
+from autoinfo.output.report import (
+    _DEDICATED_PRODUCT_PROMPT_MAX_SUMMARY_CHARS as _DEDICATED_PRODUCT_PROMPT_MAX_SUMMARY_CHARS,
+)
+from autoinfo.output.report import _GLUED_BULLET_SEP as _GLUED_BULLET_SEP
+from autoinfo.output.report import _RETRY_BACKOFF_SECONDS as _RETRY_BACKOFF_SECONDS
+from autoinfo.output.report import _RETRY_DETAIL_CHAR_BUDGET as _RETRY_DETAIL_CHAR_BUDGET
+from autoinfo.output.report import _RETRY_MAX_ATTEMPTS as _RETRY_MAX_ATTEMPTS
+from autoinfo.output.report import _RETRY_MAX_DETAIL_ENTRIES as _RETRY_MAX_DETAIL_ENTRIES
+from autoinfo.output.report import _RETRY_MAX_ENTRY_SUMMARY_CHARS as _RETRY_MAX_ENTRY_SUMMARY_CHARS
+from autoinfo.output.report import _build_product_sections_prompt as _build_product_sections_prompt
+from autoinfo.output.report import _build_report_entries_detail as _build_report_entries_detail
+from autoinfo.output.report import _build_report_synthesis_prompt as _build_report_synthesis_prompt
+from autoinfo.output.report import _call_llm_for_report_synthesis as _call_llm_for_report_synthesis
+from autoinfo.output.report import _generate_executive_summary as _generate_executive_summary
+from autoinfo.output.report import _llm_json_extract as _llm_json_extract
+from autoinfo.output.report import _parse_report_markdown as _parse_report_markdown
+from autoinfo.output.report import _report_data_to_dict as _report_data_to_dict
+from autoinfo.output.report import (
+    _report_product_fields_for_family as _report_product_fields_for_family,
+)
+from autoinfo.output.report import _split_glued_bullets as _split_glued_bullets
+from autoinfo.output.sources import _DEMO_DOMAINS_DIR as _DEMO_DOMAINS_DIR
+from autoinfo.output.sources import _GENERIC_PLATFORMS as _GENERIC_PLATFORMS
+from autoinfo.output.sources import _MATCHABLE_SOURCE_TYPES as _MATCHABLE_SOURCE_TYPES
+from autoinfo.output.sources import _REF_LANG_LEARNING_DOMAINS as _REF_LANG_LEARNING_DOMAINS
+from autoinfo.output.sources import _derive_source_label as _derive_source_label
+from autoinfo.output.sources import _filter_drifted_entries as _filter_drifted_entries
+from autoinfo.output.sources import _host_matches_source as _host_matches_source
+from autoinfo.output.sources import _is_lang_learning_domain as _is_lang_learning_domain
+from autoinfo.output.sources import _is_source_active_in_config as _is_source_active_in_config
+from autoinfo.output.sources import _label_entries as _label_entries
+from autoinfo.output.templating import _PRODUCT_H1_WORDS as _PRODUCT_H1_WORDS
+from autoinfo.output.templating import FORMAT_TO_VARIANT as FORMAT_TO_VARIANT
+from autoinfo.output.templating import PRODUCT_TEMPLATES as PRODUCT_TEMPLATES
+from autoinfo.output.templating import TEMPLATE_PATH as TEMPLATE_PATH
+from autoinfo.output.templating import ProductTemplate as ProductTemplate
+from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
+from autoinfo.output.templating import _html_autoescape as _html_autoescape
+from autoinfo.output.templating import _jinja_env as _jinja_env
+from autoinfo.output.templating import _product_h1_word as _product_h1_word
+from autoinfo.output.templating import _resolve_digest_product_type as _resolve_digest_product_type
+from autoinfo.output.templating import _resolve_report_product_type as _resolve_report_product_type
+from autoinfo.output.templating import list_output_templates as list_output_templates
 from autoinfo.output.tutorial import (
     _build_tutorial_json_prompt as _build_tutorial_json_prompt,
 )
@@ -233,10 +313,6 @@ from autoinfo.output.tutorial import (
 
 if TYPE_CHECKING:
     from autoinfo.config import SourceConfig  # noqa: F811
-    from autoinfo.llm import LLMExtractor
-    from autoinfo.quality import QualityResult
-
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, TemplateNotFound
 
 from autoinfo.config import Config as Config
 from autoinfo.config import get_config_path as get_config_path
@@ -305,7 +381,6 @@ logger = logging.getLogger(__name__)
 # Demo-domain seed directory (issue #319): the same seed ``init`` reads when
 # scaffolding a domain.  Used as the exclude_keywords fallback so existing
 # projects whose runtime config predates the field still filter noise.
-_DEMO_DOMAINS_DIR = Path(__file__).resolve().parent.parent / "data" / "domains"
 
 # Generic theme labels that never name a meaningful report section (issue #9).
 # They come from auto-discovery keyword fragments (e.g. ``new``, ``year``,
@@ -389,10 +464,6 @@ def _fire_agent_notification(event: str, output: Any, product_id: str) -> None:
 # constant FIRST (before "uuid") to keep @context/@type/uuid as the leading
 # keys — that key order is part of the serialized output contract.
 
-_JSONLD_DIGEST: dict[str, str] = {
-    "@context": "https://autoinfo.ai/schemas/knowledge-digest-v1",
-    "@type": "KnowledgeDigest",
-}
 
 # Optional per-product analysis keys of the digest JSON-LD shape (spec §2.4,
 # todo 7; surfaced into the agent payload by _render_agent_json, todo 22;
@@ -411,61 +482,11 @@ _JSONLD_DIGEST: dict[str, str] = {
 
 # Per-product analysis fields shared by the agent JSON-LD payload
 # (_render_agent_json) and the KB metadata persistence (_persist_product_analysis_to_kb).
-_PRODUCT_ANALYSIS_FIELDS: tuple[str, ...] = (
-    "implications",
-    "risks",
-    "action_required",
-    "key_metrics",
-)
-
-_JSONLD_TUTORIAL: dict[str, str] = {
-    "@context": "https://autoinfo.ai/schemas/knowledge-tutorial-v1",
-    "@type": "KnowledgeTutorial",
-}
-
-_JSONLD_PRESENTATION: dict[str, str] = {
-    "@context": "https://autoinfo.ai/schemas/knowledge-presentation-v1",
-    "@type": "KnowledgePresentation",
-}
-
-_JSONLD_BASE_EXPORT: dict[str, str] = {
-    "@context": "https://autoinfo.ai/schemas/knowledge-base-export-v1",
-    "@type": "KnowledgeBaseExport",
-}
 
 
 # ---------------------------------------------------------------------------
 # Delivery gate output container
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class DeliveryOutput:
-    """Output from a product generation run, extended with delivery gate results.
-
-    When :func:`generate_digest` or :func:`generate_report` is called with
-    *delivery_gate_configs* explicitly provided, the function returns a
-    :class:`DeliveryOutput` instead of a plain ``str``.  Existing callers
-    that do not pass *delivery_gate_configs* continue to receive a plain
-    ``str`` (backward compatible).
-    """
-
-    output: str
-    gate_results: dict[str, "QualityResult"] = field(default_factory=dict)
-    delivery_blocked: bool = False
-    delivery_format: str = ""
-    warnings: list[str] = field(default_factory=list)
-
-
-class StaleSourceError(ValueError):
-    """Raised when freshness filtering removes all candidate entries for a
-    digest/report, so the product would be an empty shell.
-
-    Subclasses :class:`ValueError` so the CLI and MCP layers (which catch
-    ``ValueError`` around ``generate_digest`` / ``generate_report``) surface a
-    clean, actionable error instead of silently producing a product with no
-    content (backup issue #52).
-    """
 
 
 # ---------------------------------------------------------------------------
@@ -579,55 +600,6 @@ from autoinfo.output.entries import (  # noqa: E402
 )
 from autoinfo.output.entries import _user_source_label as _user_source_label  # noqa: E402
 from autoinfo.output.entries import _warn_cjk_leak as _warn_cjk_leak  # noqa: E402
-
-
-class _DeliveryGatesBypass:
-    """Sentinel type for explicitly bypassing delivery-gate resolution."""
-
-
-_DELIVERY_GATES_BYPASS: Final = _DeliveryGatesBypass()
-
-
-def _resolve_delivery_gate_configs(
-    domain: str,
-    delivery_gate_configs: dict[str, dict[str, Any]] | _DeliveryGatesBypass | None,
-) -> dict[str, dict[str, Any]] | None:
-    """Resolve the effective delivery-gate config for *domain*.
-
-    - An explicit dict is used as-is.
-    - The ``_DELIVERY_GATES_BYPASS`` sentinel resolves to ``None`` (gates
-      bypassed, plain ``str`` output).
-    - ``None`` resolves from the project config: the domain's
-      ``delivery_gates`` first, falling back to the global
-      ``delivery_gates``.  Returns ``None`` when the config carries no
-      delivery gates (backward-compatible plain ``str`` output).
-    """
-    if delivery_gate_configs is _DELIVERY_GATES_BYPASS:
-        return None
-    if delivery_gate_configs is not None:
-        # Both guards passed: not the sentinel, not None -> provably a dict.
-        return cast(dict[str, dict[str, Any]], delivery_gate_configs)
-    try:
-        cfg_path = get_config_path()
-        if cfg_path is None:
-            return None
-        cfg = load_config(cfg_path)
-    except Exception:
-        return None
-    domain_cfg = next((d for d in cfg.domains if d.name == domain), None)
-    gates = domain_cfg.delivery_gates if domain_cfg is not None else {}
-    if not gates:
-        gates = cfg.delivery_gates
-    if not gates:
-        return None
-    return {
-        name: {
-            "enabled": dgc.enabled,
-            "action_on_failure": dgc.action_on_failure,
-        }
-        for name, dgc in gates.items()
-    }
-
 
 # ---------------------------------------------------------------------------
 # D1 section detection on the rendered body (issue #298 — layer 2)
@@ -876,140 +848,12 @@ def _sanitize_report_urls(text: str, allowed_urls: set[str]) -> str:
     return _REPORT_MD_LINK_RE.sub(_replace, text)
 
 
-def _sections_from_rendered_body(
-    body: str, output_format: str, product_type: str
-) -> dict[str, str] | None:
-    """Detect D1 sections from the RENDERED body.
-
-    Returns a ``{key_findings, summary, recommendations}`` mapping for
-    markdown/html bodies (possibly all-empty when the body is empty), or
-    ``None`` for formats that cannot be parsed (json/agent/audio/...).
-    """
-    if output_format not in ("markdown", "html"):
-        return None
-    sections = _sections_from_headings(body, product_type)
-    return _apply_format_sections(sections, product_type)
-
-
 # Minimum content substance for a PROCESSED markdown/html product (issue #298).
-_MIN_PRODUCT_CONTENT_CHARS = 200
-_MIN_PRODUCT_HEADINGS = 1
-
-
-def _product_body_text_len(body: str, output_format: str) -> int:
-    """Length of the rendered body's visible text (tags stripped for html)."""
-    if output_format == "html":
-        return len(re.sub(r"<[^>]+>", " ", body).strip())
-    return len(body.strip())
-
-
-def _product_heading_count(body: str, output_format: str) -> int:
-    """Number of headings in the rendered body (md ``#`` or html ``<hN>``)."""
-    if output_format == "html":
-        return len(re.findall(r"<h[1-6][^>]*>", body, re.IGNORECASE))
-    return len(re.findall(r"^#{1,6}\s+", body, re.MULTILINE))
 
 
 # ---------------------------------------------------------------------------
 # LLM product judge (issue #298 — layer 3, optional)
 # ---------------------------------------------------------------------------
-_PRODUCT_JUDGE_ENABLED = True  # env AUTOINFO_PRODUCT_JUDGE=0 disables
-
-
-def _product_judge_enabled() -> bool:
-    raw = os.environ.get("AUTOINFO_PRODUCT_JUDGE", "")
-    if raw.strip().lower() in ("0", "false", "no", "off"):
-        return False
-    return _PRODUCT_JUDGE_ENABLED
-
-
-def _llm_key_available(llm_config: Config | None) -> bool:
-    """True when an LLM API key is resolvable (config or environment)."""
-    if llm_config is not None and (llm_config.llm.api_key or "").strip():
-        return True
-    if os.environ.get("AUTOINFO_LLM_API_KEY", "").strip():
-        return True
-    try:
-        cfg_path = get_config_path()
-        if cfg_path is not None and cfg_path.is_file():
-            cfg = load_config(cfg_path)
-            if (cfg.llm.api_key or "").strip():
-                return True
-    except Exception:
-        pass
-    return False
-
-
-def _build_product_judge_prompt(body: str, output_format: str) -> str:
-    return render_prompt("product_judge", output_format=output_format, body=body)
-
-
-def _escalate_product_judge_prompt(prompt: str, reason: str) -> str:
-    return (
-        prompt + f"\n\nA previous review found the body inadequate: {reason}. "
-        "Re-review carefully and return the same JSON verdict shape."
-    )
-
-
-def _parse_product_judge_verdict(response: Any) -> tuple[bool, str] | None:
-    """Parse the judge's JSON verdict; ``None`` when unparseable."""
-    content = getattr(response, "content", None)
-    if content is None:
-        content = response
-    if isinstance(content, str):
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError:
-            return None
-    elif isinstance(content, dict):
-        data = content
-    else:
-        return None
-    if not isinstance(data, dict) or "ok" not in data:
-        return None
-    return bool(data["ok"]), str(data.get("reason") or "")
-
-
-def _run_product_judge(
-    body: str,
-    output_format: str,
-    product_type: str,
-    llm_config: Config | None = None,
-) -> tuple[bool, str]:
-    """LLM-judge the rendered body for non-trivial content.
-
-    Returns ``(passed, reason)``.  Fails open on any error (no key, network,
-    parse) so the judge never blocks a product on infrastructure failure.
-    Retries once with escalating context before failing.
-    """
-    if not _product_judge_enabled():
-        return True, ""
-    if product_type.upper() != "PROCESSED" or output_format not in ("markdown", "html"):
-        return True, ""
-    if not _llm_key_available(llm_config):
-        return True, ""
-    try:
-        prompt = _build_product_judge_prompt(body, output_format)
-        for attempt in range(2):
-            response = call_with_fallback(
-                [{"role": "user", "content": prompt}],
-                config=llm_config,
-                task="product_judge",
-                json_mode=True,
-            )
-            verdict = _parse_product_judge_verdict(response)
-            if verdict is not None:
-                ok, reason = verdict
-                if ok:
-                    return True, ""
-                if attempt == 0:
-                    prompt = _escalate_product_judge_prompt(prompt, reason)
-                    continue
-                return False, reason
-        return False, "judge returned no verdict"
-    except Exception:
-        logger.debug("Product judge skipped (fail-open)", exc_info=True)
-        return True, ""
 
 
 #: An entry counts as usable source when it carries a ``source_url`` or a real
@@ -1020,298 +864,17 @@ def _run_product_judge(
 #: ``Entry A/B``, ``x``, ``y``. Every one of those is a test artifact.
 #: The architecture already makes provenance mandatory for a 01-Raw entry, so
 #: this reuses that rule rather than inventing a second one.
-_MIN_SUBSTANTIVE_SUMMARY_CHARS = 40
 
 #: Source/title markers that identify a synthetic test fixture rather than
 #: collected material. Matched case-insensitively against title and source_url.
 #: The tier-matrix fixtures spell their name two ways -- ``KB Tier Matrix``
 #: (spaced) in the title and ``kb-tier-matrix.autoinfo.dev`` (hyphenated) in the
 #: URL -- so both forms must be listed or one of them slips through.
-_SYNTHETIC_ENTRY_MARKERS = (
-    "kb tier matrix",
-    "kb-tier-matrix",
-    "autoinfo.dev",
-    "test entry",
-    "placeholder entry",
-)
-
-
-def _is_substantive_entry(entry: dict[str, Any]) -> bool:
-    """Return True when *entry* carries material a product could honestly report.
-
-    Issue #446: a domain whose entire knowledge base is one synthetic
-    tier-matrix fixture (``summary: ''``, ``source_url`` on a reserved test
-    host) still passes a ``if not entries`` check, so synthesis would be asked
-    to write an Executive Summary with nothing to draw on. Counting entries
-    cannot see that; checking whether they carry material can.
-
-    Against the authoritative store (``autoinfo.db`` — 1821 entries, 23 domains)
-    this blocks 1 domain: ``default``, whose only two entries are the literal
-    rows ``x`` and ``y`` with empty summaries and no URL.
-
-    An earlier claim that it blocked 9 domains and that a fabricated
-    "OpenAI Jalapeño" chip motivated it is withdrawn — that chip is a real
-    collected entry (techcrunch, 2026-08-25). The 9-domain figure came from
-    reading the ``knowledge/`` file tree, which holds one file for some domains,
-    instead of the database the pipeline actually reads.
-    """
-    title = str(entry.get("title") or "").strip()
-    summary = str(entry.get("summary") or "").strip()
-    url = str(entry.get("source_url") or "").strip()
-
-    probe = f"{title} {url}".lower()
-    if any(marker in probe for marker in _SYNTHETIC_ENTRY_MARKERS):
-        return False
-    return bool(url) or len(summary) >= _MIN_SUBSTANTIVE_SUMMARY_CHARS
-
-
-def _apply_min_content_guard(
-    result: DeliveryOutput,
-    entries: list[dict[str, Any]],
-    product_type: str,
-) -> DeliveryOutput:
-    """Force the blocked flag when a PROCESSED product has no usable source.
-
-    Layer 1 min-content guard (issue #298): a product with zero usable entries
-    after filtering must never be silently shipped as an empty shell.
-
-    Issue #446 extends it: zero *substantive* entries is the same failure with
-    a worse disguise. Counting entries alone let a domain whose only knowledge
-    base row is a synthetic test fixture ship eight products full of invented
-    facts.
-    """
-    if product_type == "RAW":
-        return result
-
-    def _block(reason: str) -> DeliveryOutput:
-        result.delivery_blocked = True
-        if not any("min-content guard" in w for w in result.warnings):
-            result.warnings.append(f"min-content guard: {reason}")
-        return result
-
-    if not entries:
-        return _block("0 usable entries after filtering")
-
-    substantive = sum(1 for entry in entries if _is_substantive_entry(entry))
-    if substantive == 0:
-        return _block(
-            f"0 of {len(entries)} entr(ies) carry substantive source material "
-            "(empty summary or synthetic test fixture); synthesis would have to "
-            "invent content — collect real material before generating"
-        )
-    return result
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
-
-def _apply_delivery_gates(
-    rendered_output: str,
-    output_format: str,
-    entries: list[dict[str, Any]],
-    context: dict[str, Any],
-    product_type: str,
-    delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
-    fallback_render_fn: Callable[[], str] | None = None,
-    llm_config: Config | None = None,
-) -> DeliveryOutput:
-    """Run D1-D3 delivery gates on rendered output.
-
-    Parameters
-    ----------
-    rendered_output:
-        The rendered output string (markdown, html, or json).
-    output_format:
-        The format of the rendered output (``"markdown"``, ``"html"``,
-        ``"json"``).
-    entries:
-        List of KB entry dicts used to produce the output.
-    context:
-        Digest or report context dict.  May contain ``llm_synthesis``
-        (for D1 completeness checks).
-    product_type:
-        ``"PROCESSED"`` or ``"RAW"``.  RAW skips all delivery gates.
-    delivery_gate_configs:
-        Optional dict of ``{gate_name: config_dict}``.  When ``None``,
-        no gates are run and the output is returned as-is.
-    fallback_render_fn:
-        Optional callable that re-renders the output as markdown.
-        Invoked when D2 fails with ``action="fallback"``.
-    llm_config:
-        Optional :class:`Config` for the LLM product judge (layer 3).
-
-    Returns
-    -------
-    DeliveryOutput
-        Contains the (possibly modified) output, gate results, and
-        delivery metadata (blocked flag, warnings).
-    """
-    if delivery_gate_configs is None:
-        return DeliveryOutput(
-            output=rendered_output,
-            gate_results={},
-            delivery_format=output_format,
-        )
-
-    # Deferred imports to avoid circular dependencies
-    from autoinfo.quality import QualityResult, run_delivery_gates  # noqa: PLC0415, F401
-
-    llm_synthesis: dict[str, Any] = context.get("llm_synthesis", {})
-
-    # D1 completeness is checked against the RENDERED body (issue #298): a
-    # body that is empty/garbled but whose synthesis dict is non-empty must
-    # fail D1.  Fall back to the synthesis dict only when the body cannot be
-    # parsed (json/agent/audio/...).
-    body_sections = _sections_from_rendered_body(rendered_output, output_format, product_type)
-    if body_sections is not None:
-        key_findings: Any = body_sections.get("key_findings", "")
-        summary: Any = body_sections.get("summary", "")
-        recommendations: Any = body_sections.get("recommendations", "")
-    else:
-        key_findings = llm_synthesis.get("key_findings", [])
-        summary = llm_synthesis.get("executive_summary", "")
-        recommendations = llm_synthesis.get("recommendations", [])
-
-    # Build product_output dict expected by run_delivery_gates
-    product_output: dict[str, Any] = {
-        "product_type": product_type,
-        "format": output_format,
-        "body": rendered_output,
-        "key_findings": key_findings,
-        "summary": summary,
-        "recommendations": recommendations,
-        "entries": entries,
-    }
-
-    gate_results = run_delivery_gates(product_output, context, delivery_gate_configs)
-    warnings: list[str] = []
-    delivery_blocked = False
-    output = rendered_output
-    final_format = output_format
-
-    # --- D1: Completeness -----------------------------------------------
-    d1_result = gate_results.get("D1-ProductCompleteness")
-    if d1_result is not None and not d1_result.passed:
-        action = d1_result.details.get("action", "block")
-        if action == "block":
-            error_detail = d1_result.details.get("error", "incomplete product")
-            logger.warning("Delivery blocked by D1: %s", error_detail)
-            delivery_blocked = True
-            warnings.append(f"D1 blocked: {error_detail}")
-
-    # --- D2: Format integrity (ToS block + format fallback + content) ------
-    d2_result = gate_results.get("D2-FormatIntegrity")
-    if d2_result is not None:
-        # Content-substance check (issue #298): markdown/html bodies must
-        # carry a minimum amount of content and at least one heading — the
-        # quality.py D2 check treats markdown as "trivially valid".
-        _leak_detected = bool(
-            rendered_output
-            and output_format in ("markdown", "html")
-            and _contains_raw_llm_leak(rendered_output)
-        )
-        if (
-            d2_result.passed
-            and output_format in ("markdown", "html")
-            and product_type.upper() != "RAW"
-        ):
-            text_len = _product_body_text_len(rendered_output, output_format)
-            heading_count = _product_heading_count(rendered_output, output_format)
-            if (
-                text_len < _MIN_PRODUCT_CONTENT_CHARS
-                or heading_count < _MIN_PRODUCT_HEADINGS
-                or _leak_detected
-            ):
-                d2_result = QualityResult(
-                    gate_name="D2-FormatIntegrity",
-                    passed=False,
-                    score=0.0,
-                    flagged=True,
-                    details={
-                        "action": "fallback",
-                        "format": output_format,
-                        "valid": False,
-                        "error": (
-                            f"insufficient content: {text_len} chars, "
-                            f"{heading_count} headings"
-                            + ("; raw LLM error text detected" if _leak_detected else "")
-                        ),
-                        "content_chars": text_len,
-                        "heading_count": heading_count,
-                    },
-                )
-                gate_results["D2-FormatIntegrity"] = d2_result
-
-        # ToS-based block: RAW delivery from restricted/sensitive sources (F46)
-        if not d2_result.passed:
-            action = d2_result.details.get("action", "")
-            if action == "block":
-                error_detail = d2_result.details.get("error", "delivery blocked")
-                logger.warning("Delivery blocked by D2 (ToS): %s", error_detail)
-                delivery_blocked = True
-                warnings.append(f"D2 blocked (ToS): {error_detail}")
-
-        # Format integrity fallback (flagged with action="fallback")
-        if d2_result.flagged:
-            action = d2_result.details.get("action", "fallback")
-            if action == "fallback":
-                d2_error = d2_result.details.get("error", "format integrity issue")
-                if fallback_render_fn is not None and output_format != "markdown":
-                    logger.warning(
-                        "D2 fallback: %s — re-rendering as markdown",
-                        d2_error,
-                    )
-                    output = fallback_render_fn()
-                    final_format = "markdown"
-                    warnings.append("D2 fallback: re-rendered as markdown")
-                else:
-                    logger.warning("D2 flagged: %s", d2_error)
-                    warnings.append(f"D2 flagged: {d2_error}")
-            elif action == "flag" and d2_result.details.get("self_claim"):
-                # #445 escalation: an entity the body never states cannot block
-                # (measured ~27% false-positive rate), but it must reach the
-                # delivery log and the packaged gate report — a silent flag is
-                # not an escalation.
-                raw_escalation = d2_result.details.get("self_claim_orphan_entities")
-                escalation = (
-                    [str(entity) for entity in raw_escalation]
-                    if isinstance(raw_escalation, list)
-                    else []
-                )
-                logger.warning("D2 self-claim escalation: %s", "; ".join(escalation[:3]))
-                warnings.append(
-                    f"D2 escalation: {len(escalation)} ungrounded narrative entity "
-                    f"name(s), first: {escalation[0] if escalation else 'n/a'}"
-                )
-
-    # --- D3: Freshness (flag) -------------------------------------------
-    d3_result = gate_results.get("D3-Freshness")
-    if d3_result is not None and d3_result.flagged:
-        stale = d3_result.details.get("stale_count", 0)
-        total = d3_result.details.get("total_entries", 0)
-        if stale:
-            logger.warning("D3 flagged: %d/%d stale entries", stale, total)
-            warnings.append(f"D3: {stale}/{total} entries stale")
-
-    # --- LLM product judge (issue #298 — layer 3, optional) --------------
-    if not delivery_blocked:
-        judge_passed, judge_reason = _run_product_judge(
-            output, final_format, product_type, llm_config
-        )
-        if not judge_passed:
-            logger.warning("Product judge blocked: %s", judge_reason)
-            delivery_blocked = True
-            warnings.append(f"product judge blocked: {judge_reason}")
-
-    return DeliveryOutput(
-        output=output,
-        gate_results=gate_results,
-        delivery_blocked=delivery_blocked,
-        delivery_format=final_format,
-        warnings=warnings,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1487,19 +1050,6 @@ def _ref_sort_key(e: dict[str, Any]) -> tuple[bool, float]:
 # ``discount`` are deliberately NOT used, so a legit sentence ("pricing models
 # to promote value", "discounts up to 10% in regions") never fires.
 
-_REF_LANG_LEARNING_DOMAINS: frozenset[str] = frozenset(
-    {
-        "language-learning",
-        "english-learning",
-        "french-learning",
-        "spanish-learning",
-        "hindi-learning",
-        "korean-learning",
-        "portuguese-learning",
-        "russian-learning",
-        "italian-learning",
-    }
-)
 
 _REF_LOW_VALUE_PATTERNS: dict[str, tuple[str, ...]] = {
     "promo": (
@@ -1546,11 +1096,6 @@ _COMPILED_LOW_VALUE_PATTERNS: dict[str, list[re.Pattern[str]]] = {
 
 _REF_LOW_VALUE_CONTEXT_CHARS = 200
 _REF_LOW_VALUE_MIN_REAL_ENTRIES = 20
-
-
-def _is_lang_learning_domain(domain: str) -> bool:
-    """True when *domain* is a language-learning umbrella or sub-domain."""
-    return domain in _REF_LANG_LEARNING_DOMAINS
 
 
 def _low_value_signal_penalty(entry: dict[str, Any]) -> int:
@@ -1800,48 +1345,6 @@ def _resolve_content_preference(user_id: str) -> str:
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "data" / "templates"
 
-_jinja_env: Environment | None = None
-
-
-def _html_autoescape(template_name: str | None) -> bool:
-    """Enable Jinja2 autoescaping for HTML templates only.
-
-    Markdown templates (``*.md.j2``) keep autoescaping OFF so they can
-    emit raw Markdown freely.  HTML templates (``*.html.j2``) turn
-    autoescaping ON so user-supplied text is safely escaped; pre-rendered
-    HTML content is marked ``|safe`` in the template where needed.
-    """
-    if template_name is None:
-        return False
-    return template_name.endswith(".html.j2")
-
-
-def _get_jinja_env() -> Environment:
-    """Return a cached Jinja2 environment for the ``data/templates/`` directory.
-
-    The environment loads any template file in ``data/templates/`` —
-    including both ``.md.j2`` (Markdown) and ``.html.j2`` (HTML)
-    templates.  Autoescaping is enabled selectively for ``.html.j2``
-    files via :func:`_html_autoescape`.
-
-    Registers a ``product_summary`` filter that returns ``""`` for
-    empty/placeholder summaries (defense-in-depth for issue #294).
-    """
-    global _jinja_env
-    if _jinja_env is None:
-        _jinja_env = Environment(
-            loader=FileSystemLoader(str(_TEMPLATES_DIR)),
-            autoescape=_html_autoescape,
-            trim_blocks=True,
-            lstrip_blocks=True,
-        )
-        _jinja_env.filters["product_summary"] = lambda v: "" if _is_empty_summary(str(v)) else v
-        _jinja_env.filters["platform_name"] = _platform_name
-        _jinja_env.globals["user_source_label"] = _user_source_label
-        _jinja_env.globals["domain_display_name"] = _domain_display_name
-        _jinja_env.globals["entry_source_cell"] = _entry_source_cell
-    return _jinja_env
-
 
 # ---------------------------------------------------------------------------
 # ProductTemplate — template selection with domain overrides
@@ -1849,199 +1352,11 @@ def _get_jinja_env() -> Environment:
 
 # Maps output format strings to template variant suffixes.
 # E.g. format="markdown" → template variant "md" → digest.md.j2
-FORMAT_TO_VARIANT: dict[str, str] = {
-    "markdown": "md",
-    "html": "html",
-    "json": "json",
-    "pdf": "pdf",
-}
-
-
-class ProductTemplate:
-    """Wraps Jinja2 rendering with product metadata and template selection.
-
-    Template selection strategy (first match wins):
-
-    1. ``.autoinfo/templates/<domain>/<type>/<variant>.j2`` — domain-specific
-       override (e.g. ``.autoinfo/templates/medical-research/digest/weekly.j2``)
-    2. ``data/templates/<type>/<variant>.j2`` — built-in base template
-       (e.g. ``data/templates/digest/weekly.j2``)
-    3. ``data/templates/<type>/default.j2`` — default variant for that type
-    4. ``data/templates/<type>.<variant>.j2`` — legacy flat naming (backward
-       compatible with the existing ``digest.md.j2`` convention)
-
-    The *access_level* controls freemium gating (G15):
-
-    - ``"free"`` (default) — available to all users
-    - ``"premium"`` — requires active paid subscription
-    - ``"enterprise"`` — requires enterprise-tier subscription
-
-    Usage::
-
-        pt = ProductTemplate(domain="medical-research", access_level="premium")
-        output = pt.render("digest", "md", context_dict)
-    """
-
-    def __init__(
-        self,
-        domain: str,
-        access_level: Literal["free", "premium", "enterprise"] = "free",
-    ):
-        self.domain = domain
-        self.access_level: Literal["free", "premium", "enterprise"] = access_level
-        self._base_dir = _TEMPLATES_DIR
-        self._domain_dir = Path.cwd() / ".autoinfo" / "templates" / domain
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    def render(
-        self,
-        product_type: str,
-        variant: str,
-        data: dict[str, Any],
-    ) -> str:
-        """Render a template for *product_type* and *variant* with *data*.
-
-        Parameters
-        ----------
-        product_type:
-            Template category (e.g. ``"digest"``, ``"report"``,
-            ``"tutorial"``, ``"presentation"``).
-        variant:
-            Template variant (e.g. ``"md"``, ``"html"``, ``"weekly"``).
-        data:
-            Template context variables.
-
-        Returns
-        -------
-        str
-            Rendered template output.
-
-        Raises
-        ------
-        FileNotFoundError
-            If no matching template is found in any search path.
-        """
-        env = self._get_env()
-
-        candidates = [
-            f"{product_type}/{variant}.j2",
-            f"{product_type}/default.j2",
-            f"{product_type}.{variant}.j2",  # legacy flat naming
-            f"{product_type}.default.j2",  # legacy default
-        ]
-
-        for name in candidates:
-            try:
-                template = env.get_template(name)
-                return template.render(**data)
-            except TemplateNotFound:
-                continue
-
-        raise FileNotFoundError(
-            f"No template found for domain={self.domain}, type={product_type}, variant={variant}"
-        )
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _get_env(self) -> Environment:
-        """Create a Jinja2 environment that checks domain overrides first.
-
-        Uses :class:`ChoiceLoader` so that domain-specific templates (in
-        ``.autoinfo/templates/<domain>/``) are preferred over built-in
-        base templates (in ``data/templates/``).
-        """
-        loaders: list[FileSystemLoader] = []
-        if self._domain_dir.is_dir():
-            loaders.append(FileSystemLoader(str(self._domain_dir)))
-        loaders.append(FileSystemLoader(str(self._base_dir)))
-
-        if len(loaders) == 1:
-            # Only base dir exists — no ChoiceLoader needed
-            env = Environment(
-                loader=loaders[0],
-                autoescape=_html_autoescape,
-                trim_blocks=True,
-                lstrip_blocks=True,
-            )
-        else:
-            env = Environment(
-                loader=ChoiceLoader(loaders),
-                autoescape=_html_autoescape,
-                trim_blocks=True,
-                lstrip_blocks=True,
-            )
-        # Defense-in-depth for issue #294: normalize empty/placeholder summaries
-        env.filters["product_summary"] = lambda v: "" if _is_empty_summary(str(v)) else v
-        # Defense-in-depth for issue #302: map internal platform ids to display names
-        env.filters["platform_name"] = _platform_name
-        # Issue #91: never leak raw internal platform ids in References
-        env.globals["user_source_label"] = _user_source_label
-        # Issue #138: expose user-facing domain display names in footers
-        env.globals["domain_display_name"] = _domain_display_name
-        # Issue #167: source cell for product-table rows
-        env.globals["entry_source_cell"] = _entry_source_cell
-        return env
 
 
 # ---------------------------------------------------------------------------
 # Product template registry
 # ---------------------------------------------------------------------------
-
-PRODUCT_TEMPLATES: list[dict[str, Any]] = [
-    {
-        "name": "digest",
-        "description": "Scheduled knowledge digests",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "report",
-        "description": "Thematic structured reports",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "tutorial",
-        "description": "Learning path tutorials",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "presentation",
-        "description": "Slide-based presentations",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "premium-briefing",
-        "description": "Premium briefings with deep analysis and actionable insights",
-        "access_level": "premium",
-        "template": ProductTemplate(domain="*", access_level="premium"),
-    },
-    {
-        "name": "column",
-        "description": "Paid deep-dive column",
-        "access_level": "premium",
-        "template": ProductTemplate(domain="*", access_level="premium"),
-    },
-    {
-        "name": "magazine-digest",
-        "description": "Magazine-styled digest of per-title RSS",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "enterprise-briefing",
-        "description": "Enterprise briefings with custom data, white-labeling, and priority support",  # noqa: E501
-        "access_level": "enterprise",
-        "template": ProductTemplate(domain="*", access_level="enterprise"),
-    },
-]
 
 
 # Product family → H1 product word (issue #318, augmented #99).  Keyed by
@@ -2052,102 +1367,6 @@ PRODUCT_TEMPLATES: list[dict[str, Any]] = [
 # paths keep their historical titles byte-identical.  Issue #99: tutorial
 # (and presentation) were missing, so ``--product tutorial`` rendered
 # "# Weekly Digest — <domain>" — every registry family carries its word now.
-_PRODUCT_H1_WORDS: dict[str, str] = {
-    "digest": "Digest",
-    "report": "Report",
-    "tutorial": "Tutorial",
-    "presentation": "Presentation",
-    "premium-briefing": "Premium Briefing",
-    "column": "Column",
-    "magazine-digest": "Magazine Digest",
-    "enterprise-briefing": "Enterprise Briefing",
-}
-
-
-def _product_h1_word(family: str, default: str = "Digest") -> str:
-    """Return the H1 product word for a resolved product *family* (issue #318).
-
-    *family* is the template family name produced by
-    :func:`_resolve_digest_product_type` / :func:`_resolve_report_product_type`
-    (e.g. ``"premium-briefing"``).  Unknown families fall back to *default*
-    so the non-product paths keep their historical titles.
-    """
-    return _PRODUCT_H1_WORDS.get(family, default)
-
-
-def _resolve_digest_product_type(template: ProductTemplate, variant: str) -> str:
-    """Map a ProductTemplate instance back to its digest template family.
-
-    ``generate_digest``'s *product_template* parameter is expected to be a
-    row's ``template`` from :data:`PRODUCT_TEMPLATES`. Rows whose name has
-    a flat template file of its own (e.g. ``magazine-digest`` →
-    ``magazine-digest.md.j2``) render through their own family; every other
-    row — and any non-registry template — keeps the default ``digest``
-    family, so the base ``digest`` row (and report-family rows, should one
-    ever be passed) still render ``digest.md.j2`` unchanged.
-
-    This mirrors how ``generate_report`` derives ``product_type`` for the
-    ``column`` template (T40): the render site selects the family, and the
-    identity lookup is guarded by an on-disk existence check so a registry
-    name can never point at a template that does not exist (FileNotFoundError
-    trap from the T40 premium-briefing/enterprise-briefing rows).
-    """
-    for row in PRODUCT_TEMPLATES:
-        if row["template"] is template:
-            name = str(row["name"])
-            if (_TEMPLATES_DIR / f"{name}.{variant}.j2").is_file():
-                return name
-            return "digest"
-    return "digest"
-
-
-def _resolve_report_product_type(template: ProductTemplate, variant: str, report_type: str) -> str:
-    """Map a ProductTemplate instance back to its report template family.
-
-    ``generate_report``'s *product_template* parameter is expected to be a
-    row's ``template`` from :data:`PRODUCT_TEMPLATES`. Rows whose name has
-    a flat template file of its own (e.g. ``premium-briefing`` →
-    ``premium-briefing.md.j2``, ``enterprise-briefing`` →
-    ``enterprise-briefing.md.j2``, ``column`` → ``column.md.j2``) render
-    through their own family; every other row — and any non-registry
-    template — keeps the default ``report`` family, so the base ``report``
-    row still renders ``report.md.j2`` unchanged. The ``column`` report
-    type keeps its own family even for non-registry templates (T40
-    backward compatibility).
-
-    This mirrors the ``column`` selection previously hardcoded at the
-    render site and the guard-first identity lookup of
-    :func:`_resolve_digest_product_type`: the on-disk existence check
-    ensures a registry name can never point at a template that does not
-    exist (FileNotFoundError trap from the T40
-    premium-briefing/enterprise-briefing rows).
-    """
-    for row in PRODUCT_TEMPLATES:
-        if row["template"] is template:
-            name: str = row["name"]
-            if (_TEMPLATES_DIR / f"{name}.{variant}.j2").is_file():
-                return name
-            return "column" if report_type == "column" else "report"
-    return "column" if report_type == "column" else "report"
-
-
-def list_output_templates(domain: str = "") -> dict[str, Any]:
-    """List available output templates for a domain.
-
-    Parameters
-    ----------
-    domain:
-        Domain name filter (optional; empty string = all domains).
-
-    Returns
-    -------
-    dict with keys: ``domain``, ``templates``, ``count``.
-    """
-    templates = [
-        {"name": t["name"], "description": t["description"], "access_level": t["access_level"]}
-        for t in PRODUCT_TEMPLATES
-    ]
-    return {"domain": domain, "templates": templates, "count": len(templates)}
 
 
 # ---------------------------------------------------------------------------
@@ -2669,198 +1888,8 @@ def _get_domain_source_configs(domain: str) -> list["SourceConfig"]:
 # Generic source_platform values that carry no specific source identity (the
 # #325 re-derivation replaces these with the configured source name when a
 # hostname match can be made against the domain's source configs).
-_GENERIC_PLATFORMS = frozenset({"", "rss", "web", "api"})
 
 # SourceConfig types whose entries can be matched to a source by hostname.
-_MATCHABLE_SOURCE_TYPES = frozenset({"rss", "web", "webhook", "api", "pdf"})
-
-
-def _is_source_active_in_config(entry: dict[str, Any], domain: str) -> bool:
-    """True when *entry*'s source identity exists in the domain's CURRENT
-    config source list (selection-time source-drift filter, #119).
-
-    An entry's source identity is established by EITHER:
-
-    - HOST match: the entry's ``source_url`` host against each configured
-      ``SourceConfig.url`` host via :func:`_host_matches_source` (exact or
-      subdomain — ``arxiv.org`` ⊂ ``rss.arxiv.org``); OR
-    - PLATFORM match: ``source_platform`` against a configured source's
-      ``name``/``type`` — ONLY when the platform is non-generic.  Pre-#323
-      entries carry generic ``source_platform='rss'/'web'/'api'``
-      (:data:`_GENERIC_PLATFORMS`); a generic platform alone never matches
-      and never false-drops an entry whose host matches.
-
-    FAIL-OPEN: when the config is missing/unreadable,
-    :func:`_get_domain_source_configs` returns ``[]`` — the helper returns
-    ``True`` (keep everything, preserve today's output), never drops
-    everything.  Deterministic — no LLM.
-    """
-    source_url = str(entry.get("source_url") or "").strip()
-    platform = str(entry.get("source_platform") or "").strip()
-    configs = _get_domain_source_configs(domain)
-    if not configs:
-        return True
-    url_host = ""
-    if source_url:
-        try:
-            url_host = urlsplit(source_url).hostname or ""
-        except ValueError:
-            url_host = ""
-    for sc in configs:
-        sc_url = str(sc.url or "").strip()
-        if url_host and sc_url:
-            try:
-                sc_host = urlsplit(sc_url).hostname or ""
-            except ValueError:
-                sc_host = ""
-            if sc_host and _host_matches_source(url_host, sc_host):
-                return True
-        if platform and platform.lower() not in _GENERIC_PLATFORMS:
-            if platform.lower() == str(sc.name or "").strip().lower():
-                return True
-            if platform.lower() == str(sc.type or "").strip().lower():
-                return True
-    return False
-
-
-def _filter_drifted_entries(entries: list[dict[str, Any]], domain: str) -> list[dict[str, Any]]:
-    """Selection-time source-drift filter over an entry list (digest /
-    presentation paths, #119).
-
-    Entries whose source identity is absent from the domain's current config
-    source list are excluded at selection time — the KB entries themselves are
-    never deleted/archived (Wiki append-only).  FAIL-OPEN: an unreadable config
-    (``[]`` from :func:`_get_domain_source_configs`) excludes nothing.  Logs
-    one ``logger.info`` per excluded source name with the dropped count.
-    """
-    kept: list[dict[str, Any]] = []
-    dropped_by_source: dict[str, int] = {}
-    for entry in entries:
-        if not isinstance(entry, dict) or _is_source_active_in_config(entry, domain):
-            kept.append(entry)
-            continue
-        source_name = _derive_source_label(entry, domain) or str(
-            entry.get("source_platform") or entry.get("source_url") or "unknown"
-        )
-        dropped_by_source[source_name] = dropped_by_source.get(source_name, 0) + 1
-    for source_name, count in sorted(dropped_by_source.items()):
-        logger.info(
-            "Excluded %d drifted entr%s from source '%s' absent from domain "
-            "'%s' config (selection-time source-drift filter)",
-            count,
-            "y" if count == 1 else "ies",
-            source_name,
-            domain,
-        )
-    return kept
-
-
-def _host_matches_source(entry_host: str, sc_host: str) -> bool:
-    """True when an entry's URL host belongs to a configured source host.
-
-    Issue #325 data layer: RSS feed URLs are often on a different host than
-    the article links they carry (arXiv articles on ``arxiv.org`` vs the
-    ``rss.arxiv.org`` feed), so exact-equality host matching leaves stale
-    pre-#323 entries stuck on the generic ``(RSS)`` label.  Match when the
-    hosts are equal or one is a subdomain of the other (``arxiv.org`` ⊂
-    ``rss.arxiv.org``).  A bare substring match is rejected (``evil-arxiv.org``
-    must not match ``arxiv.org``).  Pure stdlib (urllib.parse only — no
-    tldextract dependency).
-    """
-    eh = (entry_host or "").lower().rstrip(".").lstrip("www1.").lstrip("www.")
-    sh = (sc_host or "").lower().rstrip(".").lstrip("www1.").lstrip("www.")
-    if not eh or not sh:
-        return False
-    if eh == sh:
-        return True
-    # Subdomain of each other (arXiv articles on arxiv.org vs the
-    # rss.arxiv.org feed host) — never a bare substring (evil-arxiv.org
-    # must not match arxiv.org).
-    if eh.endswith("." + sh) or sh.endswith("." + eh):
-        return True
-    return False
-
-
-def _derive_source_label(
-    entry: dict[str, Any],
-    domain: str,
-    *,
-    source_configs: list["SourceConfig"] | None = None,
-) -> str:
-    """Derive a specific source name for *entry* when its stored
-    ``source_platform`` is a generic placeholder (``rss``/``web``/``api`` or
-    empty) — issue #325.
-
-    Pre-#323 KB entries carry ``source_platform='rss'`` even for real sources
-    (TechCrunch, arXiv, 36Kr, …), so the References section rendered the
-    generic ``(RSS)`` label.  The #323 collector fix only affects newly
-    collected items; this re-derivation recovers the specific source name for
-    existing entries by matching the entry's ``source_url`` host against the
-    domain's configured source URLs.
-
-    Returns the derived source identifier (a source config ``name``) when a
-    match is found, otherwise returns the entry's stored ``source_platform``
-    unchanged.  Matching is deterministic — no LLM.
-    """
-    platform = str(entry.get("source_platform") or "").strip()
-    if platform.lower() not in _GENERIC_PLATFORMS:
-        return platform
-    source_url = str(entry.get("source_url") or "").strip()
-    if not source_url:
-        return platform
-    try:
-        url_host = urlsplit(source_url).hostname or ""
-    except ValueError:
-        return platform
-    if not url_host:
-        return platform
-    configs = source_configs if source_configs is not None else _get_domain_source_configs(domain)
-    for sc in configs:
-        if sc.type not in _MATCHABLE_SOURCE_TYPES:
-            continue
-        sc_url = str(sc.url or "").strip()
-        if not sc_url:
-            continue
-        try:
-            sc_host = urlsplit(sc_url).hostname or ""
-        except ValueError:
-            continue
-        # Host match (issue #325 data layer): exact or subdomain (arXiv
-        # articles on arxiv.org vs the rss.arxiv.org feed host) — never a
-        # bare substring.
-        if _host_matches_source(url_host, sc_host):
-            return sc.name.strip() or platform
-        # Feed-host mismatch (issue #325 WSJ blind spot): the article links
-        # live on a DIFFERENT host than the feed (WSJ feed on feeds.a.dj.com,
-        # articles on www.wsj.com / online.wsj.com — no subdomain relation).
-        # A source can declare its article hosts via settings.article_hosts;
-        # an entry whose URL host matches one derives the source name.
-        declared_hosts = (sc.settings or {}).get("article_hosts") or []
-        for declared in declared_hosts:
-            try:
-                declared_host = urlsplit(str(declared)).hostname or ""
-            except ValueError:
-                continue
-            if declared_host and _host_matches_source(url_host, declared_host):
-                return sc.name.strip() or platform
-    return platform
-
-
-def _label_entries(entries: list[dict[str, Any]], domain: str) -> list[dict[str, Any]]:
-    """Enrich each entry with a derived ``source_label`` (issue #325).
-
-    Adds ``source_label = _derive_source_label(entry, entry.get("domain",
-    domain))`` to every entry so every render surface (markdown entry table,
-    magazine byline/clusters, json/agent formats) shows the specific source
-    name instead of the generic ``(RSS)`` label for stale pre-#323 entries.
-    Per-entry own domain is used for cross-domain products.  Returns the
-    enriched list (entries are dicts, mutated in place).
-    """
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        entry["source_label"] = _derive_source_label(entry, str(entry.get("domain") or domain))
-    return entries
 
 
 def _build_attribution_footer(
@@ -4373,38 +3402,6 @@ def generate_digest(
 # Report generation — structured Jinja2 + LLM reports from KB entries
 # ---------------------------------------------------------------------------
 
-TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "data" / "templates" / "report.md.j2"
-
-
-@dataclass
-class ReportSection:
-    """A single themed section within a report."""
-
-    title: str
-    content: str
-    items: list[dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
-class ReportData:
-    """Full report data passed to the Jinja2 template."""
-
-    title: str
-    generated_at: str
-    domain: str
-    collection_id: str = ""
-    executive_summary: str = ""
-    key_findings: list[dict[str, Any]] = field(default_factory=list)
-    recommendations: list[str] = field(default_factory=list)
-    implications: list[str] = field(default_factory=list)
-    risks: list[dict[str, Any]] = field(default_factory=list)
-    action_required: list[str] = field(default_factory=list)
-    key_metrics: list[dict[str, Any]] = field(default_factory=list)
-    sections: list[ReportSection] = field(default_factory=list)
-    references: list[dict[str, Any]] = field(default_factory=list)
-    appendices: list[dict[str, Any]] = field(default_factory=list)
-    grouping_degradation_marker: str = ""
-
 
 def generate_report(
     domain: str,
@@ -5372,35 +4369,12 @@ _SOURCE_TYPE_THEME_LABELS: dict[str, str] = {
 }
 
 
-def _normalize_report_audience(target_audience: str) -> str:
-    """Validate and normalize target_audience for report/digest generation.
-
-    Returns the audience key if valid.  An empty or ``None``-like string
-    resolves to ``"general"`` (no error).  A non-empty invalid audience
-    raises :class:`ValueError` with a message naming the invalid value
-    and listing valid options — mirroring tutorial/presentation behavior
-    (issue #297).
-    """
-    if not target_audience:
-        return "general"
-    audience = target_audience.strip().lower()
-    if audience in _VALID_REPORT_AUDIENCES:
-        return audience
-    raise ValueError(
-        f"Invalid target_audience '{target_audience}'. "
-        f"Must be one of: {', '.join(sorted(_VALID_REPORT_AUDIENCES))}"
-    )
-
-
 # Bounded smaller-prompt retry budgets for the report synthesis (F3 fix,
 # round 1): the configured LLM endpoint returned EMPTY completions for
 # synthesis prompts ≳ ~11.9K chars (F3 size sweep: 11,908–12,827 → empty
 # 5/5; ≤10,734 → OK).  When the primary call comes back without a usable
 # executive summary, the synthesis re-calls with an entries-detail block
 # condensed to these budgets so the total prompt lands near ~5–7K chars.
-_RETRY_MAX_DETAIL_ENTRIES = 12
-_RETRY_MAX_ENTRY_SUMMARY_CHARS = 80
-_RETRY_DETAIL_CHAR_BUDGET = 4000
 
 # Round-2 (F3 re-verification): the endpoint's empty-completion behavior is
 # no longer size-gated — bad windows (~40–60 min) return genuine empty
@@ -5410,658 +4384,12 @@ _RETRY_DETAIL_CHAR_BUDGET = 4000
 # with a short sleep between attempts — long enough to bridge a flapping
 # endpoint window, short enough that one ``generate_report`` still completes.
 # Both bounds are injectable for tests (no real sleeps under pytest).
-_RETRY_MAX_ATTEMPTS = 4
-_RETRY_BACKOFF_SECONDS = 60.0
 
 # Budgets for the round-2 dedicated product-sections prompt: a small second
 # call (issued only for product families when the base synthesis succeeded
 # but the parsed result lacks the §2.4 sections) that carries the produced
 # executive summary + findings (bounded) so the total stays ~2–3.5K chars,
 # far below any prompt-size concern.
-_DEDICATED_PRODUCT_PROMPT_MAX_FINDINGS = 12
-_DEDICATED_PRODUCT_PROMPT_MAX_FINDING_CHARS = 200
-_DEDICATED_PRODUCT_PROMPT_MAX_SUMMARY_CHARS = 1000
-
-
-def _build_report_entries_detail(
-    entries: list[dict[str, Any]],
-    groupings: list[dict[str, Any]],
-    max_detail_entries: int = 40,
-    max_entry_summary_chars: int = 120,
-    detail_char_budget: int | None = None,
-    rmb_usd_rate: float | None = None,
-) -> str:
-    """Build the theme-grouped entry detail block embedded in the synthesis
-    prompt.
-
-    Defaults reproduce the original behavior exactly (40 highest-relevance
-    entries × 120-char summaries).  *detail_char_budget* caps the block's
-    total length; when the cap is hit, remaining entries are dropped and a
-    truncation note appended — used by the smaller-prompt retry in
-    :func:`_generate_executive_summary` so the prompt stays within the size
-    the configured LLM endpoint reliably answers.
-
-    *rmb_usd_rate* (config-driven, issue #203) appends the canonical USD
-    equivalent to RMB-denominated amounts in titles/summaries (``None`` reads
-    it from config).
-    """
-    if rmb_usd_rate is None:
-        rmb_usd_rate = _get_rmb_usd_rate()
-    ranked = sorted(
-        (e for g in groupings for e in g["entries"]),
-        key=lambda e: float(e.get("relevance_score") or 0.0),
-        reverse=True,
-    )[:max_detail_entries]
-    picked_ids = {id(e) for e in ranked}
-
-    detail_lines: list[str] = []
-    truncated = False
-    for g in groupings:
-        if truncated:
-            break
-        picked = [e for e in g["entries"] if id(e) in picked_ids]
-        for e in picked:
-            title, summary = _digest_entry_text(e, rmb_usd_rate)
-            line = f"- [{g['theme']}] {title or '(no title)'}: {summary[:max_entry_summary_chars]}"
-            # Issue #279: thread source_url into the synthesis context.
-            src = str(e.get("source_url") or "").strip()
-            if src:
-                line = f"{line} (Source: {src})"
-            if detail_char_budget is not None:
-                if len("\n".join(detail_lines + [line])) > detail_char_budget:
-                    truncated = True
-                    break
-            detail_lines.append(line)
-        if not truncated and len(picked) < len(g["entries"]):
-            detail_lines.append(
-                f"- [{g['theme']}] (+{len(g['entries']) - len(picked)} more entries in this theme)"
-            )
-    if truncated:
-        detail_lines.append("(further entries omitted for brevity)")
-    return "\n".join(detail_lines) or "(no entries)"
-
-
-def _build_report_synthesis_prompt(
-    entries_detail: str,
-    custom_instructions: str = "",
-    target_audience: str = "",
-    domains: list[str] | None = None,
-    product_family: str = "report",
-) -> str:
-    """Assemble the report-synthesis prompt.
-
-    Shared by the primary call and the truncated-prompt retry in
-    :func:`_generate_executive_summary` so both request and parse the same
-    structure (including the §2.4 product sections for product families).
-    """
-    cross_domain_prefix = ""
-    if domains and len(domains) >= 2:
-        cross_domain_prefix = (
-            f"You are synthesizing information from {len(domains)} domains: "
-            f"{', '.join(domains)}. Present a cohesive view that connects "
-            "findings across domains.\n\n"
-        )
-
-    prompt = (
-        cross_domain_prefix + "Write a report synthesis analyzing the following knowledge base "
-        "entries (grouped by theme). Use the actual content: cite specific "
-        "findings, studies, and data points from the entries. When a key "
-        "finding, recommendation, or trend is backed by a specific entry, "
-        "cite its source inline as (Source: URL). Do NOT describe "
-        "the report structure or the writing instructions — write the analysis "
-        "itself.\n\n"
-        f"Themes and entries:\n{entries_detail}\n\n"
-        "Return plain Markdown with this exact structure:\n\n"
-        "## Executive Summary\n"
-        "<2-3 paragraphs>\n\n"
-        "## Key Findings\n"
-        "- <finding 1>\n"
-        "- <finding 2>\n\n"
-        "## Recommendations\n"
-        "- <recommendation 1>\n"
-        "- <recommendation 2>\n\n"
-        "Use exactly the heading names above. Do NOT wrap your answer in a "
-        "code fence or emit JSON."
-    )
-    if custom_instructions:
-        prompt += f"\n\nAdditional instructions: {custom_instructions}"
-    # -- Product-specific synthesis sections (todo 7, spec §2.4) -------------
-    product_structure = _REPORT_PRODUCT_SYNTHESIS_PROMPTS.get(product_family, "")
-    if product_structure:
-        prompt += f"\n\n{product_structure}"
-    # Issue #140: differentiate premium vs enterprise briefing coverage scope
-    # so the two paid products read as distinct angles (premium = deep 1-2
-    # topics; enterprise = decision-oriented 4-6 topics).
-    scope_guidance = _DIGEST_PRODUCT_SCOPE_GUIDANCE.get(product_family)
-    if scope_guidance:
-        prompt += f"\n\n{scope_guidance}"
-    # Issue #179: hard no-fabrication constraint — the report synthesis must
-    # write ONLY from the entries' stated content (no invented teams/motives/
-    # numbers/directions or entity descriptions beyond the sources).
-    # Canonical string lives in quality_constraints (#194 spec D).
-    prompt += f"\n\n{NO_FABRICATION_CONSTRAINT}"
-    # Issue #200: never rename/abstract source signals into new terms — a
-    # financial report turned "low VIX, inflation shocks, and excessive AI
-    # spending" into the novel "low market breadth".  Canonical string lives
-    # in quality_constraints (rides digest + report paths identically).
-    prompt += f"\n\n{SYNTHESIS_SIGNAL_TRACEABILITY_CONSTRAINT}"
-    # Issue #445: every named entity must exist in a supplied entry, and a
-    # (Source: URL) must point at the entry the sentence is actually about.
-    prompt += f"\n\n{SYNTHESIS_ENTITY_GROUNDING_CONSTRAINT}"
-    # Issue #207: every (Source: URL) must be taken VERBATIM from the KB
-    # Entries list — never re-slug or invent a URL (mirror of the presentation
-    # prompt's #93 wording).  Canonical string lives in quality_constraints.
-    prompt += f"\n\n{URL_VERBATIM_CONSTRAINT}"
-    # Issue #210: the Executive Summary / Recommendations opener is an
-    # editorial voice that invited unhedged market-direction/motive assertions
-    # ("the smart money is betting on…").  Hedge discipline pinned (mirrors
-    # the magazine editorial_intro constraint from #191).
-    prompt += f"\n\n{EDITORIAL_OPENING_HEDGE_CONSTRAINT}"
-    # -- Structured audience adaptation -----------------------------------
-    audience = _normalize_report_audience(target_audience)
-    audience_prompt = _REPORT_AUDIENCE_PROMPTS.get(audience, "")
-    if audience_prompt:
-        prompt += f"\n\n{audience_prompt}"
-    return prompt
-
-
-def _report_product_fields_for_family(product_family: str) -> tuple[str, ...]:
-    """Required §2.4 product fields for a product synthesis family.
-
-    Returns ``()`` for the default ``report`` family and any unknown family
-    so the dedicated product-sections prompt never fires outside the product
-    template families (backward compatibility).  ``key_metrics`` is
-    enterprise-only.
-    """
-    if product_family not in _REPORT_PRODUCT_SYNTHESIS_PROMPTS:
-        return ()
-    fields: tuple[str, ...] = ("implications", "risks", "action_required")
-    if product_family == "enterprise-briefing":
-        fields += ("key_metrics",)
-    return fields
-
-
-def _build_product_sections_prompt(
-    parsed: dict[str, Any],
-    product_family: str,
-    max_findings: int = _DEDICATED_PRODUCT_PROMPT_MAX_FINDINGS,
-    max_finding_chars: int = _DEDICATED_PRODUCT_PROMPT_MAX_FINDING_CHARS,
-    max_summary_chars: int = _DEDICATED_PRODUCT_PROMPT_MAX_SUMMARY_CHARS,
-) -> str:
-    """Build the small dedicated prompt that asks the model to emit ONLY the
-    §2.4 product sections for an already-produced synthesis.
-
-    Carries the produced executive summary and key findings (both bounded so
-    the total stays ~2–3.5K chars, far below any prompt-size concern) plus
-    the family's section format spec, so the response parses with
-    :func:`_parse_report_markdown` (``require_exec_summary=False``).  The
-    callers only merge the product fields back, so any model output outside
-    the requested sections is ignored.
-    """
-    summary = (parsed.get("executive_summary") or "").strip()
-    if len(summary) > max_summary_chars:
-        summary = summary[:max_summary_chars].rstrip() + "..."
-    finding_texts = [
-        ((f.get("text") if isinstance(f, dict) else f) or "").strip()
-        for f in (parsed.get("key_findings") or [])[:max_findings]
-    ]
-    findings = "\n".join(f"- {t[:max_finding_chars].rstrip()}" for t in finding_texts)
-    return (
-        "You are a report synthesis assistant. Below are the executive summary "
-        "and key findings already produced for a briefing. Emit ONLY the "
-        "additional product sections listed below — do NOT repeat the "
-        "executive summary, key findings, recommendations, or any other "
-        "content.\n\n"
-        f"## Executive Summary\n{summary or '(none)'}\n\n"
-        f"## Key Findings\n{findings or '(none)'}\n\n"
-        + _REPORT_PRODUCT_SYNTHESIS_PROMPTS[product_family]
-    )
-
-
-def _generate_executive_summary(
-    extractor: LLMExtractor,
-    entries: list[dict[str, Any]],
-    groupings: list[dict[str, Any]],
-    custom_instructions: str = "",
-    target_audience: str = "",
-    domains: list[str] | None = None,
-    product_family: str = "report",
-    *,
-    max_synthesis_attempts: int = _RETRY_MAX_ATTEMPTS,
-    retry_backoff_seconds: float = _RETRY_BACKOFF_SECONDS,
-    sleep_fn: Callable[[float], None] = time.sleep,
-) -> dict[str, Any]:
-    """Generate the report synthesis (summary + findings + recommendations).
-
-    Asks the LLM for flat Markdown with ``## Executive Summary`` /
-    ``## Key Findings`` / ``## Recommendations`` headings — the default
-    model emits markdown far more reliably than a nested JSON schema —
-    and parses it by heading (see :func:`_parse_report_markdown`).
-
-    For product template families (``premium-briefing`` /
-    ``enterprise-briefing`` / ``magazine-digest``) the requested structure
-    additionally includes the §2.4 product sections — ``## Implications`` /
-    ``## Risks & Opportunities`` / ``## Action Required`` (index-aligned
-    with Key Findings), plus ``## Key Metrics`` for enterprise-briefing —
-    keyed by the resolved family. The default ``report`` family is
-    unchanged (spec §2.4, todo 7).
-
-    Falls back to a legacy single-string JSON summary via the extractor,
-    and finally to a bullet-list summary, so the report is never empty.
-    When an attempt returns empty (or the parsed result lacks an executive
-    summary) — the configured endpoint flaps with genuine empty completions
-    for ~40–60-min "bad windows" at ALL prompt sizes — the call is retried
-    with a condensed entries-detail prompt (see
-    :func:`_build_report_entries_detail`) up to *max_synthesis_attempts*
-    times total, sleeping *retry_backoff_seconds* via *sleep_fn* between
-    attempts, so one ``generate_report`` can bridge an endpoint bad window
-    without an unbounded loop (round-2 F3 fix; both bounds injectable for
-    tests).  Attempt 1 uses the full-size prompt; attempts 2+ reuse the
-    condensed prompt.
-
-    For product families, when the synthesis succeeds but the parsed result
-    lacks required §2.4 product fields (the model often omits the trailing
-    sections), a SECOND small dedicated prompt (see
-    :func:`_build_product_sections_prompt`) is issued — bounded to at most
-    one call — asking for ONLY those sections, and the parsed sections are
-    merged into the result.
-    Returns a dict ``{"executive_summary": str, "key_findings": list[str],
-    "recommendations": list[str]}`` — never raises.
-    """
-    from autoinfo.output import fault_inject  # noqa: PLC0415
-
-    try:
-        fault_inject.maybe_fault("summary")
-    except Exception:
-        fallback = _deterministic_synthesis_fallback(entries, summary_prefix="This report covers")
-        return {
-            "executive_summary": fallback["executive_summary"],
-            "key_findings": fallback["key_findings"],
-            "recommendations": fallback["recommendations"],
-        }
-
-    entries_detail = _build_report_entries_detail(entries, groupings)
-    prompt = _build_report_synthesis_prompt(
-        entries_detail,
-        custom_instructions=custom_instructions,
-        target_audience=target_audience,
-        domains=domains,
-        product_family=product_family,
-    )
-    retry_prompt = _build_report_synthesis_prompt(
-        _build_report_entries_detail(
-            entries,
-            groupings,
-            max_detail_entries=_RETRY_MAX_DETAIL_ENTRIES,
-            max_entry_summary_chars=_RETRY_MAX_ENTRY_SUMMARY_CHARS,
-            detail_char_budget=_RETRY_DETAIL_CHAR_BUDGET,
-        ),
-        custom_instructions=custom_instructions,
-        target_audience=target_audience,
-        domains=domains,
-        product_family=product_family,
-    )
-    retry_prompt_usable = len(retry_prompt) < len(prompt)
-
-    # Primary path: flat markdown synthesis (reliable with the default model),
-    # with a bounded multi-attempt retry loop against endpoint bad windows.
-    parsed: dict[str, Any] = {}
-    for attempt in range(1, max_synthesis_attempts + 1):
-        if attempt > 1:
-            if not retry_prompt_usable:
-                break
-            logger.info(
-                "Report synthesis attempt %d/%d returned no executive summary; "
-                "sleeping %.0fs then retrying with condensed prompt "
-                "(%d -> %d chars)",
-                attempt - 1,
-                max_synthesis_attempts,
-                retry_backoff_seconds,
-                len(prompt),
-                len(retry_prompt),
-            )
-            sleep_fn(retry_backoff_seconds)
-        attempt_prompt = prompt if attempt == 1 else retry_prompt
-        parsed = _parse_report_markdown(_call_llm_for_report_synthesis(attempt_prompt))
-        if parsed.get("executive_summary"):
-            break
-
-    if parsed.get("executive_summary"):
-        # Round-2 F3 fix: the model often omits the trailing §2.4 product
-        # sections even when the synthesis succeeds.  For product families,
-        # when any required section is missing/empty, issue ONE small
-        # dedicated prompt (decoupled from the base synthesis call) and
-        # merge the parsed sections back.
-        product_fields = _report_product_fields_for_family(product_family)
-        if product_fields and any(not parsed.get(f) for f in product_fields):
-            sections_prompt = _build_product_sections_prompt(parsed, product_family)
-            logger.info(
-                "Report synthesis succeeded but product sections (%s) missing; "
-                "issuing dedicated small prompt (%d chars)",
-                ", ".join(f for f in product_fields if not parsed.get(f)),
-                len(sections_prompt),
-            )
-            sections_parsed = _parse_report_markdown(
-                _call_llm_for_report_synthesis(sections_prompt),
-                require_exec_summary=False,
-            )
-            for field in product_fields:
-                if sections_parsed.get(field):
-                    parsed[field] = sections_parsed[field]
-        return parsed
-
-    # Legacy path: single-string JSON summary via the extractor.
-    try:
-        raw = _llm_json_extract(extractor, prompt, "executive_summary")
-        if raw and isinstance(raw, str) and raw.strip():
-            return {
-                "executive_summary": raw.strip(),
-                "key_findings": [],
-                "recommendations": [],
-            }
-    except Exception as exc:
-        logger.warning("Executive summary via LLM failed: %s", exc)
-
-    # Fallback
-    # Issue #217: the fallback must still carry non-empty D1-required
-    # sections — key_findings / recommendations derived from the real
-    # entries (never fabricated), so D1 never blocks the report.
-    # Issue #338: the previous per-theme count summary ("This report covers
-    # N entries grouped into M themes: - **API**: N entry(ies)") leaked the
-    # internal grouping/search mechanics to end users — use the user-facing
-    # summary derived from the real entry titles instead.
-    fallback = _deterministic_synthesis_fallback(entries, summary_prefix="This report covers")
-    return {
-        "executive_summary": fallback["executive_summary"],
-        "key_findings": fallback["key_findings"],
-        "recommendations": fallback["recommendations"],
-    }
-
-
-def _call_llm_for_report_synthesis(prompt: str) -> str:
-    """Call the configured LLM to synthesize report Markdown.
-
-    Uses the shared :func:`call_with_fallback` helper in plain-text mode
-    (no JSON mode) — the default model emits the flat ``## Executive
-    Summary`` / ``## Key Findings`` / ``## Recommendations`` structure
-    reliably while a nested JSON schema frequently comes back empty.
-    Returns the raw Markdown text (possibly empty) on success, ``""`` on
-    failure.
-    """
-    from autoinfo.output import fault_inject  # noqa: PLC0415
-
-    try:
-        fault_inject.maybe_fault("report")
-    except Exception as exc:
-        logger.warning("FAULT_INJECT[report]: %s", exc)
-        return ""
-
-    config_path = get_config_path()
-    if config_path and config_path.is_file():
-        try:
-            config = load_config(config_path)
-        except Exception:
-            config = Config()
-    else:
-        config = Config()
-
-    model = config.llm.resolve_model()
-    try:
-        response = call_with_fallback(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": get_prompt("report_synthesis_system"),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            json_mode=False,
-            max_tokens=8000,
-            temperature=0.1,
-            api_key=config.llm.api_key or None,
-            base_url=config.llm.base_url or None,
-        )
-    except Exception as exc:
-        logger.warning("Report synthesis via LLM failed: %s", exc)
-        return ""
-    content: str = response.choices[0].message.content or ""
-    return content.strip()
-
-
-_GLUED_BULLET_SEP = re.compile(r"(?<=\))- ?")
-
-
-def _split_glued_bullets(text: str) -> list[str]:
-    """Split a bullet body that carries glue-glued follow-on bullets (issue #14).
-
-    The LLM sometimes returns Key Findings bullets joined inline without
-    newlines — ``- a (Source: u)- b (Source: u)- c`` — so the whole run is
-    seen by ``is_bullet`` as ONE item.  A ``)`` immediately before a ``-`` is
-    the glue boundary (a ``(Source: URL)`` citation suffix followed by the
-    next bullet marker), and each split part preserves its own ``(Source: u)``
-    suffix.  Legitimate prose where ``)`` is *not* followed by ``-`` is never
-    split.
-    """
-    return [part for part in _GLUED_BULLET_SEP.split(text) if part]
-
-
-def _parse_report_markdown(content: str, require_exec_summary: bool = True) -> dict[str, Any]:
-    """Parse a Markdown report synthesis into the report context schema.
-
-    Handles the structure requested by the report-synthesis prompt:
-    ``## Executive Summary`` (paragraphs), ``## Key Findings`` (bullets)
-    and ``## Recommendations`` (bullets).  For product template families
-    (spec §2.4, todo 7) it also parses ``## Implications`` (bullets →
-    ``list[str]``), ``## Risks & Opportunities`` (``|``-delimited bullets →
-    ``list[dict]`` ``{title, likelihood, impact, mitigation}``),
-    ``## Action Required`` (bullets → ``list[str]``) and ``## Key Metrics``
-    (``|``-delimited bullets → ``list[dict]`` ``{metric, value, source}``).
-    Returns ``{}`` when *content* is empty, or when *content* carries no
-    executive summary and *require_exec_summary* is set (default).  The
-    dedicated product-sections response (which intentionally omits the
-    executive summary) is parsed with ``require_exec_summary=False``.
-    """
-    if not content:
-        return {}
-    result: dict[str, Any] = {
-        "executive_summary": "",
-        "key_findings": [],
-        "recommendations": [],
-        "implications": [],
-        "risks": [],
-        "action_required": [],
-        "key_metrics": [],
-    }
-    current_section = ""
-    summary_lines: list[str] = []
-
-    def is_bullet(text: str) -> bool:
-        return bool(re.match(r"^(?:[-*]|\d+[.)])\s+\S", text))
-
-    def bullet_text(text: str) -> str:
-        return re.sub(r"^(?:[-*]|\d+[.)])\s+", "", text).strip()
-
-    for raw in content.splitlines():
-        line = raw.rstrip()
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            current_section = stripped.lstrip("#").strip().lower()
-            continue
-        if not current_section:
-            continue
-        if current_section in ("executive summary", "summary", "overview"):
-            if stripped and not line.startswith(("---", "***")):
-                summary_lines.append(stripped)
-        elif current_section in ("key findings", "findings", "main findings"):
-            if is_bullet(stripped):
-                for item in _split_glued_bullets(bullet_text(stripped)):
-                    item = item.strip()
-                    if item:
-                        result["key_findings"].append(item)
-        elif current_section in ("recommendations", "next steps", "action items"):
-            if is_bullet(stripped):
-                item = bullet_text(stripped)
-                if item:
-                    result["recommendations"].append(item)
-        elif current_section == "implications":
-            if is_bullet(stripped):
-                item = bullet_text(stripped)
-                if item:
-                    result["implications"].append(item)
-        elif current_section in ("risks & opportunities", "risks", "risk matrix"):
-            if is_bullet(stripped):
-                parts = [p.strip() for p in bullet_text(stripped).split("|")]
-                if len(parts) >= 4 and parts[0]:
-                    result["risks"].append(
-                        {
-                            "title": parts[0],
-                            "likelihood": parts[1],
-                            "impact": parts[2],
-                            "mitigation": " | ".join(parts[3:]),
-                        }
-                    )
-        elif current_section in ("action required", "actions"):
-            if is_bullet(stripped):
-                item = bullet_text(stripped)
-                if item:
-                    result["action_required"].append(item)
-        elif current_section in ("key metrics", "metrics"):
-            if is_bullet(stripped):
-                parts = [p.strip() for p in bullet_text(stripped).split("|")]
-                if len(parts) >= 3 and parts[0]:
-                    result["key_metrics"].append(
-                        {
-                            "metric": parts[0],
-                            "value": parts[1],
-                            "source": " | ".join(parts[2:]),
-                        }
-                    )
-
-    result["executive_summary"] = "\n\n".join(summary_lines).strip()
-    if require_exec_summary and not result["executive_summary"]:
-        return {}
-    return result
-
-
-def _llm_json_extract(
-    extractor: LLMExtractor,
-    prompt: str,
-    field: str,
-) -> Any:
-    """Call the LLM and extract a top-level JSON field.
-
-    Uses :class:`LLMExtractor` under the hood by wrapping the prompt in
-    a minimal ``Item``.  Returns the value of *field* from the parsed
-    JSON response, or ``None`` on failure.
-
-    Free-provider resilience: the extraction path returns an EMPTY result
-    (not an exception) on transient parse failure; retry once before
-    giving up, mirroring the two-attempt pattern of ``_report_llm_call``.
-    """
-    from autoinfo.models import Item  # noqa: PLC0415
-
-    dummy = Item(
-        id="_report_llm_call",
-        source_name="report",
-        source_type="internal",
-        source_url="",
-        title=field.replace("_", " ").title(),
-        content=prompt,
-    )
-    result = extractor.extract(dummy, schema=[field])
-    value = result.custom_fields.get(field) if result else None
-    if value is None:
-        result = extractor.extract(dummy, schema=[field])
-        value = result.custom_fields.get(field) if result else None
-    return value
-
-
-def _report_data_to_dict(report_data: ReportData, source_tier_badge: bool = True) -> dict[str, Any]:
-    """Convert a :class:`ReportData` instance to a flat dict for Jinja2 rendering.
-
-    Maps ``ReportSection.items`` → ``entries`` to match the variable
-    names expected by the report templates (``report.md.j2``,
-    ``report.html.j2``).  Also surfaces the §2.1 product fields
-    (``implications`` / ``risks`` / ``action_required`` / ``key_metrics``,
-    spec §2.4, todo 7) — empty lists for plain reports, so existing callers
-    are unchanged.
-
-    Issue #342: the report-path magazine product (``generate_report`` with
-    the ``magazine-digest`` template) reads the top-level ``entries`` list
-    for its per-title clusters.  Build it from the references — the report
-    path already derives the specific source labels there — so the magazine
-    layout renders real per-title clusters instead of the
-    ``_No articles found..._`` empty-state.
-    """
-    # #325: stamp a derived ``source_label`` on every reference so the
-    # report-path templates (report/column/premium-briefing/enterprise-briefing
-    # /magazine-digest) can render ``ref.source_label or ref.source_platform``
-    # and never show the generic "(RSS)" for stale pre-#323 entries.  A
-    # reference may already carry the derived label (the generate_report
-    # references builder calls _derive_source_label); when it does not (e.g.
-    # a flat context built directly), derive it here from the ref's own data.
-    labeled_refs = []
-    for ref in report_data.references:
-        ref_label = str(ref.get("source_label") or "").strip()
-        if not ref_label:
-            ref_label = _derive_source_label(ref, str(ref.get("domain") or report_data.domain))
-        labeled_refs.append({**ref, "source_label": ref_label})
-
-    entries = [
-        {
-            "title": ref.get("title", ""),
-            "summary": "",
-            "source_url": ref.get("source_url", ""),
-            "source_type": ref.get("source_type", ""),
-            "source_platform": ref.get("source_label", "") or ref.get("source_platform", ""),
-            "source_label": ref.get("source_label", ""),
-            "relevance_score": None,
-            "collected_at": "",
-        }
-        for ref in labeled_refs
-    ]
-    sections = [
-        {
-            "title": s.title,
-            "content": s.content,
-            "entries": [
-                {
-                    **item,
-                    "source_platform": (
-                        item.get("source_label", "") or item.get("source_platform", "")
-                    ),
-                }
-                for item in s.items
-            ],
-        }
-        for s in report_data.sections
-    ]
-    if report_data.grouping_degradation_marker:
-        # #120 (C4): the honest "grouped by source" marker leads the section
-        # list when grouping degraded (mirrors the digest normalization path).
-        sections.insert(0, {"marker": report_data.grouping_degradation_marker})
-    return {
-        "title": report_data.title,
-        "generated_at": report_data.generated_at,
-        "domain": report_data.domain,
-        "collection_id": report_data.collection_id,
-        # #445: the report synthesis cites its sources inline, so the same
-        # citation-grounding backstop the digest path applies runs here.
-        "executive_summary": _ground_synthesis_citations(report_data.executive_summary, entries),
-        "key_findings": report_data.key_findings,
-        "recommendations": report_data.recommendations,
-        "implications": report_data.implications,
-        "risks": report_data.risks,
-        "action_required": report_data.action_required,
-        "key_metrics": report_data.key_metrics,
-        "source_tier_badge": source_tier_badge,
-        "entries": entries,
-        "sections": sections,
-        "references": labeled_refs,
-        "appendices": report_data.appendices,
-        "grouping_degradation_marker": report_data.grouping_degradation_marker,
-    }
 
 
 #: Sentence ``_render_empty_report`` emits for a no-curated-data report.
@@ -6399,32 +4727,6 @@ def _write_translated_file(
 # Report / Digest audience adaptation (structured prompt sections)
 # ---------------------------------------------------------------------------
 
-_REPORT_AUDIENCE_PROMPTS: dict[str, str] = {
-    "researcher": (
-        "Structure the summary with: Methods & Data Sources, Key Results, "
-        "Limitations, Discussion. Use technical terminology and cite "
-        "specific findings where possible."
-    ),
-    "executive": (
-        "Structure the summary with: Key Findings, Strategic Implications, "
-        "Recommended Actions. Keep language concise and actionable."
-    ),
-    "investor": (
-        "Structure the summary with: Market Context, Opportunities & Risks, "
-        "Competitive Position. Focus on growth potential and ROI."
-    ),
-    "clinician": (
-        "Structure the summary with: Practical Applications, Clinical "
-        "Guidelines, Patient Outcomes. Emphasize actionable takeaways."
-    ),
-    "student": (
-        "Structure the summary with: Foundational Concepts, Step-by-Step "
-        "Explanations, Key Definitions, Study Takeaways. Use accessible language."
-    ),
-    "general": "",  # no special structure — existing behavior
-}
-
-_VALID_REPORT_AUDIENCES: list[str] = list(_REPORT_AUDIENCE_PROMPTS.keys())
 
 # ---------------------------------------------------------------------------
 # Report type prompts — specialized section structures per report type
@@ -6535,22 +4837,10 @@ _REPORT_PRODUCT_SYNTHESIS_PROMPTS: dict[str, str] = {
     "enterprise-briefing": (_REPORT_PRODUCT_BASE_SECTIONS + _REPORT_ENTERPRISE_METRICS_SECTION),
 }
 
-_REPORT_AUDIENCE_DESCRIPTIONS: dict[str, str] = {
-    "researcher": "technical depth, citations, methodology focus, statistical rigor",
-    "executive": "strategic overview, ROI, competitive landscape, high-level implications",
-    "investor": "market context, opportunities & risks, competitive position, growth potential",
-    "clinician": "practical application, clinical guidelines, patient outcomes, treatment protocols",  # noqa: E501
-    "student": "foundational concepts, simplified explanations, step-by-step learning, study aids",
-    "general": "balanced overview suitable for any audience — no special structure applied",
-}
 
 # ---------------------------------------------------------------------------
 # Tutorial / Presentation audience adaptation (must match report vocab)
 # ---------------------------------------------------------------------------
-
-_VALID_AUDIENCES = frozenset(_VALID_REPORT_AUDIENCES)
-
-_AUDIENCE_DESCRIPTIONS: dict[str, str] = dict(_REPORT_AUDIENCE_DESCRIPTIONS)
 
 
 def _filter_stale_entries(
@@ -6633,16 +4923,6 @@ def _maybe_persist_audio(mp3_bytes: bytes, persist_path: str | None) -> None:
 
 
 # Markdown patterns to strip when converting to plain text for TTS.
-_MD_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-_MD_IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
-_MD_HEADING_PATTERN = re.compile(r"^#{1,6}\s+", re.MULTILINE)
-_MD_BOLD_PATTERN = re.compile(r"\*\*([^*]+)\*\*")
-_MD_ITALIC_PATTERN = re.compile(r"\*([^*]+)\*")
-_MD_CODE_PATTERN = re.compile(r"`([^`]+)`")
-_MD_HR_PATTERN = re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE)
-_MD_QUOTE_PATTERN = re.compile(r"^>\s?", re.MULTILINE)
-_MD_LIST_PATTERN = re.compile(r"^[\s]*[-*+]\s+", re.MULTILINE)
-_MD_ORDERED_LIST_PATTERN = re.compile(r"^[\s]*\d+\.\s+", re.MULTILINE)
 
 
 # ---------------------------------------------------------------------------
@@ -6674,9 +4954,7 @@ def _persist_product_analysis_to_kb(
     break output generation.
     """
     populated = {
-        field: product_fields[field]
-        for field in _PRODUCT_ANALYSIS_FIELDS
-        if product_fields.get(field)
+        name: product_fields[name] for name in _PRODUCT_ANALYSIS_FIELDS if product_fields.get(name)
     }
     if not populated:
         return

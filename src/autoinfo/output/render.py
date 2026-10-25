@@ -14,9 +14,9 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from autoinfo.output import ReportData
+    from autoinfo.output.contracts import ReportData as ReportData
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 
 def _render_report_json(report_data: ReportData, period: str = "weekly") -> str:
@@ -26,7 +26,7 @@ def _render_report_json(report_data: ReportData, period: str = "weekly") -> str:
     list (with ``title``, ``summary``, ``url``, ``date`` per entry), and
     ``metadata`` with generation context.
     """
-    from autoinfo.output import _is_empty_summary  # noqa: PLC0415
+    from autoinfo.output.entries import _is_empty_summary as _is_empty_summary
 
     entries_list: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
@@ -102,7 +102,7 @@ def _report_chapters(report_data: ReportData) -> list[tuple[str, str]]:
     a "References" appendix.  Used by the ``epub`` and ``audiobook``
     report formats.
     """
-    from autoinfo.output import _is_empty_summary  # noqa: PLC0415
+    from autoinfo.output.entries import _is_empty_summary as _is_empty_summary
 
     chapters: list[tuple[str, str]] = []
     if report_data.executive_summary:
@@ -137,7 +137,8 @@ def _report_chapters(report_data: ReportData) -> list[tuple[str, str]]:
 
 def _render_report_template(report_data: ReportData, source_tier_badge: bool = True) -> str:
     """Render the report data through the Jinja2 template."""
-    from autoinfo.output import TEMPLATE_PATH, _get_jinja_env  # noqa: PLC0415
+    from autoinfo.output.templating import TEMPLATE_PATH as TEMPLATE_PATH
+    from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
 
     if not TEMPLATE_PATH.is_file():
         raise FileNotFoundError(f"Report template not found at {TEMPLATE_PATH}")
@@ -187,7 +188,7 @@ def is_no_data_product(result: Any, format: str) -> bool:
     Judging the rendered artifact instead of re-running the filter chain keeps
     this from drifting away from the generator's own behaviour.
     """
-    from autoinfo.output import _NO_DATA_REPORT_MARKER  # noqa: PLC0415
+    from autoinfo.output import _NO_DATA_REPORT_MARKER
 
     if format in ("json", "agent"):
         data = result
@@ -203,7 +204,7 @@ def is_no_data_product(result: Any, format: str) -> bool:
 
 def _render_empty_report(domain: str) -> str:
     """Return a brief message when there are no entries for *domain*."""
-    from autoinfo.output import _domain_display_name  # noqa: PLC0415
+    from autoinfo.output.entries import _domain_display_name as _domain_display_name
 
     return (
         f"# {_domain_display_name(domain)} \u2014 Report\n\n"
@@ -213,7 +214,7 @@ def _render_empty_report(domain: str) -> str:
 
 def _render_empty_report_html(domain: str) -> str:
     """Return a minimal HTML5 document when there are no entries for *domain*."""
-    from autoinfo.output import _get_jinja_env  # noqa: PLC0415
+    from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
 
     env = _get_jinja_env()
     template = env.get_template("report.html.j2")
@@ -244,7 +245,8 @@ def _render_report_html(report_data: ReportData, period: str = "weekly") -> str:
     Markdown ``content`` plus its item table to HTML via the ``markdown``
     library.  References are numbered to match the template's ordered list.
     """
-    from autoinfo.output import _get_jinja_env, _is_empty_summary  # noqa: PLC0415
+    from autoinfo.output.entries import _is_empty_summary as _is_empty_summary
+    from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
 
     env = _get_jinja_env()
     template = env.get_template("report.html.j2")
@@ -333,7 +335,7 @@ def _render_report_html(report_data: ReportData, period: str = "weekly") -> str:
 
 def _render_markdown(context: dict[str, Any]) -> str:
     """Render the Jinja2 digest template to Markdown."""
-    from autoinfo.output import _get_jinja_env  # noqa: PLC0415
+    from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
 
     env = _get_jinja_env()
     template = env.get_template("digest.md.j2")
@@ -431,7 +433,7 @@ def _render_digest_html(context: dict[str, Any]) -> str:
     - ``recommendations`` — list of recommendation strings
     - ``entries`` — list of ``{title, source_url, summary, relevance_score}``
     """
-    from autoinfo.output import _get_jinja_env  # noqa: PLC0415
+    from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
 
     env = _get_jinja_env()
     template = env.get_template("digest.html.j2")
@@ -551,7 +553,8 @@ def _render_agent_json(
     """
     import re
 
-    from autoinfo.output import _JSONLD_DIGEST, _PRODUCT_ANALYSIS_FIELDS  # noqa: PLC0415
+    from autoinfo.output.contracts import _JSONLD_DIGEST as _JSONLD_DIGEST
+    from autoinfo.output.contracts import _PRODUCT_ANALYSIS_FIELDS as _PRODUCT_ANALYSIS_FIELDS
 
     generated_at = context.get("generated_at", datetime.now(timezone.utc).isoformat())
     domain = context.get("domain", "")

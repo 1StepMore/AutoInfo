@@ -11,11 +11,12 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from autoinfo.config import Config
-    from autoinfo.output import DeliveryOutput, _DeliveryGatesBypass
+    from autoinfo.output.contracts import DeliveryOutput as DeliveryOutput
+    from autoinfo.output.contracts import _DeliveryGatesBypass as _DeliveryGatesBypass
 
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 
 def generate_presentation(
@@ -85,31 +86,34 @@ def generate_presentation(
     ValueError
         If *format*, *target_audience*, or *slide_count* is invalid.
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _AUDIENCE_DESCRIPTIONS,
-        _VALID_AUDIENCES,
-        DeliveryOutput,
+    from autoinfo.output import (
         KBStore,
-        StaleSourceError,
-        _apply_delivery_gates,
-        _apply_min_content_guard,
         _call_llm_for_presentation,
-        _fallback_slides_from_entries,
-        _filter_drifted_entries,
         _filter_entries_by_content_preference,
-        _filter_entries_by_domain_exclusions,
-        _filter_entries_by_language_product_safe,
         _filter_product_entries,
         _filter_stale_entries,
         _fire_agent_notification,
-        _render_presentation_agent_json,
-        _render_presentation_template,
         _resolve_content_preference,
-        _resolve_delivery_gate_configs,
-        _resolve_effective_language,
         _sanitize_presentation_sources,
         _select_story_set,
     )
+    from autoinfo.output.audience import _AUDIENCE_DESCRIPTIONS as _AUDIENCE_DESCRIPTIONS
+    from autoinfo.output.audience import _VALID_AUDIENCES as _VALID_AUDIENCES
+    from autoinfo.output.contracts import DeliveryOutput as DeliveryOutput
+    from autoinfo.output.contracts import StaleSourceError as StaleSourceError
+    from autoinfo.output.entries import (
+        _filter_entries_by_domain_exclusions as _filter_entries_by_domain_exclusions,
+    )
+    from autoinfo.output.entries import (
+        _filter_entries_by_language_product_safe as _filter_entries_by_language_product_safe,
+    )
+    from autoinfo.output.entries import _resolve_effective_language as _resolve_effective_language
+    from autoinfo.output.gates import _apply_delivery_gates as _apply_delivery_gates
+    from autoinfo.output.gates import _apply_min_content_guard as _apply_min_content_guard
+    from autoinfo.output.gates import (
+        _resolve_delivery_gate_configs as _resolve_delivery_gate_configs,
+    )
+    from autoinfo.output.sources import _filter_drifted_entries as _filter_drifted_entries
 
     if format not in ("markdown", "html", "mkslides", "agent"):
         raise ValueError(
@@ -362,7 +366,7 @@ def _render_presentation_agent_json(
     topic_entries: list[dict[str, Any]],
 ) -> str:
     """Render presentation data as agent-native JSON-LD (``@type: KnowledgePresentation``)."""
-    from autoinfo.output import _JSONLD_PRESENTATION  # noqa: PLC0415
+    from autoinfo.output.contracts import _JSONLD_PRESENTATION as _JSONLD_PRESENTATION
 
     slides: list[dict[str, Any]] = []
     for s in llm_result.get("slides", []):
@@ -416,7 +420,6 @@ def _fallback_slides_from_entries(
     to slides drawn verbatim from KB entries — one slide per entry (capped
     at *slide_count*).  Content is real domain material, never fabricated.
     """
-    from autoinfo.output import _split_summary_sentences, _truncate_ellipsis  # noqa: PLC0415
 
     slides: list[dict[str, Any]] = []
     for e in entries[:slide_count]:
@@ -451,7 +454,7 @@ def _fallback_slides_from_entries(
 
 def _call_llm_for_presentation(prompt: str, slide_count: int) -> dict[str, Any]:
     """Call LiteLLM to generate structured presentation content."""
-    from autoinfo.output import (  # noqa: PLC0415
+    from autoinfo.output import (
         Config,
         _parse_json_response,
         call_with_fallback,
@@ -511,11 +514,8 @@ def _render_presentation_template(
         ``"mkslides"`` (mkslides-compatible Markdown with optional
         CLI build; falls back to standalone HTML on failure).
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _get_jinja_env,
-        _render_presentation_html,
-        _render_presentation_mkslides,
-    )
+    from autoinfo.output import _render_presentation_html
+    from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
 
     if format == "html":
         return _render_presentation_html(context)
@@ -536,7 +536,7 @@ def _render_presentation_html(context: dict[str, Any]) -> str:
     The template (``presentation.html.j2``) is autoescaped by
     :func:`_html_autoescape` because of its ``.html.j2`` extension.
     """
-    from autoinfo.output import _get_jinja_env  # noqa: PLC0415
+    from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
 
     env = _get_jinja_env()
     template = env.get_template("presentation.html.j2")
@@ -555,7 +555,7 @@ def _render_presentation_mkslides(context: dict[str, Any]) -> str:
     import subprocess  # noqa: PLC0415
     import tempfile  # noqa: PLC0415
 
-    from autoinfo.output import _render_presentation_html  # noqa: PLC0415
+    from autoinfo.output import _render_presentation_html
 
     title = context.get("title", "Presentation")
     author = context.get("domain", "AutoInfo")

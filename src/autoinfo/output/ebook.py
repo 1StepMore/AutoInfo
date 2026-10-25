@@ -31,7 +31,7 @@ from typing import Any
 
 from autoinfo.output import _render_audio
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 
 def _ebooklib_or_raise() -> None:
@@ -287,8 +287,7 @@ def _build_chaptered_mp3(mp3_paths: list[Path]) -> bytes:
             starts_ms.append(acc_ms)
             acc_ms += int(round(duration * 1000))
         ends_ms = [
-            start + int(round(duration * 1000))
-            for start, duration in zip(starts_ms, durations)
+            start + int(round(duration * 1000)) for start, duration in zip(starts_ms, durations)
         ]
 
         tag = id3_ctor()
@@ -303,9 +302,7 @@ def _build_chaptered_mp3(mp3_paths: list[Path]) -> bytes:
                     end_time=end,
                     start_offset=0,
                     end_offset=0,
-                    sub_frames=[
-                        tit2_ctor(encoding=3, text=f"Chapter {idx + 1}")
-                    ],
+                    sub_frames=[tit2_ctor(encoding=3, text=f"Chapter {idx + 1}")],
                 )
             )
         tag.add(
@@ -377,7 +374,7 @@ def render_audiobook(
     # digest-audiobook cells failed this way).  A silent chapter skip keeps
     # the audiobook buildable; chapters with no body after stripping
     # markdown are dropped from the chapter list.
-    from autoinfo.output import _strip_markdown  # noqa: PLC0415
+    from autoinfo.output.audio import _strip_markdown as _strip_markdown
 
     usable: list[tuple[str, str]] = []
     for heading, body in chapters:
@@ -388,11 +385,7 @@ def render_audiobook(
         raise ValueError("Cannot build an audiobook with zero non-empty chapters")
     chapters = usable
 
-    tmp_dir = (
-        Path(tempfile.gettempdir())
-        / "autoinfo"
-        / f"audiobook-{uuid.uuid4().hex[:8]}"
-    )
+    tmp_dir = Path(tempfile.gettempdir()) / "autoinfo" / f"audiobook-{uuid.uuid4().hex[:8]}"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     try:
         mp3_paths: list[Path] = []

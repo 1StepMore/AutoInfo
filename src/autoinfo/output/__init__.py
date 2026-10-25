@@ -20,7 +20,6 @@ import base64
 import html
 import json
 import logging
-import os
 import re
 import time
 import uuid
@@ -28,9 +27,14 @@ from datetime import date, timedelta
 from datetime import datetime as datetime
 from datetime import timezone as timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Final, Literal, cast
-from urllib.parse import urlsplit
+from typing import TYPE_CHECKING, Any, Callable, Final, cast
 
+from autoinfo.output.audience import _AUDIENCE_DESCRIPTIONS as _AUDIENCE_DESCRIPTIONS
+from autoinfo.output.audience import _REPORT_AUDIENCE_DESCRIPTIONS as _REPORT_AUDIENCE_DESCRIPTIONS
+from autoinfo.output.audience import _REPORT_AUDIENCE_PROMPTS as _REPORT_AUDIENCE_PROMPTS
+from autoinfo.output.audience import _VALID_AUDIENCES as _VALID_AUDIENCES
+from autoinfo.output.audience import _VALID_REPORT_AUDIENCES as _VALID_REPORT_AUDIENCES
+from autoinfo.output.audience import _normalize_report_audience as _normalize_report_audience
 from autoinfo.output.audio import (
     DEFAULT_LOCAL_TTS_VOICE as DEFAULT_LOCAL_TTS_VOICE,
 )
@@ -72,6 +76,24 @@ from autoinfo.output.contracts import ReportData as ReportData
 from autoinfo.output.contracts import ReportSection as ReportSection
 from autoinfo.output.contracts import StaleSourceError as StaleSourceError
 from autoinfo.output.contracts import _DeliveryGatesBypass as _DeliveryGatesBypass
+from autoinfo.output.gates import _MIN_PRODUCT_CONTENT_CHARS as _MIN_PRODUCT_CONTENT_CHARS
+from autoinfo.output.gates import _MIN_PRODUCT_HEADINGS as _MIN_PRODUCT_HEADINGS
+from autoinfo.output.gates import _MIN_SUBSTANTIVE_SUMMARY_CHARS as _MIN_SUBSTANTIVE_SUMMARY_CHARS
+from autoinfo.output.gates import _PRODUCT_JUDGE_ENABLED as _PRODUCT_JUDGE_ENABLED
+from autoinfo.output.gates import _SYNTHETIC_ENTRY_MARKERS as _SYNTHETIC_ENTRY_MARKERS
+from autoinfo.output.gates import _apply_delivery_gates as _apply_delivery_gates
+from autoinfo.output.gates import _apply_min_content_guard as _apply_min_content_guard
+from autoinfo.output.gates import _build_product_judge_prompt as _build_product_judge_prompt
+from autoinfo.output.gates import _escalate_product_judge_prompt as _escalate_product_judge_prompt
+from autoinfo.output.gates import _is_substantive_entry as _is_substantive_entry
+from autoinfo.output.gates import _llm_key_available as _llm_key_available
+from autoinfo.output.gates import _parse_product_judge_verdict as _parse_product_judge_verdict
+from autoinfo.output.gates import _product_body_text_len as _product_body_text_len
+from autoinfo.output.gates import _product_heading_count as _product_heading_count
+from autoinfo.output.gates import _product_judge_enabled as _product_judge_enabled
+from autoinfo.output.gates import _resolve_delivery_gate_configs as _resolve_delivery_gate_configs
+from autoinfo.output.gates import _run_product_judge as _run_product_judge
+from autoinfo.output.gates import _sections_from_rendered_body as _sections_from_rendered_body
 from autoinfo.output.grouping import (
     _SOURCE_TYPE_THEME_LABEL as _SOURCE_TYPE_THEME_LABEL,
 )
@@ -207,6 +229,28 @@ from autoinfo.output.render import (
 from autoinfo.output.render import (
     is_no_data_product as is_no_data_product,
 )
+from autoinfo.output.sources import _DEMO_DOMAINS_DIR as _DEMO_DOMAINS_DIR
+from autoinfo.output.sources import _GENERIC_PLATFORMS as _GENERIC_PLATFORMS
+from autoinfo.output.sources import _MATCHABLE_SOURCE_TYPES as _MATCHABLE_SOURCE_TYPES
+from autoinfo.output.sources import _REF_LANG_LEARNING_DOMAINS as _REF_LANG_LEARNING_DOMAINS
+from autoinfo.output.sources import _derive_source_label as _derive_source_label
+from autoinfo.output.sources import _filter_drifted_entries as _filter_drifted_entries
+from autoinfo.output.sources import _host_matches_source as _host_matches_source
+from autoinfo.output.sources import _is_lang_learning_domain as _is_lang_learning_domain
+from autoinfo.output.sources import _is_source_active_in_config as _is_source_active_in_config
+from autoinfo.output.sources import _label_entries as _label_entries
+from autoinfo.output.templating import _PRODUCT_H1_WORDS as _PRODUCT_H1_WORDS
+from autoinfo.output.templating import FORMAT_TO_VARIANT as FORMAT_TO_VARIANT
+from autoinfo.output.templating import PRODUCT_TEMPLATES as PRODUCT_TEMPLATES
+from autoinfo.output.templating import TEMPLATE_PATH as TEMPLATE_PATH
+from autoinfo.output.templating import ProductTemplate as ProductTemplate
+from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
+from autoinfo.output.templating import _html_autoescape as _html_autoescape
+from autoinfo.output.templating import _jinja_env as _jinja_env
+from autoinfo.output.templating import _product_h1_word as _product_h1_word
+from autoinfo.output.templating import _resolve_digest_product_type as _resolve_digest_product_type
+from autoinfo.output.templating import _resolve_report_product_type as _resolve_report_product_type
+from autoinfo.output.templating import list_output_templates as list_output_templates
 from autoinfo.output.tutorial import (
     _build_tutorial_json_prompt as _build_tutorial_json_prompt,
 )
@@ -244,8 +288,6 @@ from autoinfo.output.tutorial import (
 if TYPE_CHECKING:
     from autoinfo.config import SourceConfig  # noqa: F811
     from autoinfo.llm import LLMExtractor
-
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, TemplateNotFound
 
 from autoinfo.config import Config as Config
 from autoinfo.config import get_config_path as get_config_path
@@ -314,7 +356,6 @@ logger = logging.getLogger(__name__)
 # Demo-domain seed directory (issue #319): the same seed ``init`` reads when
 # scaffolding a domain.  Used as the exclude_keywords fallback so existing
 # projects whose runtime config predates the field still filter noise.
-_DEMO_DOMAINS_DIR = Path(__file__).resolve().parent.parent / "data" / "domains"
 
 # Generic theme labels that never name a meaningful report section (issue #9).
 # They come from auto-discovery keyword fragments (e.g. ``new``, ``year``,
@@ -534,48 +575,6 @@ from autoinfo.output.entries import (  # noqa: E402
 )
 from autoinfo.output.entries import _user_source_label as _user_source_label  # noqa: E402
 from autoinfo.output.entries import _warn_cjk_leak as _warn_cjk_leak  # noqa: E402
-
-
-def _resolve_delivery_gate_configs(
-    domain: str,
-    delivery_gate_configs: dict[str, dict[str, Any]] | _DeliveryGatesBypass | None,
-) -> dict[str, dict[str, Any]] | None:
-    """Resolve the effective delivery-gate config for *domain*.
-
-    - An explicit dict is used as-is.
-    - The ``_DELIVERY_GATES_BYPASS`` sentinel resolves to ``None`` (gates
-      bypassed, plain ``str`` output).
-    - ``None`` resolves from the project config: the domain's
-      ``delivery_gates`` first, falling back to the global
-      ``delivery_gates``.  Returns ``None`` when the config carries no
-      delivery gates (backward-compatible plain ``str`` output).
-    """
-    if delivery_gate_configs is _DELIVERY_GATES_BYPASS:
-        return None
-    if delivery_gate_configs is not None:
-        # Both guards passed: not the sentinel, not None -> provably a dict.
-        return cast(dict[str, dict[str, Any]], delivery_gate_configs)
-    try:
-        cfg_path = get_config_path()
-        if cfg_path is None:
-            return None
-        cfg = load_config(cfg_path)
-    except Exception:
-        return None
-    domain_cfg = next((d for d in cfg.domains if d.name == domain), None)
-    gates = domain_cfg.delivery_gates if domain_cfg is not None else {}
-    if not gates:
-        gates = cfg.delivery_gates
-    if not gates:
-        return None
-    return {
-        name: {
-            "enabled": dgc.enabled,
-            "action_on_failure": dgc.action_on_failure,
-        }
-        for name, dgc in gates.items()
-    }
-
 
 # ---------------------------------------------------------------------------
 # D1 section detection on the rendered body (issue #298 — layer 2)
@@ -824,140 +823,12 @@ def _sanitize_report_urls(text: str, allowed_urls: set[str]) -> str:
     return _REPORT_MD_LINK_RE.sub(_replace, text)
 
 
-def _sections_from_rendered_body(
-    body: str, output_format: str, product_type: str
-) -> dict[str, str] | None:
-    """Detect D1 sections from the RENDERED body.
-
-    Returns a ``{key_findings, summary, recommendations}`` mapping for
-    markdown/html bodies (possibly all-empty when the body is empty), or
-    ``None`` for formats that cannot be parsed (json/agent/audio/...).
-    """
-    if output_format not in ("markdown", "html"):
-        return None
-    sections = _sections_from_headings(body, product_type)
-    return _apply_format_sections(sections, product_type)
-
-
 # Minimum content substance for a PROCESSED markdown/html product (issue #298).
-_MIN_PRODUCT_CONTENT_CHARS = 200
-_MIN_PRODUCT_HEADINGS = 1
-
-
-def _product_body_text_len(body: str, output_format: str) -> int:
-    """Length of the rendered body's visible text (tags stripped for html)."""
-    if output_format == "html":
-        return len(re.sub(r"<[^>]+>", " ", body).strip())
-    return len(body.strip())
-
-
-def _product_heading_count(body: str, output_format: str) -> int:
-    """Number of headings in the rendered body (md ``#`` or html ``<hN>``)."""
-    if output_format == "html":
-        return len(re.findall(r"<h[1-6][^>]*>", body, re.IGNORECASE))
-    return len(re.findall(r"^#{1,6}\s+", body, re.MULTILINE))
 
 
 # ---------------------------------------------------------------------------
 # LLM product judge (issue #298 — layer 3, optional)
 # ---------------------------------------------------------------------------
-_PRODUCT_JUDGE_ENABLED = True  # env AUTOINFO_PRODUCT_JUDGE=0 disables
-
-
-def _product_judge_enabled() -> bool:
-    raw = os.environ.get("AUTOINFO_PRODUCT_JUDGE", "")
-    if raw.strip().lower() in ("0", "false", "no", "off"):
-        return False
-    return _PRODUCT_JUDGE_ENABLED
-
-
-def _llm_key_available(llm_config: Config | None) -> bool:
-    """True when an LLM API key is resolvable (config or environment)."""
-    if llm_config is not None and (llm_config.llm.api_key or "").strip():
-        return True
-    if os.environ.get("AUTOINFO_LLM_API_KEY", "").strip():
-        return True
-    try:
-        cfg_path = get_config_path()
-        if cfg_path is not None and cfg_path.is_file():
-            cfg = load_config(cfg_path)
-            if (cfg.llm.api_key or "").strip():
-                return True
-    except Exception:
-        pass
-    return False
-
-
-def _build_product_judge_prompt(body: str, output_format: str) -> str:
-    return render_prompt("product_judge", output_format=output_format, body=body)
-
-
-def _escalate_product_judge_prompt(prompt: str, reason: str) -> str:
-    return (
-        prompt + f"\n\nA previous review found the body inadequate: {reason}. "
-        "Re-review carefully and return the same JSON verdict shape."
-    )
-
-
-def _parse_product_judge_verdict(response: Any) -> tuple[bool, str] | None:
-    """Parse the judge's JSON verdict; ``None`` when unparseable."""
-    content = getattr(response, "content", None)
-    if content is None:
-        content = response
-    if isinstance(content, str):
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError:
-            return None
-    elif isinstance(content, dict):
-        data = content
-    else:
-        return None
-    if not isinstance(data, dict) or "ok" not in data:
-        return None
-    return bool(data["ok"]), str(data.get("reason") or "")
-
-
-def _run_product_judge(
-    body: str,
-    output_format: str,
-    product_type: str,
-    llm_config: Config | None = None,
-) -> tuple[bool, str]:
-    """LLM-judge the rendered body for non-trivial content.
-
-    Returns ``(passed, reason)``.  Fails open on any error (no key, network,
-    parse) so the judge never blocks a product on infrastructure failure.
-    Retries once with escalating context before failing.
-    """
-    if not _product_judge_enabled():
-        return True, ""
-    if product_type.upper() != "PROCESSED" or output_format not in ("markdown", "html"):
-        return True, ""
-    if not _llm_key_available(llm_config):
-        return True, ""
-    try:
-        prompt = _build_product_judge_prompt(body, output_format)
-        for attempt in range(2):
-            response = call_with_fallback(
-                [{"role": "user", "content": prompt}],
-                config=llm_config,
-                task="product_judge",
-                json_mode=True,
-            )
-            verdict = _parse_product_judge_verdict(response)
-            if verdict is not None:
-                ok, reason = verdict
-                if ok:
-                    return True, ""
-                if attempt == 0:
-                    prompt = _escalate_product_judge_prompt(prompt, reason)
-                    continue
-                return False, reason
-        return False, "judge returned no verdict"
-    except Exception:
-        logger.debug("Product judge skipped (fail-open)", exc_info=True)
-        return True, ""
 
 
 #: An entry counts as usable source when it carries a ``source_url`` or a real
@@ -968,298 +839,17 @@ def _run_product_judge(
 #: ``Entry A/B``, ``x``, ``y``. Every one of those is a test artifact.
 #: The architecture already makes provenance mandatory for a 01-Raw entry, so
 #: this reuses that rule rather than inventing a second one.
-_MIN_SUBSTANTIVE_SUMMARY_CHARS = 40
 
 #: Source/title markers that identify a synthetic test fixture rather than
 #: collected material. Matched case-insensitively against title and source_url.
 #: The tier-matrix fixtures spell their name two ways -- ``KB Tier Matrix``
 #: (spaced) in the title and ``kb-tier-matrix.autoinfo.dev`` (hyphenated) in the
 #: URL -- so both forms must be listed or one of them slips through.
-_SYNTHETIC_ENTRY_MARKERS = (
-    "kb tier matrix",
-    "kb-tier-matrix",
-    "autoinfo.dev",
-    "test entry",
-    "placeholder entry",
-)
-
-
-def _is_substantive_entry(entry: dict[str, Any]) -> bool:
-    """Return True when *entry* carries material a product could honestly report.
-
-    Issue #446: a domain whose entire knowledge base is one synthetic
-    tier-matrix fixture (``summary: ''``, ``source_url`` on a reserved test
-    host) still passes a ``if not entries`` check, so synthesis would be asked
-    to write an Executive Summary with nothing to draw on. Counting entries
-    cannot see that; checking whether they carry material can.
-
-    Against the authoritative store (``autoinfo.db`` — 1821 entries, 23 domains)
-    this blocks 1 domain: ``default``, whose only two entries are the literal
-    rows ``x`` and ``y`` with empty summaries and no URL.
-
-    An earlier claim that it blocked 9 domains and that a fabricated
-    "OpenAI Jalapeño" chip motivated it is withdrawn — that chip is a real
-    collected entry (techcrunch, 2026-08-25). The 9-domain figure came from
-    reading the ``knowledge/`` file tree, which holds one file for some domains,
-    instead of the database the pipeline actually reads.
-    """
-    title = str(entry.get("title") or "").strip()
-    summary = str(entry.get("summary") or "").strip()
-    url = str(entry.get("source_url") or "").strip()
-
-    probe = f"{title} {url}".lower()
-    if any(marker in probe for marker in _SYNTHETIC_ENTRY_MARKERS):
-        return False
-    return bool(url) or len(summary) >= _MIN_SUBSTANTIVE_SUMMARY_CHARS
-
-
-def _apply_min_content_guard(
-    result: DeliveryOutput,
-    entries: list[dict[str, Any]],
-    product_type: str,
-) -> DeliveryOutput:
-    """Force the blocked flag when a PROCESSED product has no usable source.
-
-    Layer 1 min-content guard (issue #298): a product with zero usable entries
-    after filtering must never be silently shipped as an empty shell.
-
-    Issue #446 extends it: zero *substantive* entries is the same failure with
-    a worse disguise. Counting entries alone let a domain whose only knowledge
-    base row is a synthetic test fixture ship eight products full of invented
-    facts.
-    """
-    if product_type == "RAW":
-        return result
-
-    def _block(reason: str) -> DeliveryOutput:
-        result.delivery_blocked = True
-        if not any("min-content guard" in w for w in result.warnings):
-            result.warnings.append(f"min-content guard: {reason}")
-        return result
-
-    if not entries:
-        return _block("0 usable entries after filtering")
-
-    substantive = sum(1 for entry in entries if _is_substantive_entry(entry))
-    if substantive == 0:
-        return _block(
-            f"0 of {len(entries)} entr(ies) carry substantive source material "
-            "(empty summary or synthetic test fixture); synthesis would have to "
-            "invent content — collect real material before generating"
-        )
-    return result
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
-
-def _apply_delivery_gates(
-    rendered_output: str,
-    output_format: str,
-    entries: list[dict[str, Any]],
-    context: dict[str, Any],
-    product_type: str,
-    delivery_gate_configs: dict[str, dict[str, Any]] | None = None,
-    fallback_render_fn: Callable[[], str] | None = None,
-    llm_config: Config | None = None,
-) -> DeliveryOutput:
-    """Run D1-D3 delivery gates on rendered output.
-
-    Parameters
-    ----------
-    rendered_output:
-        The rendered output string (markdown, html, or json).
-    output_format:
-        The format of the rendered output (``"markdown"``, ``"html"``,
-        ``"json"``).
-    entries:
-        List of KB entry dicts used to produce the output.
-    context:
-        Digest or report context dict.  May contain ``llm_synthesis``
-        (for D1 completeness checks).
-    product_type:
-        ``"PROCESSED"`` or ``"RAW"``.  RAW skips all delivery gates.
-    delivery_gate_configs:
-        Optional dict of ``{gate_name: config_dict}``.  When ``None``,
-        no gates are run and the output is returned as-is.
-    fallback_render_fn:
-        Optional callable that re-renders the output as markdown.
-        Invoked when D2 fails with ``action="fallback"``.
-    llm_config:
-        Optional :class:`Config` for the LLM product judge (layer 3).
-
-    Returns
-    -------
-    DeliveryOutput
-        Contains the (possibly modified) output, gate results, and
-        delivery metadata (blocked flag, warnings).
-    """
-    if delivery_gate_configs is None:
-        return DeliveryOutput(
-            output=rendered_output,
-            gate_results={},
-            delivery_format=output_format,
-        )
-
-    # Deferred imports to avoid circular dependencies
-    from autoinfo.quality import QualityResult, run_delivery_gates  # noqa: PLC0415, F401
-
-    llm_synthesis: dict[str, Any] = context.get("llm_synthesis", {})
-
-    # D1 completeness is checked against the RENDERED body (issue #298): a
-    # body that is empty/garbled but whose synthesis dict is non-empty must
-    # fail D1.  Fall back to the synthesis dict only when the body cannot be
-    # parsed (json/agent/audio/...).
-    body_sections = _sections_from_rendered_body(rendered_output, output_format, product_type)
-    if body_sections is not None:
-        key_findings: Any = body_sections.get("key_findings", "")
-        summary: Any = body_sections.get("summary", "")
-        recommendations: Any = body_sections.get("recommendations", "")
-    else:
-        key_findings = llm_synthesis.get("key_findings", [])
-        summary = llm_synthesis.get("executive_summary", "")
-        recommendations = llm_synthesis.get("recommendations", [])
-
-    # Build product_output dict expected by run_delivery_gates
-    product_output: dict[str, Any] = {
-        "product_type": product_type,
-        "format": output_format,
-        "body": rendered_output,
-        "key_findings": key_findings,
-        "summary": summary,
-        "recommendations": recommendations,
-        "entries": entries,
-    }
-
-    gate_results = run_delivery_gates(product_output, context, delivery_gate_configs)
-    warnings: list[str] = []
-    delivery_blocked = False
-    output = rendered_output
-    final_format = output_format
-
-    # --- D1: Completeness -----------------------------------------------
-    d1_result = gate_results.get("D1-ProductCompleteness")
-    if d1_result is not None and not d1_result.passed:
-        action = d1_result.details.get("action", "block")
-        if action == "block":
-            error_detail = d1_result.details.get("error", "incomplete product")
-            logger.warning("Delivery blocked by D1: %s", error_detail)
-            delivery_blocked = True
-            warnings.append(f"D1 blocked: {error_detail}")
-
-    # --- D2: Format integrity (ToS block + format fallback + content) ------
-    d2_result = gate_results.get("D2-FormatIntegrity")
-    if d2_result is not None:
-        # Content-substance check (issue #298): markdown/html bodies must
-        # carry a minimum amount of content and at least one heading — the
-        # quality.py D2 check treats markdown as "trivially valid".
-        _leak_detected = bool(
-            rendered_output
-            and output_format in ("markdown", "html")
-            and _contains_raw_llm_leak(rendered_output)
-        )
-        if (
-            d2_result.passed
-            and output_format in ("markdown", "html")
-            and product_type.upper() != "RAW"
-        ):
-            text_len = _product_body_text_len(rendered_output, output_format)
-            heading_count = _product_heading_count(rendered_output, output_format)
-            if (
-                text_len < _MIN_PRODUCT_CONTENT_CHARS
-                or heading_count < _MIN_PRODUCT_HEADINGS
-                or _leak_detected
-            ):
-                d2_result = QualityResult(
-                    gate_name="D2-FormatIntegrity",
-                    passed=False,
-                    score=0.0,
-                    flagged=True,
-                    details={
-                        "action": "fallback",
-                        "format": output_format,
-                        "valid": False,
-                        "error": (
-                            f"insufficient content: {text_len} chars, "
-                            f"{heading_count} headings"
-                            + ("; raw LLM error text detected" if _leak_detected else "")
-                        ),
-                        "content_chars": text_len,
-                        "heading_count": heading_count,
-                    },
-                )
-                gate_results["D2-FormatIntegrity"] = d2_result
-
-        # ToS-based block: RAW delivery from restricted/sensitive sources (F46)
-        if not d2_result.passed:
-            action = d2_result.details.get("action", "")
-            if action == "block":
-                error_detail = d2_result.details.get("error", "delivery blocked")
-                logger.warning("Delivery blocked by D2 (ToS): %s", error_detail)
-                delivery_blocked = True
-                warnings.append(f"D2 blocked (ToS): {error_detail}")
-
-        # Format integrity fallback (flagged with action="fallback")
-        if d2_result.flagged:
-            action = d2_result.details.get("action", "fallback")
-            if action == "fallback":
-                d2_error = d2_result.details.get("error", "format integrity issue")
-                if fallback_render_fn is not None and output_format != "markdown":
-                    logger.warning(
-                        "D2 fallback: %s — re-rendering as markdown",
-                        d2_error,
-                    )
-                    output = fallback_render_fn()
-                    final_format = "markdown"
-                    warnings.append("D2 fallback: re-rendered as markdown")
-                else:
-                    logger.warning("D2 flagged: %s", d2_error)
-                    warnings.append(f"D2 flagged: {d2_error}")
-            elif action == "flag" and d2_result.details.get("self_claim"):
-                # #445 escalation: an entity the body never states cannot block
-                # (measured ~27% false-positive rate), but it must reach the
-                # delivery log and the packaged gate report — a silent flag is
-                # not an escalation.
-                raw_escalation = d2_result.details.get("self_claim_orphan_entities")
-                escalation = (
-                    [str(entity) for entity in raw_escalation]
-                    if isinstance(raw_escalation, list)
-                    else []
-                )
-                logger.warning("D2 self-claim escalation: %s", "; ".join(escalation[:3]))
-                warnings.append(
-                    f"D2 escalation: {len(escalation)} ungrounded narrative entity "
-                    f"name(s), first: {escalation[0] if escalation else 'n/a'}"
-                )
-
-    # --- D3: Freshness (flag) -------------------------------------------
-    d3_result = gate_results.get("D3-Freshness")
-    if d3_result is not None and d3_result.flagged:
-        stale = d3_result.details.get("stale_count", 0)
-        total = d3_result.details.get("total_entries", 0)
-        if stale:
-            logger.warning("D3 flagged: %d/%d stale entries", stale, total)
-            warnings.append(f"D3: {stale}/{total} entries stale")
-
-    # --- LLM product judge (issue #298 — layer 3, optional) --------------
-    if not delivery_blocked:
-        judge_passed, judge_reason = _run_product_judge(
-            output, final_format, product_type, llm_config
-        )
-        if not judge_passed:
-            logger.warning("Product judge blocked: %s", judge_reason)
-            delivery_blocked = True
-            warnings.append(f"product judge blocked: {judge_reason}")
-
-    return DeliveryOutput(
-        output=output,
-        gate_results=gate_results,
-        delivery_blocked=delivery_blocked,
-        delivery_format=final_format,
-        warnings=warnings,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1435,19 +1025,6 @@ def _ref_sort_key(e: dict[str, Any]) -> tuple[bool, float]:
 # ``discount`` are deliberately NOT used, so a legit sentence ("pricing models
 # to promote value", "discounts up to 10% in regions") never fires.
 
-_REF_LANG_LEARNING_DOMAINS: frozenset[str] = frozenset(
-    {
-        "language-learning",
-        "english-learning",
-        "french-learning",
-        "spanish-learning",
-        "hindi-learning",
-        "korean-learning",
-        "portuguese-learning",
-        "russian-learning",
-        "italian-learning",
-    }
-)
 
 _REF_LOW_VALUE_PATTERNS: dict[str, tuple[str, ...]] = {
     "promo": (
@@ -1494,11 +1071,6 @@ _COMPILED_LOW_VALUE_PATTERNS: dict[str, list[re.Pattern[str]]] = {
 
 _REF_LOW_VALUE_CONTEXT_CHARS = 200
 _REF_LOW_VALUE_MIN_REAL_ENTRIES = 20
-
-
-def _is_lang_learning_domain(domain: str) -> bool:
-    """True when *domain* is a language-learning umbrella or sub-domain."""
-    return domain in _REF_LANG_LEARNING_DOMAINS
 
 
 def _low_value_signal_penalty(entry: dict[str, Any]) -> int:
@@ -1748,48 +1320,6 @@ def _resolve_content_preference(user_id: str) -> str:
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "data" / "templates"
 
-_jinja_env: Environment | None = None
-
-
-def _html_autoescape(template_name: str | None) -> bool:
-    """Enable Jinja2 autoescaping for HTML templates only.
-
-    Markdown templates (``*.md.j2``) keep autoescaping OFF so they can
-    emit raw Markdown freely.  HTML templates (``*.html.j2``) turn
-    autoescaping ON so user-supplied text is safely escaped; pre-rendered
-    HTML content is marked ``|safe`` in the template where needed.
-    """
-    if template_name is None:
-        return False
-    return template_name.endswith(".html.j2")
-
-
-def _get_jinja_env() -> Environment:
-    """Return a cached Jinja2 environment for the ``data/templates/`` directory.
-
-    The environment loads any template file in ``data/templates/`` —
-    including both ``.md.j2`` (Markdown) and ``.html.j2`` (HTML)
-    templates.  Autoescaping is enabled selectively for ``.html.j2``
-    files via :func:`_html_autoescape`.
-
-    Registers a ``product_summary`` filter that returns ``""`` for
-    empty/placeholder summaries (defense-in-depth for issue #294).
-    """
-    global _jinja_env
-    if _jinja_env is None:
-        _jinja_env = Environment(
-            loader=FileSystemLoader(str(_TEMPLATES_DIR)),
-            autoescape=_html_autoescape,
-            trim_blocks=True,
-            lstrip_blocks=True,
-        )
-        _jinja_env.filters["product_summary"] = lambda v: "" if _is_empty_summary(str(v)) else v
-        _jinja_env.filters["platform_name"] = _platform_name
-        _jinja_env.globals["user_source_label"] = _user_source_label
-        _jinja_env.globals["domain_display_name"] = _domain_display_name
-        _jinja_env.globals["entry_source_cell"] = _entry_source_cell
-    return _jinja_env
-
 
 # ---------------------------------------------------------------------------
 # ProductTemplate — template selection with domain overrides
@@ -1797,199 +1327,11 @@ def _get_jinja_env() -> Environment:
 
 # Maps output format strings to template variant suffixes.
 # E.g. format="markdown" → template variant "md" → digest.md.j2
-FORMAT_TO_VARIANT: dict[str, str] = {
-    "markdown": "md",
-    "html": "html",
-    "json": "json",
-    "pdf": "pdf",
-}
-
-
-class ProductTemplate:
-    """Wraps Jinja2 rendering with product metadata and template selection.
-
-    Template selection strategy (first match wins):
-
-    1. ``.autoinfo/templates/<domain>/<type>/<variant>.j2`` — domain-specific
-       override (e.g. ``.autoinfo/templates/medical-research/digest/weekly.j2``)
-    2. ``data/templates/<type>/<variant>.j2`` — built-in base template
-       (e.g. ``data/templates/digest/weekly.j2``)
-    3. ``data/templates/<type>/default.j2`` — default variant for that type
-    4. ``data/templates/<type>.<variant>.j2`` — legacy flat naming (backward
-       compatible with the existing ``digest.md.j2`` convention)
-
-    The *access_level* controls freemium gating (G15):
-
-    - ``"free"`` (default) — available to all users
-    - ``"premium"`` — requires active paid subscription
-    - ``"enterprise"`` — requires enterprise-tier subscription
-
-    Usage::
-
-        pt = ProductTemplate(domain="medical-research", access_level="premium")
-        output = pt.render("digest", "md", context_dict)
-    """
-
-    def __init__(
-        self,
-        domain: str,
-        access_level: Literal["free", "premium", "enterprise"] = "free",
-    ):
-        self.domain = domain
-        self.access_level: Literal["free", "premium", "enterprise"] = access_level
-        self._base_dir = _TEMPLATES_DIR
-        self._domain_dir = Path.cwd() / ".autoinfo" / "templates" / domain
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    def render(
-        self,
-        product_type: str,
-        variant: str,
-        data: dict[str, Any],
-    ) -> str:
-        """Render a template for *product_type* and *variant* with *data*.
-
-        Parameters
-        ----------
-        product_type:
-            Template category (e.g. ``"digest"``, ``"report"``,
-            ``"tutorial"``, ``"presentation"``).
-        variant:
-            Template variant (e.g. ``"md"``, ``"html"``, ``"weekly"``).
-        data:
-            Template context variables.
-
-        Returns
-        -------
-        str
-            Rendered template output.
-
-        Raises
-        ------
-        FileNotFoundError
-            If no matching template is found in any search path.
-        """
-        env = self._get_env()
-
-        candidates = [
-            f"{product_type}/{variant}.j2",
-            f"{product_type}/default.j2",
-            f"{product_type}.{variant}.j2",  # legacy flat naming
-            f"{product_type}.default.j2",  # legacy default
-        ]
-
-        for name in candidates:
-            try:
-                template = env.get_template(name)
-                return template.render(**data)
-            except TemplateNotFound:
-                continue
-
-        raise FileNotFoundError(
-            f"No template found for domain={self.domain}, type={product_type}, variant={variant}"
-        )
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _get_env(self) -> Environment:
-        """Create a Jinja2 environment that checks domain overrides first.
-
-        Uses :class:`ChoiceLoader` so that domain-specific templates (in
-        ``.autoinfo/templates/<domain>/``) are preferred over built-in
-        base templates (in ``data/templates/``).
-        """
-        loaders: list[FileSystemLoader] = []
-        if self._domain_dir.is_dir():
-            loaders.append(FileSystemLoader(str(self._domain_dir)))
-        loaders.append(FileSystemLoader(str(self._base_dir)))
-
-        if len(loaders) == 1:
-            # Only base dir exists — no ChoiceLoader needed
-            env = Environment(
-                loader=loaders[0],
-                autoescape=_html_autoescape,
-                trim_blocks=True,
-                lstrip_blocks=True,
-            )
-        else:
-            env = Environment(
-                loader=ChoiceLoader(loaders),
-                autoescape=_html_autoescape,
-                trim_blocks=True,
-                lstrip_blocks=True,
-            )
-        # Defense-in-depth for issue #294: normalize empty/placeholder summaries
-        env.filters["product_summary"] = lambda v: "" if _is_empty_summary(str(v)) else v
-        # Defense-in-depth for issue #302: map internal platform ids to display names
-        env.filters["platform_name"] = _platform_name
-        # Issue #91: never leak raw internal platform ids in References
-        env.globals["user_source_label"] = _user_source_label
-        # Issue #138: expose user-facing domain display names in footers
-        env.globals["domain_display_name"] = _domain_display_name
-        # Issue #167: source cell for product-table rows
-        env.globals["entry_source_cell"] = _entry_source_cell
-        return env
 
 
 # ---------------------------------------------------------------------------
 # Product template registry
 # ---------------------------------------------------------------------------
-
-PRODUCT_TEMPLATES: list[dict[str, Any]] = [
-    {
-        "name": "digest",
-        "description": "Scheduled knowledge digests",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "report",
-        "description": "Thematic structured reports",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "tutorial",
-        "description": "Learning path tutorials",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "presentation",
-        "description": "Slide-based presentations",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "premium-briefing",
-        "description": "Premium briefings with deep analysis and actionable insights",
-        "access_level": "premium",
-        "template": ProductTemplate(domain="*", access_level="premium"),
-    },
-    {
-        "name": "column",
-        "description": "Paid deep-dive column",
-        "access_level": "premium",
-        "template": ProductTemplate(domain="*", access_level="premium"),
-    },
-    {
-        "name": "magazine-digest",
-        "description": "Magazine-styled digest of per-title RSS",
-        "access_level": "free",
-        "template": ProductTemplate(domain="*", access_level="free"),
-    },
-    {
-        "name": "enterprise-briefing",
-        "description": "Enterprise briefings with custom data, white-labeling, and priority support",  # noqa: E501
-        "access_level": "enterprise",
-        "template": ProductTemplate(domain="*", access_level="enterprise"),
-    },
-]
 
 
 # Product family → H1 product word (issue #318, augmented #99).  Keyed by
@@ -2000,102 +1342,6 @@ PRODUCT_TEMPLATES: list[dict[str, Any]] = [
 # paths keep their historical titles byte-identical.  Issue #99: tutorial
 # (and presentation) were missing, so ``--product tutorial`` rendered
 # "# Weekly Digest — <domain>" — every registry family carries its word now.
-_PRODUCT_H1_WORDS: dict[str, str] = {
-    "digest": "Digest",
-    "report": "Report",
-    "tutorial": "Tutorial",
-    "presentation": "Presentation",
-    "premium-briefing": "Premium Briefing",
-    "column": "Column",
-    "magazine-digest": "Magazine Digest",
-    "enterprise-briefing": "Enterprise Briefing",
-}
-
-
-def _product_h1_word(family: str, default: str = "Digest") -> str:
-    """Return the H1 product word for a resolved product *family* (issue #318).
-
-    *family* is the template family name produced by
-    :func:`_resolve_digest_product_type` / :func:`_resolve_report_product_type`
-    (e.g. ``"premium-briefing"``).  Unknown families fall back to *default*
-    so the non-product paths keep their historical titles.
-    """
-    return _PRODUCT_H1_WORDS.get(family, default)
-
-
-def _resolve_digest_product_type(template: ProductTemplate, variant: str) -> str:
-    """Map a ProductTemplate instance back to its digest template family.
-
-    ``generate_digest``'s *product_template* parameter is expected to be a
-    row's ``template`` from :data:`PRODUCT_TEMPLATES`. Rows whose name has
-    a flat template file of its own (e.g. ``magazine-digest`` →
-    ``magazine-digest.md.j2``) render through their own family; every other
-    row — and any non-registry template — keeps the default ``digest``
-    family, so the base ``digest`` row (and report-family rows, should one
-    ever be passed) still render ``digest.md.j2`` unchanged.
-
-    This mirrors how ``generate_report`` derives ``product_type`` for the
-    ``column`` template (T40): the render site selects the family, and the
-    identity lookup is guarded by an on-disk existence check so a registry
-    name can never point at a template that does not exist (FileNotFoundError
-    trap from the T40 premium-briefing/enterprise-briefing rows).
-    """
-    for row in PRODUCT_TEMPLATES:
-        if row["template"] is template:
-            name = str(row["name"])
-            if (_TEMPLATES_DIR / f"{name}.{variant}.j2").is_file():
-                return name
-            return "digest"
-    return "digest"
-
-
-def _resolve_report_product_type(template: ProductTemplate, variant: str, report_type: str) -> str:
-    """Map a ProductTemplate instance back to its report template family.
-
-    ``generate_report``'s *product_template* parameter is expected to be a
-    row's ``template`` from :data:`PRODUCT_TEMPLATES`. Rows whose name has
-    a flat template file of its own (e.g. ``premium-briefing`` →
-    ``premium-briefing.md.j2``, ``enterprise-briefing`` →
-    ``enterprise-briefing.md.j2``, ``column`` → ``column.md.j2``) render
-    through their own family; every other row — and any non-registry
-    template — keeps the default ``report`` family, so the base ``report``
-    row still renders ``report.md.j2`` unchanged. The ``column`` report
-    type keeps its own family even for non-registry templates (T40
-    backward compatibility).
-
-    This mirrors the ``column`` selection previously hardcoded at the
-    render site and the guard-first identity lookup of
-    :func:`_resolve_digest_product_type`: the on-disk existence check
-    ensures a registry name can never point at a template that does not
-    exist (FileNotFoundError trap from the T40
-    premium-briefing/enterprise-briefing rows).
-    """
-    for row in PRODUCT_TEMPLATES:
-        if row["template"] is template:
-            name: str = row["name"]
-            if (_TEMPLATES_DIR / f"{name}.{variant}.j2").is_file():
-                return name
-            return "column" if report_type == "column" else "report"
-    return "column" if report_type == "column" else "report"
-
-
-def list_output_templates(domain: str = "") -> dict[str, Any]:
-    """List available output templates for a domain.
-
-    Parameters
-    ----------
-    domain:
-        Domain name filter (optional; empty string = all domains).
-
-    Returns
-    -------
-    dict with keys: ``domain``, ``templates``, ``count``.
-    """
-    templates = [
-        {"name": t["name"], "description": t["description"], "access_level": t["access_level"]}
-        for t in PRODUCT_TEMPLATES
-    ]
-    return {"domain": domain, "templates": templates, "count": len(templates)}
 
 
 # ---------------------------------------------------------------------------
@@ -2617,198 +1863,8 @@ def _get_domain_source_configs(domain: str) -> list["SourceConfig"]:
 # Generic source_platform values that carry no specific source identity (the
 # #325 re-derivation replaces these with the configured source name when a
 # hostname match can be made against the domain's source configs).
-_GENERIC_PLATFORMS = frozenset({"", "rss", "web", "api"})
 
 # SourceConfig types whose entries can be matched to a source by hostname.
-_MATCHABLE_SOURCE_TYPES = frozenset({"rss", "web", "webhook", "api", "pdf"})
-
-
-def _is_source_active_in_config(entry: dict[str, Any], domain: str) -> bool:
-    """True when *entry*'s source identity exists in the domain's CURRENT
-    config source list (selection-time source-drift filter, #119).
-
-    An entry's source identity is established by EITHER:
-
-    - HOST match: the entry's ``source_url`` host against each configured
-      ``SourceConfig.url`` host via :func:`_host_matches_source` (exact or
-      subdomain — ``arxiv.org`` ⊂ ``rss.arxiv.org``); OR
-    - PLATFORM match: ``source_platform`` against a configured source's
-      ``name``/``type`` — ONLY when the platform is non-generic.  Pre-#323
-      entries carry generic ``source_platform='rss'/'web'/'api'``
-      (:data:`_GENERIC_PLATFORMS`); a generic platform alone never matches
-      and never false-drops an entry whose host matches.
-
-    FAIL-OPEN: when the config is missing/unreadable,
-    :func:`_get_domain_source_configs` returns ``[]`` — the helper returns
-    ``True`` (keep everything, preserve today's output), never drops
-    everything.  Deterministic — no LLM.
-    """
-    source_url = str(entry.get("source_url") or "").strip()
-    platform = str(entry.get("source_platform") or "").strip()
-    configs = _get_domain_source_configs(domain)
-    if not configs:
-        return True
-    url_host = ""
-    if source_url:
-        try:
-            url_host = urlsplit(source_url).hostname or ""
-        except ValueError:
-            url_host = ""
-    for sc in configs:
-        sc_url = str(sc.url or "").strip()
-        if url_host and sc_url:
-            try:
-                sc_host = urlsplit(sc_url).hostname or ""
-            except ValueError:
-                sc_host = ""
-            if sc_host and _host_matches_source(url_host, sc_host):
-                return True
-        if platform and platform.lower() not in _GENERIC_PLATFORMS:
-            if platform.lower() == str(sc.name or "").strip().lower():
-                return True
-            if platform.lower() == str(sc.type or "").strip().lower():
-                return True
-    return False
-
-
-def _filter_drifted_entries(entries: list[dict[str, Any]], domain: str) -> list[dict[str, Any]]:
-    """Selection-time source-drift filter over an entry list (digest /
-    presentation paths, #119).
-
-    Entries whose source identity is absent from the domain's current config
-    source list are excluded at selection time — the KB entries themselves are
-    never deleted/archived (Wiki append-only).  FAIL-OPEN: an unreadable config
-    (``[]`` from :func:`_get_domain_source_configs`) excludes nothing.  Logs
-    one ``logger.info`` per excluded source name with the dropped count.
-    """
-    kept: list[dict[str, Any]] = []
-    dropped_by_source: dict[str, int] = {}
-    for entry in entries:
-        if not isinstance(entry, dict) or _is_source_active_in_config(entry, domain):
-            kept.append(entry)
-            continue
-        source_name = _derive_source_label(entry, domain) or str(
-            entry.get("source_platform") or entry.get("source_url") or "unknown"
-        )
-        dropped_by_source[source_name] = dropped_by_source.get(source_name, 0) + 1
-    for source_name, count in sorted(dropped_by_source.items()):
-        logger.info(
-            "Excluded %d drifted entr%s from source '%s' absent from domain "
-            "'%s' config (selection-time source-drift filter)",
-            count,
-            "y" if count == 1 else "ies",
-            source_name,
-            domain,
-        )
-    return kept
-
-
-def _host_matches_source(entry_host: str, sc_host: str) -> bool:
-    """True when an entry's URL host belongs to a configured source host.
-
-    Issue #325 data layer: RSS feed URLs are often on a different host than
-    the article links they carry (arXiv articles on ``arxiv.org`` vs the
-    ``rss.arxiv.org`` feed), so exact-equality host matching leaves stale
-    pre-#323 entries stuck on the generic ``(RSS)`` label.  Match when the
-    hosts are equal or one is a subdomain of the other (``arxiv.org`` ⊂
-    ``rss.arxiv.org``).  A bare substring match is rejected (``evil-arxiv.org``
-    must not match ``arxiv.org``).  Pure stdlib (urllib.parse only — no
-    tldextract dependency).
-    """
-    eh = (entry_host or "").lower().rstrip(".").lstrip("www1.").lstrip("www.")
-    sh = (sc_host or "").lower().rstrip(".").lstrip("www1.").lstrip("www.")
-    if not eh or not sh:
-        return False
-    if eh == sh:
-        return True
-    # Subdomain of each other (arXiv articles on arxiv.org vs the
-    # rss.arxiv.org feed host) — never a bare substring (evil-arxiv.org
-    # must not match arxiv.org).
-    if eh.endswith("." + sh) or sh.endswith("." + eh):
-        return True
-    return False
-
-
-def _derive_source_label(
-    entry: dict[str, Any],
-    domain: str,
-    *,
-    source_configs: list["SourceConfig"] | None = None,
-) -> str:
-    """Derive a specific source name for *entry* when its stored
-    ``source_platform`` is a generic placeholder (``rss``/``web``/``api`` or
-    empty) — issue #325.
-
-    Pre-#323 KB entries carry ``source_platform='rss'`` even for real sources
-    (TechCrunch, arXiv, 36Kr, …), so the References section rendered the
-    generic ``(RSS)`` label.  The #323 collector fix only affects newly
-    collected items; this re-derivation recovers the specific source name for
-    existing entries by matching the entry's ``source_url`` host against the
-    domain's configured source URLs.
-
-    Returns the derived source identifier (a source config ``name``) when a
-    match is found, otherwise returns the entry's stored ``source_platform``
-    unchanged.  Matching is deterministic — no LLM.
-    """
-    platform = str(entry.get("source_platform") or "").strip()
-    if platform.lower() not in _GENERIC_PLATFORMS:
-        return platform
-    source_url = str(entry.get("source_url") or "").strip()
-    if not source_url:
-        return platform
-    try:
-        url_host = urlsplit(source_url).hostname or ""
-    except ValueError:
-        return platform
-    if not url_host:
-        return platform
-    configs = source_configs if source_configs is not None else _get_domain_source_configs(domain)
-    for sc in configs:
-        if sc.type not in _MATCHABLE_SOURCE_TYPES:
-            continue
-        sc_url = str(sc.url or "").strip()
-        if not sc_url:
-            continue
-        try:
-            sc_host = urlsplit(sc_url).hostname or ""
-        except ValueError:
-            continue
-        # Host match (issue #325 data layer): exact or subdomain (arXiv
-        # articles on arxiv.org vs the rss.arxiv.org feed host) — never a
-        # bare substring.
-        if _host_matches_source(url_host, sc_host):
-            return sc.name.strip() or platform
-        # Feed-host mismatch (issue #325 WSJ blind spot): the article links
-        # live on a DIFFERENT host than the feed (WSJ feed on feeds.a.dj.com,
-        # articles on www.wsj.com / online.wsj.com — no subdomain relation).
-        # A source can declare its article hosts via settings.article_hosts;
-        # an entry whose URL host matches one derives the source name.
-        declared_hosts = (sc.settings or {}).get("article_hosts") or []
-        for declared in declared_hosts:
-            try:
-                declared_host = urlsplit(str(declared)).hostname or ""
-            except ValueError:
-                continue
-            if declared_host and _host_matches_source(url_host, declared_host):
-                return sc.name.strip() or platform
-    return platform
-
-
-def _label_entries(entries: list[dict[str, Any]], domain: str) -> list[dict[str, Any]]:
-    """Enrich each entry with a derived ``source_label`` (issue #325).
-
-    Adds ``source_label = _derive_source_label(entry, entry.get("domain",
-    domain))`` to every entry so every render surface (markdown entry table,
-    magazine byline/clusters, json/agent formats) shows the specific source
-    name instead of the generic ``(RSS)`` label for stale pre-#323 entries.
-    Per-entry own domain is used for cross-domain products.  Returns the
-    enriched list (entries are dicts, mutated in place).
-    """
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        entry["source_label"] = _derive_source_label(entry, str(entry.get("domain") or domain))
-    return entries
 
 
 def _build_attribution_footer(
@@ -4321,8 +3377,6 @@ def generate_digest(
 # Report generation — structured Jinja2 + LLM reports from KB entries
 # ---------------------------------------------------------------------------
 
-TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "data" / "templates" / "report.md.j2"
-
 
 def generate_report(
     domain: str,
@@ -5288,26 +4342,6 @@ _SOURCE_TYPE_THEME_LABELS: dict[str, str] = {
     "pubmed": "PubMed & Life-science Sources",
     "arxiv": "Preprint & Archive Sources",
 }
-
-
-def _normalize_report_audience(target_audience: str) -> str:
-    """Validate and normalize target_audience for report/digest generation.
-
-    Returns the audience key if valid.  An empty or ``None``-like string
-    resolves to ``"general"`` (no error).  A non-empty invalid audience
-    raises :class:`ValueError` with a message naming the invalid value
-    and listing valid options — mirroring tutorial/presentation behavior
-    (issue #297).
-    """
-    if not target_audience:
-        return "general"
-    audience = target_audience.strip().lower()
-    if audience in _VALID_REPORT_AUDIENCES:
-        return audience
-    raise ValueError(
-        f"Invalid target_audience '{target_audience}'. "
-        f"Must be one of: {', '.join(sorted(_VALID_REPORT_AUDIENCES))}"
-    )
 
 
 # Bounded smaller-prompt retry budgets for the report synthesis (F3 fix,
@@ -6317,32 +5351,6 @@ def _write_translated_file(
 # Report / Digest audience adaptation (structured prompt sections)
 # ---------------------------------------------------------------------------
 
-_REPORT_AUDIENCE_PROMPTS: dict[str, str] = {
-    "researcher": (
-        "Structure the summary with: Methods & Data Sources, Key Results, "
-        "Limitations, Discussion. Use technical terminology and cite "
-        "specific findings where possible."
-    ),
-    "executive": (
-        "Structure the summary with: Key Findings, Strategic Implications, "
-        "Recommended Actions. Keep language concise and actionable."
-    ),
-    "investor": (
-        "Structure the summary with: Market Context, Opportunities & Risks, "
-        "Competitive Position. Focus on growth potential and ROI."
-    ),
-    "clinician": (
-        "Structure the summary with: Practical Applications, Clinical "
-        "Guidelines, Patient Outcomes. Emphasize actionable takeaways."
-    ),
-    "student": (
-        "Structure the summary with: Foundational Concepts, Step-by-Step "
-        "Explanations, Key Definitions, Study Takeaways. Use accessible language."
-    ),
-    "general": "",  # no special structure — existing behavior
-}
-
-_VALID_REPORT_AUDIENCES: list[str] = list(_REPORT_AUDIENCE_PROMPTS.keys())
 
 # ---------------------------------------------------------------------------
 # Report type prompts — specialized section structures per report type
@@ -6453,22 +5461,10 @@ _REPORT_PRODUCT_SYNTHESIS_PROMPTS: dict[str, str] = {
     "enterprise-briefing": (_REPORT_PRODUCT_BASE_SECTIONS + _REPORT_ENTERPRISE_METRICS_SECTION),
 }
 
-_REPORT_AUDIENCE_DESCRIPTIONS: dict[str, str] = {
-    "researcher": "technical depth, citations, methodology focus, statistical rigor",
-    "executive": "strategic overview, ROI, competitive landscape, high-level implications",
-    "investor": "market context, opportunities & risks, competitive position, growth potential",
-    "clinician": "practical application, clinical guidelines, patient outcomes, treatment protocols",  # noqa: E501
-    "student": "foundational concepts, simplified explanations, step-by-step learning, study aids",
-    "general": "balanced overview suitable for any audience — no special structure applied",
-}
 
 # ---------------------------------------------------------------------------
 # Tutorial / Presentation audience adaptation (must match report vocab)
 # ---------------------------------------------------------------------------
-
-_VALID_AUDIENCES = frozenset(_VALID_REPORT_AUDIENCES)
-
-_AUDIENCE_DESCRIPTIONS: dict[str, str] = dict(_REPORT_AUDIENCE_DESCRIPTIONS)
 
 
 def _filter_stale_entries(

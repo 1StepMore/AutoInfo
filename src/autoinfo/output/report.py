@@ -14,7 +14,6 @@ import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from autoinfo.config import Config, get_config_path, load_config
-from autoinfo.llm import call_with_fallback
 from autoinfo.output.audience import _REPORT_AUDIENCE_PROMPTS, _normalize_report_audience
 from autoinfo.output.contracts import ReportData
 from autoinfo.output.sources import _derive_source_label
@@ -452,6 +451,8 @@ def _call_llm_for_report_synthesis(prompt: str) -> str:
 
     model = config.llm.resolve_model()
     try:
+        from autoinfo.output import call_with_fallback
+
         response = call_with_fallback(
             model=model,
             messages=[

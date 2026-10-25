@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.44](https://github.com/1StepMore/AutoInfo/compare/v1.17.43...v1.17.44) (2026-10-25)
+
+
+### Miscellaneous Chores
+
+* **preview:** native uvicorn smoke script (no Docker / no  ([#614](https://github.com/1StepMore/AutoInfo/issues/614)) ([ea69311](https://github.com/1StepMore/AutoInfo/commit/ea69311e4f5339d498a737fcd726f90a4540c8ac))
+
 ## [1.17.43](https://github.com/1StepMore/AutoInfo/compare/v1.17.42...v1.17.43) (2026-10-25)
 
 

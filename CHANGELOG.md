@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.42](https://github.com/1StepMore/AutoInfo/compare/v1.17.41...v1.17.42) (2026-10-25)
+
+
+### Refactoring
+
+* **mcp:** phase 3 wave 0 — context.py helper tier + seam retarget + guards ([#581](https://github.com/1StepMore/AutoInfo/issues/581)) ([#609](https://github.com/1StepMore/AutoInfo/issues/609)) ([e08ffd0](https://github.com/1StepMore/AutoInfo/commit/e08ffd03880d1a86dbca0a473ee98de31186117b))
+
 ## [1.17.41](https://github.com/1StepMore/AutoInfo/compare/v1.17.40...v1.17.41) (2026-10-25)
 
 

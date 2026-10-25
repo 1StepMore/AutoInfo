@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.45](https://github.com/1StepMore/AutoInfo/compare/v1.17.44...v1.17.45) (2026-10-25)
+
+
+### Refactoring
+
+* **output:** phase 3 wave 4 — split output hub into six leaves ([#582](https://github.com/1StepMore/AutoInfo/issues/582)) ([#617](https://github.com/1StepMore/AutoInfo/issues/617)) ([e22d1ed](https://github.com/1StepMore/AutoInfo/commit/e22d1edc186e85b958359dca85c2c1524b5c0c90))
+
 ## [1.17.44](https://github.com/1StepMore/AutoInfo/compare/v1.17.43...v1.17.44) (2026-10-25)
 
 

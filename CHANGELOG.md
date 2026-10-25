@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.41](https://github.com/1StepMore/AutoInfo/compare/v1.17.40...v1.17.41) (2026-10-25)
+
+
+### Bug Fixes
+
+* **kb:** skip git versioning for gitignored knowledge paths  ([#607](https://github.com/1StepMore/AutoInfo/issues/607)) ([133ac1d](https://github.com/1StepMore/AutoInfo/commit/133ac1d4f173338b9e3c0fa9cf442d6e35a3b5a1))
+
 ## [1.17.40](https://github.com/1StepMore/AutoInfo/compare/v1.17.39...v1.17.40) (2026-10-23)
 
 

@@ -22,9 +22,10 @@ Reference: docs/project-health-assessment-2026-09-17.md §3.1 / §5 action 4.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
-SERVER_PY = Path(__file__).resolve().parents[2] / "src" / "autoinfo" / "mcp" / "server.py"
+from tests.mcp._source_corpus import MCP_DIR, source_corpus
+
+SERVER_PY = MCP_DIR / "server.py"
 
 # Frozen shape at 2026-09-17 (149 MCP tools).
 FROZEN_DISPATCH_BRANCHES = 149
@@ -56,10 +57,10 @@ def test_dispatch_chain_does_not_grow() -> None:
 
 
 def test_handler_set_does_not_grow() -> None:
-    """A new tool must not add another ``_handle_*`` definition either."""
-    handlers = len(_HANDLER_DEF.findall(_server_source()))
-    assert handlers <= FROZEN_HANDLERS, (
-        f"server.py defines {handlers} `_handle_*` functions (frozen at "
+    """The handler set may move between modules but must stay at 149."""
+    handlers = sum(len(_HANDLER_DEF.findall(source)) for _path, source in source_corpus())
+    assert handlers == FROZEN_HANDLERS, (
+        f"the MCP source corpus defines {handlers} `_handle_*` functions (frozen at "
         f"{FROZEN_HANDLERS}). Move new handler implementations into their own "
         "module (like collectors/output already do) instead of appending to "
         "server.py — see docs/project-health-assessment-2026-09-17.md §5 action 4."

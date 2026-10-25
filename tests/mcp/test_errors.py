@@ -264,23 +264,25 @@ class TestReExports:
 
 
 class TestServerCodesUseTheEnum:
-    """Every literal ``code=`` in server.py must be an ErrorCode value."""
+    """Every literal ``code=`` in the MCP source corpus must be an ErrorCode value."""
 
     def test_no_bare_error_code_strings(self) -> None:
         import ast
 
-        server_path = Path(__file__).resolve().parents[2] / "src" / "autoinfo" / "mcp" / "server.py"
-        tree = ast.parse(server_path.read_text(encoding="utf-8"))
+        from tests.mcp._source_corpus import source_corpus
+
         valid = {member.value for member in ErrorCode}
-        offenders: list[tuple[int, str]] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            for keyword in node.keywords:
-                if keyword.arg != "code":
+        offenders: list[tuple[str, int, str]] = []
+        for path, source in source_corpus():
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
                     continue
-                value = keyword.value
-                if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                    if value.value not in valid:
-                        offenders.append((value.lineno, value.value))
+                for keyword in node.keywords:
+                    if keyword.arg != "code":
+                        continue
+                    value = keyword.value
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        if value.value not in valid:
+                            offenders.append((path.name, value.lineno, value.value))
         assert offenders == [], f"error codes outside ErrorCode enum: {offenders}"

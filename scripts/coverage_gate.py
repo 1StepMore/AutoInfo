@@ -16,6 +16,14 @@ New semantics — no-regression vs the merge-base (base SHA):
   below what the base already achieves.
 - NEW module (not present at base SHA): floor = threshold (default 60) —
   new code still has to ship with tests.
+- RELOCATED module (base version was a near-empty stub, PR version is many
+  times larger): per-module percentage is meaningless for code motion. The
+  base percentage measures the stub, not the bodies that moved in. Such
+  modules are judged by an AGGREGATE no-regression check over every changed
+  module instead: total covered statements on the PR head must be >= total
+  covered statements at the merge base. A pure move keeps the same covered
+  statements (they are counted in the source module at base and in the
+  destination module at head), so it passes; deleting covered code fails.
 
 Exit 0 = pass, 1 = fail, 2 = usage/IO error.
 
@@ -36,22 +44,49 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import NamedTuple, Sequence
 
 TOTAL_LINE_RE = re.compile(r"^TOTAL\s+(\d+)\s+(\d+)\s+(\d+)%")
+
+# A module whose base version held at most this many statements is a stub
+# (e.g. an extracted schema table). When its PR version is at least
+# RELOCATION_RATIO times larger AND gained at least RELOCATION_MIN_GROWTH
+# statements, the growth is code motion, not new code.
+STUB_MAX_STATEMENTS = 20
+RELOCATION_RATIO = 3
+RELOCATION_MIN_GROWTH = 10
+
+
+class ModuleCoverage(NamedTuple):
+    """One module's TOTAL row: percentage plus the statement counts behind it."""
+
+    pct: float
+    statements: int
+    missing: int
+
+    @property
+    def covered(self) -> int:
+        return self.statements - self.missing
+
+
+def parse_total_row(report_output: str) -> ModuleCoverage | None:
+    """Parse the TOTAL row of a ``coverage report`` output."""
+    for line in report_output.splitlines():
+        m = TOTAL_LINE_RE.match(line.strip())
+        if m:
+            statements, missing, pct = (int(m.group(i)) for i in (1, 2, 3))
+            return ModuleCoverage(float(pct), statements, missing)
+    return None
 
 
 def parse_total_pct(report_output: str) -> float | None:
     """Extract the TOTAL row percentage from a ``coverage report`` output."""
-    for line in report_output.splitlines():
-        m = TOTAL_LINE_RE.match(line.strip())
-        if m:
-            return float(m.group(3))
-    return None
+    row = parse_total_row(report_output)
+    return row.pct if row is not None else None
 
 
-def measure_module_coverage(data_file: Path, module: str) -> float | None:
-    """Return coverage % of *module* in *data_file*, or None if not executed.
+def measure_module_detail(data_file: Path, module: str) -> ModuleCoverage | None:
+    """Return the TOTAL row for *module* in *data_file*, or None if not executed.
 
     ``coverage report --include`` takes fnmatch patterns; try the
     git-relative path first and fall back to a ``*/``-prefixed pattern for
@@ -76,12 +111,29 @@ def measure_module_coverage(data_file: Path, module: str) -> float | None:
             check=False,
         )
         if proc.returncode == 0:
-            pct = parse_total_pct(proc.stdout)
-            if pct is not None:
-                return pct
+            row = parse_total_row(proc.stdout)
+            if row is not None:
+                return row
         # "No data to report" (returncode 1/2) or no TOTAL row — try the
         # next pattern; if both miss, the module was never executed.
     return None
+
+
+def measure_module_coverage(data_file: Path, module: str) -> float | None:
+    """Return coverage % of *module* in *data_file*, or None if not executed."""
+    row = measure_module_detail(data_file, module)
+    return row.pct if row is not None else None
+
+
+def is_relocated(base: ModuleCoverage | None, pr: ModuleCoverage | None) -> bool:
+    """True when the module grew by code motion rather than by new code."""
+    if base is None or pr is None:
+        return False
+    return (
+        base.statements <= STUB_MAX_STATEMENTS
+        and pr.statements >= base.statements * RELOCATION_RATIO
+        and pr.statements - base.statements >= RELOCATION_MIN_GROWTH
+    )
 
 
 def module_exists_at(module: str, sha: str | None) -> bool:
@@ -120,28 +172,54 @@ def gate(
 ) -> int:
     """Evaluate every changed module; return 0 (pass) or 1 (fail)."""
     failures: list[str] = []
+    pr_covered_total = 0
+    base_covered_total = 0
+    relocated_modules: list[str] = []
+
     for module in sorted(changed_modules):
-        pr_pct = measure_module_coverage(pr_data, module)
+        pr = measure_module_detail(pr_data, module)
         is_new = not module_exists_at(module, base_sha)
-        base_pct = (
-            measure_module_coverage(base_data, module) if not is_new else None
-        )
-        floor = compute_floor(is_new, base_pct, threshold, tolerance)
-        pr_pct_val = pr_pct if pr_pct is not None else 0.0
+        base = measure_module_detail(base_data, module) if not is_new else None
+
+        pr_covered_total += pr.covered if pr is not None else 0
+        base_covered_total += base.covered if base is not None else 0
+
+        if is_relocated(base, pr):
+            relocated_modules.append(module)
+            assert base is not None and pr is not None
+            print(
+                f"  [RELOCATED] {module}: {base.statements} -> {pr.statements} "
+                f"statements (base stub) — judged by the aggregate no-regression check"
+            )
+            continue
+
+        floor = compute_floor(is_new, base.pct if base is not None else None, threshold, tolerance)
+        pr_pct_val = pr.pct if pr is not None else 0.0
         status = "PASS" if pr_pct_val >= floor else "FAIL"
         new_marker = " (new module)" if is_new else ""
-        base_note = (
-            f"base {base_pct:.1f}%" if base_pct is not None else "base n/a"
-        )
+        base_note = f"base {base.pct:.1f}%" if base is not None else "base n/a"
         print(
             f"  [{status}] {module}: pr {pr_pct_val:.1f}% vs floor {floor:.1f}%"
             f"{new_marker} ({base_note})"
         )
         if pr_pct_val < floor:
             failures.append(
-                f"{module}: pr {pr_pct_val:.1f}% < floor {floor:.1f}%"
-                f"{new_marker} ({base_note})"
+                f"{module}: pr {pr_pct_val:.1f}% < floor {floor:.1f}%{new_marker} ({base_note})"
             )
+
+    if relocated_modules:
+        status = "PASS" if pr_covered_total >= base_covered_total else "FAIL"
+        print(
+            f"  [{status}] aggregate covered statements: "
+            f"pr {pr_covered_total} vs base {base_covered_total} "
+            f"({len(relocated_modules)} relocated module(s))"
+        )
+        if pr_covered_total < base_covered_total:
+            failures.append(
+                "relocated code lost test coverage: covered statements "
+                f"{pr_covered_total} < base {base_covered_total}"
+            )
+
     if failures:
         print("COVERAGE GATE FAILED:")
         for f in failures:

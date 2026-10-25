@@ -149,6 +149,10 @@ def test_measure_module_coverage_never_executed(mock_run: Mock) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _detail(pct: float, statements: int = 100) -> cg.ModuleCoverage:
+    return cg.ModuleCoverage(pct, statements, int(statements * (100 - pct) / 100))
+
+
 def _run_gate(
     modules: list[str],
     *,
@@ -160,17 +164,17 @@ def _run_gate(
 ) -> int:
     """Drive the gate with a fully-mocked coverage subprocess."""
     with (
-        patch("coverage_gate.measure_module_coverage") as mock_measure,
+        patch("coverage_gate.measure_module_detail") as mock_measure,
         patch("coverage_gate.module_exists_at") as mock_exists,
         patch("coverage_gate.subprocess.run") as mock_run,
     ):
         mock_run.return_value = _fake_coverage_report(0, "")
         mock_exists.return_value = base_exists
 
-        def _measure(data_file: Path, module: str) -> float | None:  # noqa: ARG001
+        def _measure(data_file: Path, module: str) -> cg.ModuleCoverage | None:  # noqa: ARG001
             if data_file.name == ".coverage.pr":
-                return pr_pct
-            return base_pct  # .coverage.base
+                return _detail(pr_pct)
+            return _detail(base_pct) if base_pct is not None else None  # .coverage.base
 
         mock_measure.side_effect = _measure
         return cg.gate(
@@ -195,28 +199,22 @@ def test_gate_existing_module_regression_fails() -> None:
 
 def test_gate_new_module_below_threshold_fails() -> None:
     # New module with no tests at all -> 0% vs threshold 60 -> fail.
-    assert _run_gate(
-        ["src/autoinfo/new_module.py"], base_exists=False, pr_pct=0.0
-    ) == 1
+    assert _run_gate(["src/autoinfo/new_module.py"], base_exists=False, pr_pct=0.0) == 1
 
 
 def test_gate_new_module_at_threshold_passes() -> None:
-    assert _run_gate(
-        ["src/autoinfo/new_module.py"], base_exists=False, pr_pct=60.0
-    ) == 0
+    assert _run_gate(["src/autoinfo/new_module.py"], base_exists=False, pr_pct=60.0) == 0
 
 
 def test_gate_mixed_modules_reports_all() -> None:
     # One pass + one fail -> exit 1, both lines printed.
     with (
-        patch("coverage_gate.measure_module_coverage") as mock_measure,
+        patch("coverage_gate.measure_module_detail") as mock_measure,
         patch("coverage_gate.module_exists_at") as mock_exists,
         patch("coverage_gate.subprocess.run"),
     ):
-        mock_exists.side_effect = (
-            lambda m, s: "new_module" not in m
-        )  # only new_module is "new"
-        mock_measure.return_value = 55.0
+        mock_exists.side_effect = lambda m, s: "new_module" not in m  # only new_module is "new"
+        mock_measure.return_value = _detail(55.0)
         rc = cg.gate(
             ["src/autoinfo/mcp/server.py", "src/autoinfo/new_module.py"],
             Path(".coverage.pr"),
@@ -231,11 +229,11 @@ def test_gate_mixed_modules_reports_all() -> None:
 def test_gate_new_module_detection_uses_exists() -> None:
     # module_exists_at=False routes to the new-module branch (threshold floor).
     with (
-        patch("coverage_gate.measure_module_coverage") as mock_measure,
+        patch("coverage_gate.measure_module_detail") as mock_measure,
         patch("coverage_gate.module_exists_at", return_value=False) as mock_exists,
         patch("coverage_gate.subprocess.run"),
     ):
-        mock_measure.return_value = 50.0  # below threshold 60
+        mock_measure.return_value = _detail(50.0)  # below threshold 60
         rc = cg.gate(
             ["src/autoinfo/new_module.py"],
             Path(".coverage.pr"),
@@ -256,10 +254,7 @@ def test_gate_new_module_detection_uses_exists() -> None:
 def test_read_changed_src_modules_filters(tmp_path: Path) -> None:
     f = tmp_path / "changed-files.txt"
     f.write_text(
-        "src/autoinfo/mcp/server.py\n"
-        "tests/test_foo.py\n"
-        "src/autoinfo/config.py\n"
-        "docs/readme.md\n",
+        "src/autoinfo/mcp/server.py\ntests/test_foo.py\nsrc/autoinfo/config.py\ndocs/readme.md\n",
         encoding="utf-8",
     )
     assert cg._read_changed_src_modules(f) == [
@@ -298,3 +293,68 @@ def test_main_errors_when_data_missing(tmp_path: Path) -> None:
         ]
     )
     assert rc == 2  # both data files missing
+
+
+# ---------------------------------------------------------------------------
+# code-motion (relocated module) handling
+# ---------------------------------------------------------------------------
+
+
+def test_parse_total_row_carries_statement_counts() -> None:
+    row = cg.parse_total_row(
+        "Name                    Stmts   Miss  Cover\nTOTAL                   200    50    75%\n"
+    )
+    assert row is not None
+    assert (row.statements, row.missing, row.pct, row.covered) == (200, 50, 75.0, 150)
+
+
+def test_is_relocated_detects_stub_growth() -> None:
+    # tools/qa.py: 4 schema statements at base -> 15 with the moved handler
+    # (3.75x, +11 statements).
+    assert cg.is_relocated(_detail(100.0, 4), _detail(87.0, 15)) is True
+
+
+def test_is_relocated_rejects_stable_size() -> None:
+    assert cg.is_relocated(_detail(100.0, 120), _detail(90.0, 130)) is False
+    assert cg.is_relocated(None, _detail(90.0, 130)) is False
+
+
+def test_relocated_module_passes_on_aggregate_no_regression() -> None:
+    # Stub at 100% (4 stmts) becomes 15 stmts at 87%: per-module pct collapses,
+    # but the aggregate covered statements did not regress.
+    with (
+        patch("coverage_gate.measure_module_detail") as mock_measure,
+        patch("coverage_gate.module_exists_at", return_value=True),
+    ):
+        mock_measure.side_effect = lambda data, module: (
+            _detail(87.0, 15) if data.name == ".coverage.pr" else _detail(100.0, 4)
+        )
+        rc = cg.gate(
+            ["src/autoinfo/mcp/tools/qa.py"],
+            Path(".coverage.pr"),
+            Path(".coverage.base"),
+            base_sha="abc123",
+            threshold=60.0,
+            tolerance=2.0,
+        )
+    assert rc == 0
+
+
+def test_relocated_module_fails_when_covered_statements_drop() -> None:
+    # Pure deletion of covered code must still fail.
+    with (
+        patch("coverage_gate.measure_module_detail") as mock_measure,
+        patch("coverage_gate.module_exists_at", return_value=True),
+    ):
+        mock_measure.side_effect = lambda data, module: (
+            _detail(5.0, 40) if data.name == ".coverage.pr" else _detail(100.0, 4)
+        )
+        rc = cg.gate(
+            ["src/autoinfo/mcp/tools/qa.py"],
+            Path(".coverage.pr"),
+            Path(".coverage.base"),
+            base_sha="abc123",
+            threshold=60.0,
+            tolerance=2.0,
+        )
+    assert rc == 1

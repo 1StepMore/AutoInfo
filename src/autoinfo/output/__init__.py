@@ -24,7 +24,6 @@ import os
 import re
 import time
 import uuid
-from dataclasses import dataclass, field
 from datetime import date, timedelta
 from datetime import datetime as datetime
 from datetime import timezone as timezone
@@ -62,6 +61,17 @@ from autoinfo.output.audio import (
 from autoinfo.output.audio import (
     _strip_markdown as _strip_markdown,
 )
+from autoinfo.output.contracts import _DELIVERY_GATES_BYPASS as _DELIVERY_GATES_BYPASS
+from autoinfo.output.contracts import _JSONLD_BASE_EXPORT as _JSONLD_BASE_EXPORT
+from autoinfo.output.contracts import _JSONLD_DIGEST as _JSONLD_DIGEST
+from autoinfo.output.contracts import _JSONLD_PRESENTATION as _JSONLD_PRESENTATION
+from autoinfo.output.contracts import _JSONLD_TUTORIAL as _JSONLD_TUTORIAL
+from autoinfo.output.contracts import _PRODUCT_ANALYSIS_FIELDS as _PRODUCT_ANALYSIS_FIELDS
+from autoinfo.output.contracts import DeliveryOutput as DeliveryOutput
+from autoinfo.output.contracts import ReportData as ReportData
+from autoinfo.output.contracts import ReportSection as ReportSection
+from autoinfo.output.contracts import StaleSourceError as StaleSourceError
+from autoinfo.output.contracts import _DeliveryGatesBypass as _DeliveryGatesBypass
 from autoinfo.output.grouping import (
     _SOURCE_TYPE_THEME_LABEL as _SOURCE_TYPE_THEME_LABEL,
 )
@@ -234,7 +244,6 @@ from autoinfo.output.tutorial import (
 if TYPE_CHECKING:
     from autoinfo.config import SourceConfig  # noqa: F811
     from autoinfo.llm import LLMExtractor
-    from autoinfo.quality import QualityResult
 
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, TemplateNotFound
 
@@ -389,10 +398,6 @@ def _fire_agent_notification(event: str, output: Any, product_id: str) -> None:
 # constant FIRST (before "uuid") to keep @context/@type/uuid as the leading
 # keys — that key order is part of the serialized output contract.
 
-_JSONLD_DIGEST: dict[str, str] = {
-    "@context": "https://autoinfo.ai/schemas/knowledge-digest-v1",
-    "@type": "KnowledgeDigest",
-}
 
 # Optional per-product analysis keys of the digest JSON-LD shape (spec §2.4,
 # todo 7; surfaced into the agent payload by _render_agent_json, todo 22;
@@ -411,61 +416,11 @@ _JSONLD_DIGEST: dict[str, str] = {
 
 # Per-product analysis fields shared by the agent JSON-LD payload
 # (_render_agent_json) and the KB metadata persistence (_persist_product_analysis_to_kb).
-_PRODUCT_ANALYSIS_FIELDS: tuple[str, ...] = (
-    "implications",
-    "risks",
-    "action_required",
-    "key_metrics",
-)
-
-_JSONLD_TUTORIAL: dict[str, str] = {
-    "@context": "https://autoinfo.ai/schemas/knowledge-tutorial-v1",
-    "@type": "KnowledgeTutorial",
-}
-
-_JSONLD_PRESENTATION: dict[str, str] = {
-    "@context": "https://autoinfo.ai/schemas/knowledge-presentation-v1",
-    "@type": "KnowledgePresentation",
-}
-
-_JSONLD_BASE_EXPORT: dict[str, str] = {
-    "@context": "https://autoinfo.ai/schemas/knowledge-base-export-v1",
-    "@type": "KnowledgeBaseExport",
-}
 
 
 # ---------------------------------------------------------------------------
 # Delivery gate output container
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class DeliveryOutput:
-    """Output from a product generation run, extended with delivery gate results.
-
-    When :func:`generate_digest` or :func:`generate_report` is called with
-    *delivery_gate_configs* explicitly provided, the function returns a
-    :class:`DeliveryOutput` instead of a plain ``str``.  Existing callers
-    that do not pass *delivery_gate_configs* continue to receive a plain
-    ``str`` (backward compatible).
-    """
-
-    output: str
-    gate_results: dict[str, "QualityResult"] = field(default_factory=dict)
-    delivery_blocked: bool = False
-    delivery_format: str = ""
-    warnings: list[str] = field(default_factory=list)
-
-
-class StaleSourceError(ValueError):
-    """Raised when freshness filtering removes all candidate entries for a
-    digest/report, so the product would be an empty shell.
-
-    Subclasses :class:`ValueError` so the CLI and MCP layers (which catch
-    ``ValueError`` around ``generate_digest`` / ``generate_report``) surface a
-    clean, actionable error instead of silently producing a product with no
-    content (backup issue #52).
-    """
 
 
 # ---------------------------------------------------------------------------
@@ -579,13 +534,6 @@ from autoinfo.output.entries import (  # noqa: E402
 )
 from autoinfo.output.entries import _user_source_label as _user_source_label  # noqa: E402
 from autoinfo.output.entries import _warn_cjk_leak as _warn_cjk_leak  # noqa: E402
-
-
-class _DeliveryGatesBypass:
-    """Sentinel type for explicitly bypassing delivery-gate resolution."""
-
-
-_DELIVERY_GATES_BYPASS: Final = _DeliveryGatesBypass()
 
 
 def _resolve_delivery_gate_configs(
@@ -4376,36 +4324,6 @@ def generate_digest(
 TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "data" / "templates" / "report.md.j2"
 
 
-@dataclass
-class ReportSection:
-    """A single themed section within a report."""
-
-    title: str
-    content: str
-    items: list[dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
-class ReportData:
-    """Full report data passed to the Jinja2 template."""
-
-    title: str
-    generated_at: str
-    domain: str
-    collection_id: str = ""
-    executive_summary: str = ""
-    key_findings: list[dict[str, Any]] = field(default_factory=list)
-    recommendations: list[str] = field(default_factory=list)
-    implications: list[str] = field(default_factory=list)
-    risks: list[dict[str, Any]] = field(default_factory=list)
-    action_required: list[str] = field(default_factory=list)
-    key_metrics: list[dict[str, Any]] = field(default_factory=list)
-    sections: list[ReportSection] = field(default_factory=list)
-    references: list[dict[str, Any]] = field(default_factory=list)
-    appendices: list[dict[str, Any]] = field(default_factory=list)
-    grouping_degradation_marker: str = ""
-
-
 def generate_report(
     domain: str,
     collection_id: str | None = None,
@@ -5947,12 +5865,12 @@ def _parse_report_markdown(content: str, require_exec_summary: bool = True) -> d
 def _llm_json_extract(
     extractor: LLMExtractor,
     prompt: str,
-    field: str,
+    key: str,
 ) -> Any:
     """Call the LLM and extract a top-level JSON field.
 
     Uses :class:`LLMExtractor` under the hood by wrapping the prompt in
-    a minimal ``Item``.  Returns the value of *field* from the parsed
+    a minimal ``Item``.  Returns the value of *key* from the parsed
     JSON response, or ``None`` on failure.
 
     Free-provider resilience: the extraction path returns an EMPTY result
@@ -5966,14 +5884,14 @@ def _llm_json_extract(
         source_name="report",
         source_type="internal",
         source_url="",
-        title=field.replace("_", " ").title(),
+        title=key.replace("_", " ").title(),
         content=prompt,
     )
-    result = extractor.extract(dummy, schema=[field])
-    value = result.custom_fields.get(field) if result else None
+    result = extractor.extract(dummy, schema=[key])
+    value = result.custom_fields.get(key) if result else None
     if value is None:
-        result = extractor.extract(dummy, schema=[field])
-        value = result.custom_fields.get(field) if result else None
+        result = extractor.extract(dummy, schema=[key])
+        value = result.custom_fields.get(key) if result else None
     return value
 
 
@@ -6674,9 +6592,7 @@ def _persist_product_analysis_to_kb(
     break output generation.
     """
     populated = {
-        field: product_fields[field]
-        for field in _PRODUCT_ANALYSIS_FIELDS
-        if product_fields.get(field)
+        name: product_fields[name] for name in _PRODUCT_ANALYSIS_FIELDS if product_fields.get(name)
     }
     if not populated:
         return

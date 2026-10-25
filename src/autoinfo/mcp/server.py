@@ -39,7 +39,6 @@ from mcp.types import TextContent, Tool
 from autoinfo import __version__
 from autoinfo.cli.doctor import calculate_health_score
 from autoinfo.config import (
-    DEFAULT_TTL_DAYS,
     SOURCE_KEY_ENV_VARS,
     ConfigNotFoundError,
 )
@@ -536,58 +535,6 @@ def _handle_get_processing_progress(domain: str = "", job_id: str = "") -> dict[
 
         return _canonicalize(get_processing_progress(domain=domain))
     return {"status": "idle", "is_complete": True}
-
-
-def _handle_list_summaries(**kwargs: Any) -> dict[str, Any]:
-    """List KB entries for a domain via ``KBStore.list_entries``.
-
-    Expects ``domain`` in ``**kwargs`` (popped before passing the rest).
-    """
-    from autoinfo.kb import KBStore
-
-    domain = kwargs.pop("domain")
-
-    kb_status = mcp_context._detect_kb_status()
-    if kb_status == "uninitialized":
-        return error_response(
-            ErrorCode.EMPTY_RESULT,
-            "Knowledge base not initialized. Run collect_sources() + process_collection() first.",
-        )
-    if kb_status == "empty":
-        return {
-            "domain": domain,
-            "entries": [],
-            "count": 0,
-            "message": "Knowledge base initialized but has no entries yet. Run collect_sources() + process_collection() to populate.",
-        }
-
-    store = KBStore()
-    entries = store.list_entries(domain, **kwargs)
-    return {"domain": domain, "entries": entries, "count": len(entries)}
-
-
-def _handle_get_kb_entry(entry_id: str, user_id: str | None = None) -> dict[str, Any]:
-    """Fetch a single KB entry by ID via ``KBStore.get_entry``.
-
-    Parameters
-    ----------
-    entry_id:
-        Unique entry identifier.
-    user_id:
-        Optional user_id filter (accepted for multi-user compatibility;
-        direct ID lookup is user-independent).
-    """
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    entry = store.get_entry(entry_id)
-    if entry is None:
-        return error_response(
-            code=ErrorCode.NOT_FOUND,
-            message=f"Entry '{entry_id}' not found",
-            actionable=True,
-        )
-    return _canonicalize(entry)
 
 
 # ---------------------------------------------------------------------------
@@ -1954,403 +1901,6 @@ def _handle_get_extraction(content_id: str) -> dict[str, Any]:
         "quality_tier": entry.get("quality_tier", 1),
         "extracted_fields": extracted_fields,
     }
-
-
-# ---------------------------------------------------------------------------
-# KB / output tools (v0.1 stubs — v0.2+ implementation)
-# ---------------------------------------------------------------------------
-
-
-def _handle_search_knowledge_base(
-    query: str,
-    domain: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
-    mode: str = "fts5",
-    filter_tags: list[str] | None = None,
-    filter_date_from: str | None = None,
-    filter_date_to: str | None = None,
-    filter_quality_tier_min: int | None = None,
-    filter_quality_tier_max: int | None = None,
-    filter_content_type: str | None = None,
-    filter_language: str | None = None,
-    user_id: str | None = None,
-    include_stale: bool = False,
-    filter_custom_fields: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """Search the knowledge base using FTS5 full-text search.
-
-    Parameters
-    ----------
-    domain:
-        Optional domain filter. When ``None`` (default), searches across
-        all domains. When an empty string or a specific domain name is
-        passed, results are filtered to that domain.
-    mode:
-        Search mode: ``"fts5"`` (default), ``"hybrid"`` (FTS5 + vector),
-        or ``"vector"``.  Falls back to FTS5 when vector search is
-        unavailable.
-    include_stale:
-        If False (default), stale entries are demoted to the bottom
-        of search results.
-    filter_custom_fields:
-        Faceted filter over the ``custom_fields`` JSON column (todo 25,
-        output-quality-mega — product-analysis metadata search).  Each
-        key is a dot-path into ``custom_fields`` (e.g.
-        ``"product_analysis.action_required"``); an empty-string value
-        matches entries where the field exists and is non-empty, any
-        other value matches entries where the field's JSON value equals
-        that text.
-    """
-    from autoinfo.kb import KBStore
-
-    kb_status = mcp_context._detect_kb_status()
-    if kb_status == "uninitialized":
-        return error_response(
-            ErrorCode.EMPTY_RESULT,
-            "Knowledge base not initialized. Run collect_sources() + process_collection() first.",
-        )
-    if kb_status == "empty":
-        return {
-            "entries": [],
-            "count": 0,
-            "message": "Knowledge base initialized but has no entries yet. Run collect_sources() + process_collection() to populate.",
-        }
-
-    store = KBStore()
-    return _canonicalize(
-        store.search_knowledge_base(
-            query=query,
-            domain=domain or "",
-            limit=limit,
-            offset=offset,
-            mode=mode,
-            filter_tags=filter_tags,
-            filter_date_from=filter_date_from,
-            filter_date_to=filter_date_to,
-            filter_quality_tier_min=filter_quality_tier_min,
-            filter_quality_tier_max=filter_quality_tier_max,
-            filter_content_type=filter_content_type,
-            filter_language=filter_language,
-            filter_user_id=user_id,
-            include_stale=include_stale,
-            filter_custom_fields=filter_custom_fields,
-        )
-    )
-
-
-def _handle_query_knowledge_graph(
-    entity: str,
-    relation: str = "related_to",
-    domain: str = "",
-    limit: int = 20,
-) -> dict[str, Any]:
-    """Query the knowledge graph for entities related to *entity*."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(
-        store.query_knowledge_graph(
-            entity=entity,
-            relation=relation,
-            domain=domain,
-            limit=limit,
-        )
-    )
-
-
-def _handle_flag_for_knowledge_base(
-    summary_id: str,
-    tags: list[str] | None = None,
-    importance: int = 3,
-) -> dict[str, Any]:
-    """Flag a summary for KB inclusion.
-
-    Dispatches to ``KBStore.flag_for_knowledge_base``.
-    """
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(
-        store.flag_for_knowledge_base(summary_id=summary_id, tags=tags, importance=importance)
-    )
-
-
-def _handle_get_summary(summary_id: str) -> dict[str, Any]:
-    """Return full detail for a summary entry.
-
-    Dispatches to ``KBStore.get_summary``.
-    """
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(store.get_summary(summary_id=summary_id))
-
-
-def _handle_link_items(
-    item_a_id: str,
-    item_b_id: str,
-    relation_type: str = "related",
-    metadata: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Create a link between two KB entries."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(
-        store.link_items(
-            item_a_id=item_a_id,
-            item_b_id=item_b_id,
-            relation_type=relation_type,
-            metadata=metadata,
-        )
-    )
-
-
-def _handle_get_item_relations(
-    item_id: str,
-    relation_type: str | None = None,
-) -> dict[str, Any]:
-    """Return all relations where an item participates."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    relations = store.get_item_relations(item_id=item_id, relation_type=relation_type)
-    return {"item_id": item_id, "relations": relations, "count": len(relations)}
-
-
-def _handle_get_entry_history(entry_id: str) -> dict[str, Any]:
-    """Return all saved backup versions for an entry."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    versions = store.get_entry_history(entry_id=entry_id)
-    return {"entry_id": entry_id, "versions": versions, "count": len(versions)}
-
-
-def _handle_restore_entry_version(version_id: str) -> dict[str, Any]:
-    """Restore an entry from a saved version backup."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(store.restore_entry_version(version_id=version_id))
-
-
-def _handle_compare_versions(entry_id: str, version_a: str, version_b: str) -> dict[str, Any]:
-    """Compare two versions of a KB entry and return a structured diff."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(
-        store.compare_versions(entry_id=entry_id, version_a=version_a, version_b=version_b)
-    )
-
-
-def _handle_get_collection_stats(period: str = "daily") -> dict[str, Any]:
-    """Aggregated collection statistics for the given period."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(store.get_collection_stats(period=period))
-
-
-def _handle_get_collection_diff(since_collection_id: str) -> dict[str, Any]:
-    """Return entries collected since a previous collection ID."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(store.get_collection_diff(since_collection_id=since_collection_id))
-
-
-def _handle_get_domain_decay(domain: str, ttl_days: int = DEFAULT_TTL_DAYS) -> dict[str, Any]:
-    """Compute decay / staleness metrics for a domain."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(store.get_domain_decay(domain=domain, ttl_days=ttl_days))
-
-
-def _handle_create_kb_draft(
-    raw_ids: list[str],
-    title: str,
-    summary: str = "",
-    tags: list[str] | None = None,
-) -> dict[str, Any]:
-    """Create a Draft entry from one or more Raw entries."""
-    from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore
-
-    # Enforce the same 50-char content floor at the Draft boundary: a
-    # Draft compiled from below-min raw content is an empty shell (#279).
-    store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
-    try:
-        entry = store.create_kb_draft(raw_ids=raw_ids, title=title, summary=summary, tags=tags)
-        return _canonicalize(entry.to_dict())
-    except ValueError as exc:
-        return _error_from_exc(
-            exc, "Failed to create the KB draft", code=ErrorCode.VALIDATION_ERROR
-        )
-
-
-def _handle_reject_kb_draft(
-    draft_id: str,
-    reason: str = "",
-    action: str = "back_to_raw",
-) -> dict[str, Any]:
-    """Reject a Draft, moving it back to 01-Raw or archiving."""
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    try:
-        return _canonicalize(store.reject_kb_draft(draft_id=draft_id, reason=reason, action=action))
-    except (ValueError, FileNotFoundError) as exc:
-        return _error_from_exc(exc, "Failed to reject the KB draft")
-
-
-def _handle_list_kb_tier(
-    domain: str,
-    tier: str,
-    limit: int = 50,
-    offset: int = 0,
-    user_id: str | None = None,
-) -> dict[str, Any]:
-    """List entries in a specific KB tier.
-
-    Parameters
-    ----------
-    user_id:
-        Optional user_id filter — only entries belonging to this user
-        are returned. When ``None``, no user filter is applied.
-    """
-    from autoinfo.kb import KBStore
-
-    kb_status = mcp_context._detect_kb_status()
-    if kb_status == "uninitialized":
-        return error_response(
-            ErrorCode.EMPTY_RESULT,
-            "Knowledge base not initialized. Run collect_sources() + process_collection() first.",
-        )
-    if kb_status == "empty":
-        return {
-            "domain": domain,
-            "tier": tier,
-            "entries": [],
-            "count": 0,
-            "message": "Knowledge base initialized but has no entries yet. Run collect_sources() + process_collection() to populate.",
-        }
-
-    store = KBStore()
-    entries = store.list_kb_tier(
-        domain=domain, tier=tier, limit=limit, offset=offset, user_id=user_id
-    )
-    return {
-        "domain": domain,
-        "tier": tier,
-        "entries": entries,
-        "count": len(entries),
-    }
-
-
-def _handle_promote_kb_draft(
-    entry_id: str,
-    user_id: str = "",
-) -> dict[str, Any]:
-    """Promote a Draft KB entry to the 03-Wiki tier.
-
-    Admission-gated agent promotion: the draft must pass the curation gate
-    (source provenance, G0, G1/G3 thresholds, G4 factual consistency) or
-    the promotion is rejected and a ``_failed/<domain>/<entry_id>.md``
-    marker is written while the draft stays in 02-Draft. The draft must be
-    in 02-Draft tier. Returns the promoted entry path and metadata.
-    """
-    from autoinfo.kb import KBStore
-
-    try:
-        store = KBStore()
-        result = store.promote_kb_draft(draft_id=entry_id)
-        return _canonicalize(result)
-    except FileNotFoundError as exc:
-        return _error_from_exc(exc, "Failed to promote the KB draft", code=ErrorCode.NOT_FOUND)
-    except PermissionError as exc:
-        return _error_from_exc(
-            exc, "Failed to promote the KB draft", code=ErrorCode.VALIDATION_ERROR
-        )
-    except Exception as exc:
-        logger.exception("promote_kb_draft failed for '%s'", entry_id)
-        return _error_from_exc(exc, "promote_kb_draft failed")
-
-
-def _handle_demote_kb_wiki(entry_id: str, actor: str = "agent") -> dict[str, Any]:
-    """Demote a 03-Wiki entry back to 02-Draft (director-only backdoor).
-
-    Content is preserved: the file moves from ``03-Wiki/`` to ``02-Draft/``
-    under the same domain and topic, frontmatter ``tier`` is rewritten to
-    ``02-Draft`` and a ``demoted_at`` timestamp is appended; the original
-    promotion provenance is kept.  The actor must be whitelisted in
-    ``AUTOINFO_DIRECTOR_ACTORS`` (default ``director``) or the call is
-    refused with a ``DIRECTOR_ONLY`` error envelope.
-    """
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    try:
-        return _canonicalize(store.demote_entry(entry_id=entry_id, caller=actor))
-    except DirectorOnlyError as exc:
-        return _error_from_exc(exc, "demote_kb_wiki refused", code=ErrorCode.DIRECTOR_ONLY)
-
-
-def _handle_force_promote(draft_id: str, actor: str = "agent") -> dict[str, Any]:
-    """Force-promote a 02-Draft entry to 03-Wiki, skipping the admission gate.
-
-    Director-only backdoor: provenance / G0 / G1 / G3 / G4 checks are not
-    evaluated; the frontmatter records ``promotion_source: director``.  The
-    actor must be whitelisted in ``AUTOINFO_DIRECTOR_ACTORS`` (default
-    ``director``) or the call is refused with a ``DIRECTOR_ONLY`` error
-    envelope.
-    """
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    try:
-        return _canonicalize(store.force_promote_kb_draft(draft_id=draft_id, caller=actor))
-    except DirectorOnlyError as exc:
-        return _error_from_exc(exc, "force_promote refused", code=ErrorCode.DIRECTOR_ONLY)
-
-
-def _handle_promote_pending(domain: str, actor: str = "agent") -> dict[str, Any]:
-    """Promote all eligible 02-Draft entries for *domain* (batch sweep).
-
-    Each 02-Draft entry is admission-checked via the existing promote path;
-    entries previously rejected (carrying a ``_failed/<domain>/<entry_id>.md``
-    marker) are skipped and never retried.  Returns a summary with
-    promoted/rejected/failed per entry and per-entry failure reasons; the
-    sweep never raises (per-entry failures are collected in the summary).
-    """
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    config = None
-    try:
-        config = mcp_context._load_config()
-    except Exception:
-        config = None
-    try:
-        return _canonicalize(
-            store.promote_pending_drafts(domain=domain, config=config, caller=actor)
-        )
-    except Exception as exc:
-        logger.exception("promote_pending failed for domain '%s'", domain)
-        return _error_from_exc(exc, "promote_pending failed")
-
-
-def _handle_reindex_kb(domain: str) -> dict[str, Any]:
-    """Rebuild SQLite index from disk frontmatter.
-
-    Dispatches to ``KBStore.reindex_knowledge_base``.
-    """
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-    return _canonicalize(store.reindex_knowledge_base(domain=domain))
 
 
 def _handle_list_output_templates(domain: str = "", user_id: str | None = None) -> dict[str, Any]:
@@ -5027,120 +4577,6 @@ def _handle_recommend_content(
 
 
 # ---------------------------------------------------------------------------
-# KB: Create entry from scratch (1)
-# ---------------------------------------------------------------------------
-
-
-def _handle_create_kb_entry(
-    domain: str,
-    title: str,
-    content: str,
-    source_url: str,
-    source_type: str,
-    topics: list[str] | None = None,
-    author: str = "",
-) -> dict[str, Any]:
-    """Create a KB entry from scratch in the 01-Raw tier.
-
-    Architecture rule: 01-Raw is the sole entry point for all
-    collected and manually-created content.  This tool writes to
-    01-Raw only — 02-Draft and 03-Wiki are reached through separate
-    promotion steps.
-
-    Parameters
-    ----------
-    domain:
-        Target domain name (e.g. medical-research).
-    title:
-        Entry title.
-    content:
-        Full text / Markdown content of the entry.
-    source_url:
-        Source URL (mandatory provenance).
-    source_type:
-        Source type (e.g. web, api, manual).
-    topics:
-        Optional list of topic tags.
-    author:
-        Optional author name (stored in KBEntry frontmatter).
-
-    Returns
-    -------
-    dict
-        ``{entry_id, tier, source_url, created_at, title, domain}``
-        wrapped in ``success_response()`` envelope.
-    """
-    from datetime import timezone
-    from uuid import uuid4
-
-    from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore
-    from autoinfo.models import Item
-
-    try:
-        if not domain or not title or not content or not source_url:
-            return error_response(
-                code=ErrorCode.VALIDATION_ERROR,
-                message="domain, title, content, and source_url are required. Provide all four fields to create the KB entry.",
-                actionable=True,
-            )
-
-        if len(content.strip()) < MIN_KB_CONTENT_CHARS:
-            return error_response(
-                ErrorCode.VALIDATION_ERROR,
-                f"content must be at least {MIN_KB_CONTENT_CHARS} characters",
-                actionable=True,
-            )
-
-        topic_tags = topics or []
-
-        item = Item(
-            id=str(uuid4()),
-            source_name=source_type,
-            source_type=source_type,
-            source_url=source_url,
-            source_platform=source_type,
-            title=title,
-            content=content,
-            domain=domain,
-            topic_tags=topic_tags,
-            collected_at=datetime.now(timezone.utc).isoformat(),
-            content_type="text",
-            quality_tier=1,
-        )
-
-        store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
-        entry = store.store_entry(item=item, tier="01-Raw")
-
-        if entry is None:
-            # Issue #182: rejected (content too short) — clean error response
-            return error_response(
-                code=ErrorCode.VALIDATION_ERROR,
-                message="entry rejected by KB store (content too short or unparseable)",
-                actionable=True,
-            )
-
-        return success_response(
-            {
-                "entry_id": entry.entry_id,
-                "tier": entry.tier,
-                "source_url": entry.source_url,
-                "created_at": entry.collected_at,
-                "title": entry.title,
-                "domain": entry.domain,
-            }
-        )
-    except ValueError as exc:
-        return _error_from_exc(
-            exc,
-            "Failed to create the KB entry",
-            code=ErrorCode.VALIDATION_ERROR,
-        )
-    except Exception as exc:
-        logger.exception("create_kb_entry failed")
-        return _error_from_exc(exc, "create_kb_entry failed")
-
-
-# ---------------------------------------------------------------------------
 # T15: Audit Log Query
 # ---------------------------------------------------------------------------
 
@@ -5426,79 +4862,6 @@ def _handle_email_config(
                         pass
 
     return _canonicalize(response)
-
-
-# ---------------------------------------------------------------------------
-# T18: Knowledge Graph Export
-# ---------------------------------------------------------------------------
-
-
-def _handle_knowledge_graph_export(
-    domain: str,
-    format: str = "json",
-    output: str = "",
-) -> dict[str, Any]:
-    """Export the knowledge graph for a domain.
-
-    Parameters
-    ----------
-    domain:
-        Domain name (e.g. medical-research).
-    format:
-        Export format: ``"json"``, ``"graphml"``, or ``"csv"``.
-    output:
-        Optional output file path (auto-generated if omitted).
-
-    Returns
-    -------
-    dict
-        ``{domain, format, output_path, entity_count, relation_count}``.
-    """
-    valid_formats = {"json", "graphml", "csv"}
-    if format not in valid_formats:
-        return error_response(
-            code=ErrorCode.VALIDATION_ERROR,
-            message=f"Unsupported format '{format}'. Supported: {', '.join(sorted(valid_formats))}",
-            actionable=True,
-        )
-
-    from autoinfo.kb import KBStore
-
-    store = KBStore()
-
-    try:
-        data = store.export_knowledge_graph(domain=domain)
-    except Exception as exc:
-        logger.exception("Knowledge graph export failed for domain '%s'", domain)
-        return _error_from_exc(exc, "Knowledge graph export failed")
-
-    out_path = Path(output) if output else Path(f"knowledge_graph_export.{format}")
-
-    try:
-        if format == "json":
-            content = json.dumps(data, ensure_ascii=False, indent=2)
-            out_path.write_text(content, encoding="utf-8")
-        elif format == "graphml":
-            from autoinfo.cli.knowledge import _build_graphml
-
-            xml_content = _build_graphml(data)
-            out_path.write_text(xml_content, encoding="utf-8")
-        elif format == "csv":
-            from autoinfo.cli.knowledge import _write_csv
-
-            stem = str(out_path.with_suffix(""))
-            _write_csv(data, stem)
-    except OSError as exc:
-        logger.exception("Error writing knowledge graph export file")
-        return _error_from_exc(exc, "Error writing knowledge graph export file")
-
-    return {
-        "domain": domain,
-        "format": format,
-        "output_path": str(out_path),
-        "entity_count": len(data.get("entities", [])),
-        "relation_count": len(data.get("relations", [])),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -6507,6 +5870,42 @@ from autoinfo.mcp.tools.kb_lifecycle import (
 from autoinfo.mcp.tools.kb_lifecycle import _handle_find_similar_items as _handle_find_similar_items
 from autoinfo.mcp.tools.kb_lifecycle import _handle_merge_items as _handle_merge_items
 from autoinfo.mcp.tools.kb_lifecycle import _handle_trace_item as _handle_trace_item
+from autoinfo.mcp.tools.knowledge import _handle_compare_versions as _handle_compare_versions
+from autoinfo.mcp.tools.knowledge import _handle_create_kb_draft as _handle_create_kb_draft
+from autoinfo.mcp.tools.knowledge import _handle_create_kb_entry as _handle_create_kb_entry
+from autoinfo.mcp.tools.knowledge import _handle_demote_kb_wiki as _handle_demote_kb_wiki
+from autoinfo.mcp.tools.knowledge import (
+    _handle_flag_for_knowledge_base as _handle_flag_for_knowledge_base,
+)
+from autoinfo.mcp.tools.knowledge import _handle_force_promote as _handle_force_promote
+from autoinfo.mcp.tools.knowledge import _handle_get_collection_diff as _handle_get_collection_diff
+from autoinfo.mcp.tools.knowledge import (
+    _handle_get_collection_stats as _handle_get_collection_stats,
+)
+from autoinfo.mcp.tools.knowledge import _handle_get_domain_decay as _handle_get_domain_decay
+from autoinfo.mcp.tools.knowledge import _handle_get_entry_history as _handle_get_entry_history
+from autoinfo.mcp.tools.knowledge import _handle_get_item_relations as _handle_get_item_relations
+from autoinfo.mcp.tools.knowledge import _handle_get_kb_entry as _handle_get_kb_entry
+from autoinfo.mcp.tools.knowledge import _handle_get_summary as _handle_get_summary
+from autoinfo.mcp.tools.knowledge import (
+    _handle_knowledge_graph_export as _handle_knowledge_graph_export,
+)
+from autoinfo.mcp.tools.knowledge import _handle_link_items as _handle_link_items
+from autoinfo.mcp.tools.knowledge import _handle_list_kb_tier as _handle_list_kb_tier
+from autoinfo.mcp.tools.knowledge import _handle_list_summaries as _handle_list_summaries
+from autoinfo.mcp.tools.knowledge import _handle_promote_kb_draft as _handle_promote_kb_draft
+from autoinfo.mcp.tools.knowledge import _handle_promote_pending as _handle_promote_pending
+from autoinfo.mcp.tools.knowledge import (
+    _handle_query_knowledge_graph as _handle_query_knowledge_graph,
+)
+from autoinfo.mcp.tools.knowledge import _handle_reindex_kb as _handle_reindex_kb
+from autoinfo.mcp.tools.knowledge import _handle_reject_kb_draft as _handle_reject_kb_draft
+from autoinfo.mcp.tools.knowledge import (
+    _handle_restore_entry_version as _handle_restore_entry_version,
+)
+from autoinfo.mcp.tools.knowledge import (
+    _handle_search_knowledge_base as _handle_search_knowledge_base,
+)
 from autoinfo.mcp.tools.qa import _handle_get_source_health as _handle_get_source_health
 from autoinfo.mcp.tools.qa import _handle_query_collected as _handle_query_collected
 from autoinfo.mcp.tools.qa import _handle_rate_item as _handle_rate_item

@@ -3712,48 +3712,6 @@ def _handle_classify_cefr(text: str, lang: str = "en") -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Source health / feedback tools
-# ---------------------------------------------------------------------------
-
-
-def _handle_get_source_health(source_id: str) -> dict[str, Any]:
-    """Return health status for a single source."""
-    from autoinfo.status import get_source_health
-
-    return _canonicalize(get_source_health(source_id=source_id))
-
-
-def _handle_rate_item(
-    item_id: str,
-    rating: int,
-    feedback: str = "",
-) -> dict[str, Any]:
-    """Store user rating/feedback for a collected item."""
-    from autoinfo.status import rate_item
-
-    return _canonicalize(rate_item(item_id=item_id, rating=rating, feedback=feedback))
-
-
-# ---------------------------------------------------------------------------
-# Q&A tool
-# ---------------------------------------------------------------------------
-
-
-def _handle_query_collected(
-    query: str,
-    domain: str,
-    content_ids: list[str] | None = None,
-) -> dict[str, Any]:
-    """Q&A on collected content via FTS5 + LLM synthesis.
-
-    Dispatches to ``autoinfo.qa.query_collected``.
-    """
-    from autoinfo.qa import query_collected as _qa
-
-    return _canonicalize(_qa(query=query, domain=domain, content_ids=content_ids))
-
-
-# ---------------------------------------------------------------------------
 # Project / batch / config tools (v0.5)
 # ---------------------------------------------------------------------------
 
@@ -7761,6 +7719,9 @@ from autoinfo.mcp.context import _validate_source_type as _validate_source_type
 from autoinfo.mcp.context import _validate_url as _validate_url
 from autoinfo.mcp.context import _with_job_db as _with_job_db
 from autoinfo.mcp.context import logger as logger
+from autoinfo.mcp.tools.qa import _handle_get_source_health as _handle_get_source_health
+from autoinfo.mcp.tools.qa import _handle_query_collected as _handle_query_collected
+from autoinfo.mcp.tools.qa import _handle_rate_item as _handle_rate_item
 
 if __name__ == "__main__":
     import argparse

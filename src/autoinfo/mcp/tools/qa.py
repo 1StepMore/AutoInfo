@@ -7,7 +7,11 @@ so ``_decorate_tools`` mutation never leaks across calls.
 
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.types import Tool
+
+from autoinfo.mcp import context as mcp_context
 
 
 def build_tools() -> list[Tool]:
@@ -87,3 +91,35 @@ def build_tools() -> list[Tool]:
             },
         ),
     ]
+
+
+def _handle_get_source_health(source_id: str) -> dict[str, Any]:
+    """Return health status for a single source."""
+    from autoinfo.status import get_source_health
+
+    return mcp_context._canonicalize(get_source_health(source_id=source_id))
+
+
+def _handle_rate_item(
+    item_id: str,
+    rating: int,
+    feedback: str = "",
+) -> dict[str, Any]:
+    """Store user rating/feedback for a collected item."""
+    from autoinfo.status import rate_item
+
+    return mcp_context._canonicalize(rate_item(item_id=item_id, rating=rating, feedback=feedback))
+
+
+def _handle_query_collected(
+    query: str,
+    domain: str,
+    content_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Q&A on collected content via FTS5 + LLM synthesis.
+
+    Dispatches to ``autoinfo.qa.query_collected``.
+    """
+    from autoinfo.qa import query_collected as _qa
+
+    return mcp_context._canonicalize(_qa(query=query, domain=domain, content_ids=content_ids))

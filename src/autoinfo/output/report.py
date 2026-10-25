@@ -309,7 +309,7 @@ def _generate_executive_summary(
     Returns a dict ``{"executive_summary": str, "key_findings": list[str],
     "recommendations": list[str]}`` — never raises.
     """
-    from autoinfo.output import fault_inject  # noqa: PLC0415
+    from autoinfo.output import fault_inject
 
     try:
         fault_inject.maybe_fault("summary")
@@ -433,7 +433,7 @@ def _call_llm_for_report_synthesis(prompt: str) -> str:
     Returns the raw Markdown text (possibly empty) on success, ``""`` on
     failure.
     """
-    from autoinfo.output import fault_inject  # noqa: PLC0415
+    from autoinfo.output import fault_inject
 
     try:
         fault_inject.maybe_fault("report")

@@ -4923,16 +4923,6 @@ def _maybe_persist_audio(mp3_bytes: bytes, persist_path: str | None) -> None:
 
 
 # Markdown patterns to strip when converting to plain text for TTS.
-_MD_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-_MD_IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
-_MD_HEADING_PATTERN = re.compile(r"^#{1,6}\s+", re.MULTILINE)
-_MD_BOLD_PATTERN = re.compile(r"\*\*([^*]+)\*\*")
-_MD_ITALIC_PATTERN = re.compile(r"\*([^*]+)\*")
-_MD_CODE_PATTERN = re.compile(r"`([^`]+)`")
-_MD_HR_PATTERN = re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE)
-_MD_QUOTE_PATTERN = re.compile(r"^>\s?", re.MULTILINE)
-_MD_LIST_PATTERN = re.compile(r"^[\s]*[-*+]\s+", re.MULTILINE)
-_MD_ORDERED_LIST_PATTERN = re.compile(r"^[\s]*\d+\.\s+", re.MULTILINE)
 
 
 # ---------------------------------------------------------------------------

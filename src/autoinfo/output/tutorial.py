@@ -10,11 +10,12 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from autoinfo.config import Config
-    from autoinfo.output import DeliveryOutput, _DeliveryGatesBypass
+    from autoinfo.output.contracts import DeliveryOutput as DeliveryOutput
+    from autoinfo.output.contracts import _DeliveryGatesBypass as _DeliveryGatesBypass
 
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 
 def generate_tutorial(
@@ -68,37 +69,38 @@ def generate_tutorial(
     ValueError
         If *format* or *target_audience* is unsupported.
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _AUDIENCE_DESCRIPTIONS,
-        _JSONLD_TUTORIAL,
-        _VALID_AUDIENCES,
-        DeliveryOutput,
+    from autoinfo.output import (
         KBStore,
-        StaleSourceError,
-        _apply_delivery_gates,
-        _apply_min_content_guard,
-        _build_tutorial_json_prompt,
         _build_tutorial_markdown_prompt,
         _call_llm_for_tutorial,
-        _domain_display_name,
-        _ensure_tutorial_complete,
         _filter_entries_by_content_preference,
-        _filter_entries_by_domain_exclusions,
-        _filter_foreign_language_teaching_entries,
         _filter_product_entries,
         _filter_stale_entries,
         _fire_agent_notification,
-        _is_lang_learning_domain,
-        _render_tutorial_agent_json,
-        _render_tutorial_template,
         _resolve_content_preference,
-        _resolve_delivery_gate_configs,
-        _resolve_effective_language,
-        _resolve_gloss_language,
         _seed_domain_default_language,
-        _try_notify_content_ready,
-        _tutorial_has_content,
     )
+    from autoinfo.output.audience import _AUDIENCE_DESCRIPTIONS as _AUDIENCE_DESCRIPTIONS
+    from autoinfo.output.audience import _VALID_AUDIENCES as _VALID_AUDIENCES
+    from autoinfo.output.contracts import _JSONLD_TUTORIAL as _JSONLD_TUTORIAL
+    from autoinfo.output.contracts import DeliveryOutput as DeliveryOutput
+    from autoinfo.output.contracts import StaleSourceError as StaleSourceError
+    from autoinfo.output.entries import _domain_display_name as _domain_display_name
+    from autoinfo.output.entries import (
+        _filter_entries_by_domain_exclusions as _filter_entries_by_domain_exclusions,
+    )
+    from autoinfo.output.entries import (
+        _filter_foreign_language_teaching_entries as _filter_foreign_language_teaching_entries,
+    )
+    from autoinfo.output.entries import _resolve_effective_language as _resolve_effective_language
+    from autoinfo.output.entries import _resolve_gloss_language as _resolve_gloss_language
+    from autoinfo.output.entries import _try_notify_content_ready as _try_notify_content_ready
+    from autoinfo.output.gates import _apply_delivery_gates as _apply_delivery_gates
+    from autoinfo.output.gates import _apply_min_content_guard as _apply_min_content_guard
+    from autoinfo.output.gates import (
+        _resolve_delivery_gate_configs as _resolve_delivery_gate_configs,
+    )
+    from autoinfo.output.sources import _is_lang_learning_domain as _is_lang_learning_domain
 
     if format not in ("markdown", "agent"):
         raise ValueError(f"Unsupported output format: {format!r}. Supported: markdown, agent")
@@ -401,7 +403,8 @@ def _render_tutorial_agent_json(
 ) -> str:
     """Render tutorial data as agent-native JSON-LD (``@type: KnowledgeTutorial``)."""
     # Derive source entries from KB
-    from autoinfo.output import _JSONLD_TUTORIAL, _domain_display_name  # noqa: PLC0415
+    from autoinfo.output.contracts import _JSONLD_TUTORIAL as _JSONLD_TUTORIAL
+    from autoinfo.output.entries import _domain_display_name as _domain_display_name
 
     source_entries: list[dict[str, Any]] = []
     for e in entries[:50]:
@@ -469,10 +472,9 @@ def _call_llm_for_tutorial(prompt: str) -> dict[str, Any]:
 
     Uses the same pattern as ``_call_llm_for_digest``.
     """
-    from autoinfo.output import (  # noqa: PLC0415
+    from autoinfo.output import (
         Config,
         _parse_json_response,
-        _parse_tutorial_markdown,
         call_with_fallback,
         get_config_path,
         get_prompt,
@@ -536,7 +538,8 @@ def _build_tutorial_json_prompt(
     required to be written in the target language (backup #59/#61).  A
     no-fabricated-causal-attribution constraint is always appended (#62).
     """
-    from autoinfo.output import URL_VERBATIM_CONSTRAINT, _lang_display_name  # noqa: PLC0415
+    from autoinfo.output import URL_VERBATIM_CONSTRAINT
+    from autoinfo.output.entries import _lang_display_name as _lang_display_name
 
     prompt = (
         f"You are a tutorial designer creating content for a {target_audience} "
@@ -627,7 +630,8 @@ def _build_tutorial_markdown_prompt(
     the body/exercises must be written in the target language (backup #59/#61).
     A no-fabricated-causal-attribution constraint is always appended (#62).
     """
-    from autoinfo.output import URL_VERBATIM_CONSTRAINT, _lang_display_name  # noqa: PLC0415
+    from autoinfo.output import URL_VERBATIM_CONSTRAINT
+    from autoinfo.output.entries import _lang_display_name as _lang_display_name
 
     prompt = (
         f"You are a tutorial designer creating content for a {target_audience} "
@@ -964,11 +968,7 @@ def _ensure_tutorial_complete(
     content, …) and fills any missing or empty section from the KB entries,
     so a domain that HAS entries always produces a complete tutorial.
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _domain_display_name,
-        _entry_derived_sections,
-        _validated_exercises,
-    )
+    from autoinfo.output.entries import _domain_display_name as _domain_display_name
 
     objectives, content, exercises, further_reading = _entry_derived_sections(
         entries,
@@ -1059,7 +1059,7 @@ def _ensure_tutorial_complete(
 
 def _render_tutorial_template(context: dict[str, Any]) -> str:
     """Render the tutorial data through ``tutorial.md.j2``."""
-    from autoinfo.output import _get_jinja_env  # noqa: PLC0415
+    from autoinfo.output.templating import _get_jinja_env as _get_jinja_env
 
     env = _get_jinja_env()
     template = env.get_template("tutorial.md.j2")

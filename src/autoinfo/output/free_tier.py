@@ -30,7 +30,7 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard for typing only
     from autoinfo.config import Config
     from autoinfo.models import Subscription
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 
 class FreeTierLimitError(ValueError):
@@ -67,9 +67,7 @@ def _resolve_free_tier_limits(config: "Config | None") -> dict[str, Any]:
             from autoinfo.config import get_config_path, load_config
 
             config_path = get_config_path()
-            config = (
-                load_config(config_path) if config_path is not None else None
-            )
+            config = load_config(config_path) if config_path is not None else None
     except Exception:
         config = None
     if config is None:
@@ -146,11 +144,7 @@ def _existing_products(user_id: str) -> set[tuple[str, str]]:
         if not product_type:
             continue
         metadata = event.get("metadata")
-        domain = (
-            str(metadata.get("domain") or "").strip()
-            if isinstance(metadata, dict)
-            else ""
-        )
+        domain = str(metadata.get("domain") or "").strip() if isinstance(metadata, dict) else ""
         products.add((product_type, domain))
     return products
 
@@ -207,10 +201,7 @@ def check_free_tier_generation(
     # digest → FREE_TIER_LIMIT").
     existing = _existing_products(user_id)
     if (product_type, domain) not in existing and len(existing) >= limits["max_products"]:
-        existing_label = (
-            ", ".join(sorted(f"{ptype}@{dom}" for ptype, dom in existing))
-            or "none"
-        )
+        existing_label = ", ".join(sorted(f"{ptype}@{dom}" for ptype, dom in existing)) or "none"
         message = (
             f"Free-tier limit reached: {len(existing)}/"
             f"{limits['max_products']} products (existing: {existing_label}). "

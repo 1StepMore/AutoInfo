@@ -13,7 +13,28 @@ from typing import Any, cast
 
 import httpx
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
+
+_MD_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+
+_MD_IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+
+_MD_HEADING_PATTERN = re.compile(r"^#{1,6}\s+", re.MULTILINE)
+
+_MD_BOLD_PATTERN = re.compile(r"\*\*([^*]+)\*\*")
+
+_MD_ITALIC_PATTERN = re.compile(r"\*([^*]+)\*")
+
+_MD_CODE_PATTERN = re.compile(r"`([^`]+)`")
+
+_MD_HR_PATTERN = re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE)
+
+_MD_QUOTE_PATTERN = re.compile(r"^>\s?", re.MULTILINE)
+
+_MD_LIST_PATTERN = re.compile(r"^[\s]*[-*+]\s+", re.MULTILINE)
+
+_MD_ORDERED_LIST_PATTERN = re.compile(r"^[\s]*\d+\.\s+", re.MULTILINE)
+
 
 # Default TTS voice for audio output.
 DEFAULT_TTS_VOICE = "alloy"
@@ -30,18 +51,6 @@ def _strip_markdown(text: str) -> str:
     readable for speech synthesis.
     """
     # Images: replace with alt text
-    from autoinfo.output import (  # noqa: PLC0415
-        _MD_BOLD_PATTERN,
-        _MD_CODE_PATTERN,
-        _MD_HEADING_PATTERN,
-        _MD_HR_PATTERN,
-        _MD_IMAGE_PATTERN,
-        _MD_ITALIC_PATTERN,
-        _MD_LINK_PATTERN,
-        _MD_LIST_PATTERN,
-        _MD_ORDERED_LIST_PATTERN,
-        _MD_QUOTE_PATTERN,
-    )
 
     text = _MD_IMAGE_PATTERN.sub(r"\1", text)
     # Links: keep link text, drop URL
@@ -111,13 +120,6 @@ def _render_audio(
     ValueError
         If *text* is empty or exceeds the character limit.
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _get_tts_engine_from_config,
-        _render_audio_edge_tts,
-        _render_audio_openai,
-        _render_audio_whisper,
-        _strip_markdown,
-    )
 
     if not text or not text.strip():
         raise ValueError("Cannot render empty text as audio")
@@ -245,7 +247,7 @@ def _get_tts_engine_from_config() -> str:
     local engine is the sane default (#210); "tts.engine: openai" remains
     available for environments that can reach the endpoint.
     """
-    from autoinfo.output import get_config_path, load_config  # noqa: PLC0415
+    from autoinfo.output import get_config_path, load_config
 
     try:
         config_path = get_config_path()
@@ -267,7 +269,7 @@ def _render_audio_openai(
 ) -> bytes:
     """Render *text* as MP3 audio using the OpenAI Text-to-Speech API."""
     # --- API key resolution ---
-    from autoinfo.output import get_config_path, load_config  # noqa: PLC0415
+    from autoinfo.output import get_config_path, load_config
 
     api_key = os.environ.get("AUTOINFO_LLM_API_KEY", "")
     if not api_key:
@@ -344,7 +346,6 @@ def _render_audio_whisper(
     Falls back to :func:`_render_audio_openai` if the Whisper model is
     unavailable or the API request fails.
     """
-    from autoinfo.output import _render_audio_openai  # noqa: PLC0415
 
     try:
         return _render_audio_openai(text, voice=voice, timeout=timeout, model="whisper-1")
@@ -405,8 +406,6 @@ def _render_audio_edge_tts(
     import asyncio  # noqa: PLC0415
 
     import edge_tts  # noqa: PLC0415
-
-    from autoinfo.output import _run_coro_in_new_thread  # noqa: PLC0415
 
     # CJK detection (CJK Unified Ideographs, Hiragana/Katakana, Hangul).
     cjk_ranges = (

@@ -17,7 +17,7 @@ import yaml
 if TYPE_CHECKING:
     from autoinfo.llm import LLMExtractor
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("autoinfo.output")
 
 
 def _reset_grouping_degraded() -> None:
@@ -37,7 +37,7 @@ def _grouping_degradation_marker(reason: str) -> str:
     marker itself does not change.  The marker is placed as a leading line of
     the sections block in the rendered markdown (report, digest, column).
     """
-    from autoinfo.output import _GROUPING_DEGRADATION_MARKER  # noqa: PLC0415
+    from autoinfo.output import _GROUPING_DEGRADATION_MARKER
 
     return _GROUPING_DEGRADATION_MARKER
 
@@ -78,7 +78,8 @@ def _deterministic_grouping_kind(groups: list[dict[str, Any]] | None) -> str:
     catch-all).  Used to annotate the structured degradation log with the
     grouping actually rendered.
     """
-    from autoinfo.output import _SOURCE_TYPE_THEME_LABELS, _derive_source_label  # noqa: PLC0415
+    from autoinfo.output import _SOURCE_TYPE_THEME_LABELS
+    from autoinfo.output.sources import _derive_source_label as _derive_source_label
 
     if not groups:
         return "general"
@@ -169,22 +170,12 @@ def _group_by_theme(
     collapse into a single ``"General"`` group while more than one distinct
     topic is detectable.
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _GROUPING_BATCH_SIZE,
-        _GROUPING_TARGET_RANGE,
-        _deterministic_grouping,
-        _deterministic_grouping_kind,
-        _ensure_all_entries_grouped,
-        _log_grouping_degraded,
-        _merge_theme_groups,
-        _reset_grouping_degraded,
-        _run_grouping_batches,
-    )
+    from autoinfo.output import _GROUPING_BATCH_SIZE, _GROUPING_TARGET_RANGE, _run_grouping_batches
 
     if not entries:
         return []
 
-    from autoinfo.output import fault_inject  # noqa: PLC0415
+    from autoinfo.output import fault_inject
 
     _reset_grouping_degraded()
 
@@ -283,7 +274,7 @@ def _run_grouping_batches(
     failing batch's exception surfaces in batch order after the pool has
     finished, exactly as the sequential ``for`` loop would.
     """
-    from autoinfo.output import _GROUPING_MAX_WORKERS, _group_batch_by_theme  # noqa: PLC0415
+    from autoinfo.output import _GROUPING_MAX_WORKERS
 
     workers = min(len(batches), _GROUPING_MAX_WORKERS)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
@@ -310,14 +301,7 @@ def _group_batch_by_theme(
     IDs back to entry objects.  Falls back to a deterministic keyword /
     source-type / domain grouping when the LLM fails or collapses the batch.
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _GROUPING_TARGET_RANGE,
-        _deterministic_grouping,
-        _deterministic_grouping_kind,
-        _llm_group_batch,
-        _log_grouping_degraded,
-        _merge_theme_groups,
-    )
+    from autoinfo.output import _GROUPING_TARGET_RANGE, _llm_group_batch
 
     groups_raw = _llm_group_batch(extractor, entries, domain=domain, domains=domains)
     if not groups_raw:
@@ -428,7 +412,7 @@ def _llm_group_batch(
     ``description`` and ``entry_ids``) or ``None`` when the LLM fails or
     repeatedly collapses the batch into a single theme.
     """
-    from autoinfo.output import _llm_json_extract  # noqa: PLC0415
+    from autoinfo.output import _llm_json_extract
 
     entry_summaries_parts: list[str] = []
     for e in entries:
@@ -522,7 +506,7 @@ def _SOURCE_TYPE_THEME_LABEL(source_type: str) -> str:  # noqa: N802 (paired wit
     source types to a domain-neutral, user-facing label; unknown types keep
     a title-cased fallback.
     """
-    from autoinfo.output import _SOURCE_TYPE_THEME_LABELS  # noqa: PLC0415
+    from autoinfo.output import _SOURCE_TYPE_THEME_LABELS
 
     key = (source_type or "").strip().lower()
     if key in _SOURCE_TYPE_THEME_LABELS:
@@ -546,12 +530,9 @@ def _source_group_heading(
     papers must not sit under "Platform & API News").  Mixed-platform groups
     fall back to the provenance-neutral ``_SOURCE_TYPE_THEME_LABEL``.
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _GENERIC_PLATFORMS,
-        _SOURCE_TYPE_THEME_LABEL,
-        _derive_source_label,
-        _platform_name,
-    )
+    from autoinfo.output.entries import _platform_name as _platform_name
+    from autoinfo.output.sources import _GENERIC_PLATFORMS as _GENERIC_PLATFORMS
+    from autoinfo.output.sources import _derive_source_label as _derive_source_label
 
     labels: set[str] = set()
     for e in group_entries:
@@ -591,8 +572,6 @@ def _deterministic_grouping(
     caller can decide on a last-resort group.
     """
     from collections import defaultdict
-
-    from autoinfo.output import _keyword_group_entries, _source_group_heading  # noqa: PLC0415
 
     # 1. Split by source_type
     source_groups: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -670,15 +649,11 @@ def _keyword_group_entries(
     """
     from collections import defaultdict
 
-    from autoinfo.output import (  # noqa: PLC0415
+    from autoinfo.output import (
         _STRUCTURAL_THEME_LABELS,
         _THEME_SYNONYMS,
         _keyword_topic_labels,
         _load_keyword_topics,
-        _match_keyword,
-        _merge_theme_groups,
-        _normalize_text,
-        _normalize_theme_text,
     )
 
     topics = _load_keyword_topics(domain)
@@ -785,7 +760,6 @@ def _load_keyword_topics(domain: str) -> list[str]:
     from the runtime table are appended (deduped); entries that already exist
     are not duplicated.
     """
-    from autoinfo.output import _seed_topic_keywords  # noqa: PLC0415
 
     if not domain:
         return []
@@ -819,7 +793,7 @@ def _seed_topic_keywords(domain: str) -> list[str]:
     absent/unreadable seed yields ``[]`` so the runtime keyword table alone
     drives grouping.
     """
-    from autoinfo.output import _DEMO_DOMAINS_DIR  # noqa: PLC0415
+    from autoinfo.output.sources import _DEMO_DOMAINS_DIR as _DEMO_DOMAINS_DIR
 
     seed_path = _DEMO_DOMAINS_DIR / domain / "sources.yaml"
     if not seed_path.is_file():
@@ -852,12 +826,8 @@ def _keyword_topic_labels(domain: str) -> dict[str, str]:
        back to the seed alone; a missing seed yields an empty map and the
        caller folds keyword groups into ``Additional Topics``.
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _DEMO_DOMAINS_DIR,
-        _normalize_text,
-        get_config_path,
-        load_config,
-    )
+    from autoinfo.output import get_config_path, load_config
+    from autoinfo.output.sources import _DEMO_DOMAINS_DIR as _DEMO_DOMAINS_DIR
 
     labels: dict[str, str] = {}
 
@@ -940,7 +910,7 @@ def _normalize_theme_text(value: str) -> str:
     and the Jaccard near-dup pass in :func:`_merge_theme_groups`, so synonym
     variants merge BEFORE the generic-label blocklist runs.
     """
-    from autoinfo.output import _THEME_SYNONYMS, _normalize_text  # noqa: PLC0415
+    from autoinfo.output import _THEME_SYNONYMS
 
     text = _THEME_SYNONYMS.get(str(value).strip().lower(), str(value))
     return _normalize_text(text)
@@ -964,11 +934,7 @@ def _merge_theme_groups(
     """
     from collections import defaultdict
 
-    from autoinfo.output import (  # noqa: PLC0415
-        _GENERIC_THEME_LABELS,
-        _apply_grouping_target,
-        _normalize_theme_text,
-    )
+    from autoinfo.output import _GENERIC_THEME_LABELS
 
     by_name: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     for g in groups:
@@ -1120,10 +1086,7 @@ def _apply_grouping_target(
     the merged group (deduped by ``entry_id``) — never dropped — and the
     count is never forced upward below ``min``.
     """
-    from autoinfo.output import (  # noqa: PLC0415
-        _GROUPING_TARGET_MIN_SIMILARITY,
-        _normalize_theme_text,
-    )
+    from autoinfo.output import _GROUPING_TARGET_MIN_SIMILARITY
 
     if target_count is None or len(groups) <= target_count[1]:
         return groups

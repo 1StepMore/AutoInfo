@@ -21,6 +21,7 @@ from unittest.mock import patch
 import pytest
 
 from autoinfo.config import ConfigNotFoundError
+from autoinfo.mcp import context as mcp_context
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.server import (
     _handle_archive_project,
@@ -95,12 +96,12 @@ def _mock_load_config(config_dict: dict | None = None):
     from autoinfo.config import _dict_to_config
 
     data = config_dict or _MINIMAL_CONFIG
-    return patch.object(mcp_server, "_load_config", return_value=_dict_to_config(data))
+    return patch.object(mcp_context, "_load_config", return_value=_dict_to_config(data))
 
 
 def _mock_save_config():
     """Patch ``_save_config`` to a no-op."""
-    return patch.object(mcp_server, "_save_config", lambda config: None)
+    return patch.object(mcp_context, "_save_config", lambda config: None)
 
 
 # ======================================================================
@@ -163,7 +164,9 @@ class TestListProjects:
         assert first["total_topics"] >= 1
 
     def test_handles_missing_config(self) -> None:
-        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
+        with patch.object(
+            mcp_context, "_load_config", side_effect=ConfigNotFoundError("no config")
+        ):
             result = _handle_list_projects()
             assert result["success"] is False
             assert result["error"]["code"] == "ConfigNotFound"
@@ -477,7 +480,9 @@ class TestGetConfig:
         assert result["error"]["actionable"] is True
 
     def test_handles_config_load_error(self) -> None:
-        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
+        with patch.object(
+            mcp_context, "_load_config", side_effect=ConfigNotFoundError("no config")
+        ):
             result = _handle_get_config(section="")
             assert result["success"] is False
             assert result["error"]["code"] == "ConfigNotFound"

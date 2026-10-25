@@ -46,6 +46,7 @@ from autoinfo.config import (
 from autoinfo.kb import DirectorOnlyError, is_director
 from autoinfo.keywords import keyword_suggestion_system_prompt
 from autoinfo.llm import call_with_fallback
+from autoinfo.mcp import context as mcp_context
 from autoinfo.mcp.context import (
     _PERSIST_EXT_BY_FORMAT as _PERSIST_EXT_BY_FORMAT,
 )
@@ -414,7 +415,7 @@ def _handle_collect_sources(
         }
 
     # -- Single-domain collection ---------------------------------------------
-    cfg = _load_config()
+    cfg = mcp_context._load_config()
     if _find_domain(cfg, domain) is None:
         return error_response(
             ErrorCode.DOMAIN_NOT_FOUND,
@@ -675,7 +676,7 @@ def _handle_list_summaries(**kwargs: Any) -> dict[str, Any]:
 
     domain = kwargs.pop("domain")
 
-    kb_status = _detect_kb_status()
+    kb_status = mcp_context._detect_kb_status()
     if kb_status == "uninitialized":
         return error_response(
             ErrorCode.EMPTY_RESULT,
@@ -726,7 +727,7 @@ def _handle_get_kb_entry(entry_id: str, user_id: str | None = None) -> dict[str,
 def _handle_list_domains() -> dict[str, Any]:
     """List all configured domains with source/topic counts."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -775,7 +776,7 @@ def _handle_list_available_platforms() -> dict[str, Any]:
 def _handle_activate_domain(name: str) -> dict[str, Any]:
     """Activate a domain (set domain.active = True)."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -795,7 +796,7 @@ def _handle_activate_domain(name: str) -> dict[str, Any]:
         }
 
     domain_cfg.active = True
-    _save_config(config)
+    mcp_context._save_config(config)
     return {
         "domain": name,
         "active": True,
@@ -806,7 +807,7 @@ def _handle_activate_domain(name: str) -> dict[str, Any]:
 def _handle_deactivate_domain(name: str) -> dict[str, Any]:
     """Deactivate a domain (set domain.active = False)."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -826,7 +827,7 @@ def _handle_deactivate_domain(name: str) -> dict[str, Any]:
         }
 
     domain_cfg.active = False
-    _save_config(config)
+    mcp_context._save_config(config)
     return {
         "domain": name,
         "active": False,
@@ -843,7 +844,7 @@ def _handle_remove_domain(name: str, confirm: bool = True, actor: str = "agent")
             actionable=True,
         )
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -856,14 +857,14 @@ def _handle_remove_domain(name: str, confirm: bool = True, actor: str = "agent")
         )
 
     config.domains.remove(domain_cfg)
-    _save_config(config)
+    mcp_context._save_config(config)
     return {"removed": True, "domain": name}
 
 
 def _handle_get_domain_config(name: str) -> dict[str, Any]:
     """Return full domain config including sources, topics, extract_fields."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -926,7 +927,7 @@ def _handle_set_domain_webhooks(
         )
 
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -939,7 +940,7 @@ def _handle_set_domain_webhooks(
         )
 
     domain_cfg.webhook_urls = list(webhook_urls)
-    _save_config(config)
+    mcp_context._save_config(config)
 
     return {
         "domain": domain,
@@ -951,7 +952,7 @@ def _handle_set_domain_webhooks(
 def _handle_get_domain_webhooks(domain: str) -> dict[str, Any]:
     """Return the configured webhook URLs for a domain."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -972,7 +973,7 @@ def _handle_get_domain_webhooks(domain: str) -> dict[str, Any]:
 def _handle_add_domain(name: str, description: str = "") -> dict[str, Any]:
     """Create a new domain configuration (idempotent — returns existing config if domain already exists)."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -992,7 +993,7 @@ def _handle_add_domain(name: str, description: str = "") -> dict[str, Any]:
 
     new_domain = DomainConfig(name=name, description=description or "", active=True)
     config.domains.append(new_domain)
-    _save_config(config)
+    mcp_context._save_config(config)
     return {
         "domain": name,
         "name": name,
@@ -1007,7 +1008,7 @@ def _handle_add_domain(name: str, description: str = "") -> dict[str, Any]:
 def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
     """Return the schema / structure for a given domain."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1085,7 +1086,7 @@ def _handle_list_available_models() -> dict[str, Any]:
     ``len(models)``.
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1208,7 +1209,7 @@ def _handle_add_source(
             merged_settings["secret"] = webhook_secret
 
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1263,7 +1264,7 @@ def _handle_add_source(
         settings=merged_settings,
     )
     domain_cfg.sources.append(new_source)
-    _save_config(config)
+    mcp_context._save_config(config)
 
     result: dict[str, Any] = {
         "source": {
@@ -1336,7 +1337,7 @@ def _handle_remove_source(
             actionable=True,
         )
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1360,7 +1361,7 @@ def _handle_remove_source(
     for i, existing in enumerate(domain_cfg.sources):
         if existing.name == source_name:
             removed = domain_cfg.sources.pop(i)
-            _save_config(config)
+            mcp_context._save_config(config)
             return {
                 "removed": True,
                 "source_id": source_id,
@@ -1584,7 +1585,7 @@ def _handle_test_llm_connection(
 def _handle_list_sources(domain: str) -> dict[str, Any]:
     """List all sources for a given domain."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1623,7 +1624,7 @@ def _handle_add_topic(
 ) -> dict[str, Any]:
     """Add a topic to a domain."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1648,7 +1649,7 @@ def _handle_add_topic(
 
     new_topic = TopicConfig(name=name, keywords=keywords or [])
     domain_cfg.topics.append(new_topic)
-    _save_config(config)
+    mcp_context._save_config(config)
 
     return {
         "topic": {"name": name, "keywords": keywords or []},
@@ -1668,7 +1669,7 @@ def _handle_remove_topic(
             actionable=True,
         )
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1684,7 +1685,7 @@ def _handle_remove_topic(
     for i, existing in enumerate(domain_cfg.topics):
         if existing.name == topic_name:
             removed = domain_cfg.topics.pop(i)
-            _save_config(config)
+            mcp_context._save_config(config)
             return {
                 "removed": True,
                 "topic_id": topic_id,
@@ -1701,7 +1702,7 @@ def _handle_remove_topic(
 def _handle_list_topics(domain: str) -> dict[str, Any]:
     """List all topics for a given domain."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1731,7 +1732,7 @@ def _handle_list_keywords(
     (from config only — managed keywords are returned separately).
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1809,7 +1810,7 @@ def _handle_topic_group_add(
     do not exist in the domain are reported in the ``not_found`` list.
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1836,7 +1837,7 @@ def _handle_topic_group_add(
             not_found.append(name)
 
     if assigned:
-        _save_config(config)
+        mcp_context._save_config(config)
 
     return {
         "domain": domain,
@@ -1853,7 +1854,7 @@ def _handle_topic_group_remove(domain: str, group_name: str) -> dict[str, Any]:
     current group matches *group_name*.
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -1872,7 +1873,7 @@ def _handle_topic_group_remove(domain: str, group_name: str) -> dict[str, Any]:
             cleared.append(t.name)
 
     if cleared:
-        _save_config(config)
+        mcp_context._save_config(config)
 
     return {
         "domain": domain,
@@ -2193,7 +2194,7 @@ def _handle_search_knowledge_base(
     """
     from autoinfo.kb import KBStore
 
-    kb_status = _detect_kb_status()
+    kb_status = mcp_context._detect_kb_status()
     if kb_status == "uninitialized":
         return error_response(
             ErrorCode.EMPTY_RESULT,
@@ -2412,7 +2413,7 @@ def _handle_list_kb_tier(
     """
     from autoinfo.kb import KBStore
 
-    kb_status = _detect_kb_status()
+    kb_status = mcp_context._detect_kb_status()
     if kb_status == "uninitialized":
         return error_response(
             ErrorCode.EMPTY_RESULT,
@@ -2519,7 +2520,7 @@ def _handle_promote_pending(domain: str, actor: str = "agent") -> dict[str, Any]
     store = KBStore()
     config = None
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception:
         config = None
     try:
@@ -2973,7 +2974,7 @@ def _handle_generate_cross_domain_report(
 
     # Validate all domains exist
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except FileNotFoundError:
         return error_response(
             code=ErrorCode.VALIDATION_ERROR,
@@ -3282,7 +3283,7 @@ def _handle_send_email_digest(
     from autoinfo.email_sender import send_digest as _send_email
 
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -3493,7 +3494,7 @@ def _handle_add_schedule(
                     actionable=True,
                 )
             try:
-                config = _load_config()
+                config = mcp_context._load_config()
             except Exception as exc:
                 return _error_from_exc(exc, "Failed to load the project configuration")
             if not config.email.enabled:
@@ -3812,7 +3813,7 @@ def _handle_classify_cefr(text: str, lang: str = "en") -> dict[str, Any]:
         ``{cefr_level, confidence, text_preview}``.
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
         model_config: dict[str, Any] = {}
         if config.cefr.model:
             model_config["model"] = config.cefr.model
@@ -4075,7 +4076,7 @@ def _handle_configure_llm(
         judgment model (llm.judgment_model → llm.model → loud error,
         issue #195) at runtime.
     """
-    config_path = _config_path()
+    config_path = mcp_context._config_path()
 
     # No-op when nothing is supplied
     if not any([provider, model, api_key, base_url]) and llm_fallback is None and llm_tasks is None:
@@ -4223,7 +4224,7 @@ def _handle_configure_llm(
 def _handle_list_projects(status: str = "") -> dict[str, Any]:
     """List all configured projects with domain/source summaries."""
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to list projects")
 
@@ -4636,7 +4637,7 @@ def _handle_get_gate_config(domain: str, gate: str) -> dict[str, Any]:
     falling back to global defaults when the gate is not set at the domain level.
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -4702,7 +4703,7 @@ def _handle_set_gate_config(
     for quality gates; ``enabled``, ``action_on_failure`` for delivery gates).
     """
     try:
-        cfg = _load_config()
+        cfg = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -4748,7 +4749,7 @@ def _handle_set_gate_config(
         )
         domain_cfg.delivery_gates[gate] = new_dc
 
-    _save_config(cfg)
+    mcp_context._save_config(cfg)
 
     # Both branches of is_quality/is_delivery set one of new_gc/new_dc
     if is_quality and new_gc is not None:
@@ -4783,7 +4784,7 @@ def _handle_get_budget_thresholds() -> dict[str, Any]:
     with its comparison status.
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -4841,7 +4842,7 @@ def _handle_set_budget_thresholds(
         Optional webhook URL for budget alert notifications.
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -4858,7 +4859,7 @@ def _handle_set_budget_thresholds(
     if alert_webhook:
         config.cost_alerts.alert_webhook = alert_webhook
 
-    _save_config(config)
+    mcp_context._save_config(config)
 
     return {
         "budget_thresholds": config.cost_alerts.budget_thresholds,
@@ -4881,7 +4882,7 @@ def _handle_get_product(domain: str, product_type: str) -> dict[str, Any]:
     channels, etc.).
     """
     try:
-        cfg = _load_config()
+        cfg = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -4946,7 +4947,7 @@ def _handle_list_products(domain: str) -> dict[str, Any]:
     domain's configuration.
     """
     try:
-        cfg = _load_config()
+        cfg = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -5216,7 +5217,7 @@ def _handle_get_config(section: str = "") -> dict[str, Any]:
     Returns the full config when *section* is empty.
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -5263,7 +5264,7 @@ def _handle_get_config(section: str = "") -> dict[str, Any]:
             actionable=True,
         )
 
-    config_dict["config_path"] = str(_config_path())
+    config_dict["config_path"] = str(mcp_context._config_path())
 
     return {"config": config_dict}
 
@@ -6565,7 +6566,7 @@ def _handle_cefr_batch(
         ``{text, cefr_level, confidence}`` or ``{text, error}``.
     """
     try:
-        config = _load_config()
+        config = mcp_context._load_config()
         model_config: dict[str, Any] = {}
         if hasattr(config, "cefr") and config.cefr.model:
             model_config["model"] = config.cefr.model
@@ -6675,7 +6676,7 @@ def _handle_email_config(
     from email.mime.text import MIMEText
 
     try:
-        cfg = _load_config()
+        cfg = mcp_context._load_config()
     except Exception as exc:
         return _error_from_exc(exc, "Failed to load the project configuration")
 
@@ -6709,7 +6710,7 @@ def _handle_email_config(
         changed = True
 
     if changed:
-        _save_config(cfg)
+        mcp_context._save_config(cfg)
 
     config_summary: dict[str, Any] = {
         "smtp_host": email_cfg.smtp_host or "(not set)",

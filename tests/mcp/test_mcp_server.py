@@ -22,6 +22,7 @@ import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams
 
 from autoinfo.config import Config, DomainConfig
+from autoinfo.mcp import context as mcp_context
 from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.server import (
     _error_response,
@@ -383,7 +384,7 @@ class TestToolDispatch:
 
 class TestCollectSources:
     @patch(
-        "autoinfo.mcp.server._load_config",
+        "autoinfo.mcp.context._load_config",
         return_value=Config(domains=[DomainConfig(name="medical-research")]),
     )
     @patch("autoinfo.collect.run_collection")
@@ -411,7 +412,7 @@ class TestCollectSources:
         assert result["collection_id"] == "col-001"
 
     @patch(
-        "autoinfo.mcp.server._load_config",
+        "autoinfo.mcp.context._load_config",
         return_value=Config(domains=[DomainConfig(name="medical-research")]),
     )
     @patch("autoinfo.collect.run_collection")
@@ -419,7 +420,7 @@ class TestCollectSources:
         _handle_collect_sources(domain="medical-research", dry_run=True)
         mock_run.assert_called_once_with(domain="medical-research", dry_run=True)
 
-    @patch("autoinfo.mcp.server._load_config", return_value=Config())
+    @patch("autoinfo.mcp.context._load_config", return_value=Config())
     def test_nonexistent_domain_returns_not_found(self, mock_config: MagicMock) -> None:
         result = _handle_collect_sources(domain="nonexistent-domain")
         assert result["success"] is False
@@ -521,7 +522,7 @@ class TestListSummaries:
     # `_detect_kb_status()` (server.py:720-732) before reaching the mocked
     # `KBStore.list_entries`. Stub the status to "operational" so the store
     # is actually exercised hermetically (no dependency on cwd knowledge/).
-    @patch("autoinfo.mcp.server._detect_kb_status", return_value="operational")
+    @patch("autoinfo.mcp.context._detect_kb_status", return_value="operational")
     @patch("autoinfo.kb.KBStore")
     def test_dispatches_to_kb_store(self, mock_kb: MagicMock, mock_status: MagicMock) -> None:
         mock_instance = mock_kb.return_value
@@ -544,7 +545,7 @@ class TestListSummaries:
         assert result["count"] == 2
         assert result["domain"] == "medical-research"
 
-    @patch("autoinfo.mcp.server._detect_kb_status", return_value="operational")
+    @patch("autoinfo.mcp.context._detect_kb_status", return_value="operational")
     @patch("autoinfo.kb.KBStore")
     def test_empty_result(self, mock_kb: MagicMock, mock_status: MagicMock) -> None:
         mock_instance = mock_kb.return_value
@@ -667,7 +668,7 @@ class TestDomainLifecycle:
             "domains:\n  - name: medical\n    active: false\n    sources: []\n    topics: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_activate_domain(name="medical")
 
         assert result["domain"] == "medical"
@@ -681,7 +682,7 @@ class TestDomainLifecycle:
             "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\ndomains: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_activate_domain(name="nonexistent")
         assert result["success"] is False
         assert result["error"]["code"] == "DomainNotFound"
@@ -695,7 +696,7 @@ class TestDomainLifecycle:
             "domains:\n  - name: medical\n    active: true\n    sources: []\n    topics: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_deactivate_domain(name="medical")
 
         assert result["domain"] == "medical"
@@ -720,7 +721,7 @@ class TestDomainLifecycle:
             "        keywords: [IVF, embryo]\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_get_domain_config(name="medical")
 
         assert result["domain"] == "medical"
@@ -737,7 +738,7 @@ class TestDomainLifecycle:
             "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\ndomains: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_get_domain_config(name="nonexistent")
         assert result["success"] is False
         assert result["error"]["code"] == "DomainNotFound"
@@ -766,7 +767,7 @@ class TestListKeywords:
             "        relevance_threshold: 50\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_list_keywords(domain="medical")
 
         assert result["domain"] == "medical"
@@ -792,7 +793,7 @@ class TestListKeywords:
             "        keywords: [cancer]\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_list_keywords(domain="medical", topic="IVF")
 
         assert result["count"] == 1
@@ -806,7 +807,7 @@ class TestListKeywords:
             "project:\n  name: Test\nllm:\n  provider: openai\n  model: gpt-4\ndomains: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_list_keywords(domain="nonexistent")
         assert result["success"] is False
         assert result["error"]["code"] == "DomainNotFound"
@@ -986,7 +987,7 @@ class TestGenerateOutputPreviewFallback:
         ``OUTPUTS_DIR`` (redirected to ``tmp_path`` here) — failing both the
         envelope and the no-artifact assertions.
         """
-        monkeypatch.setattr(mcp_server, "OUTPUTS_DIR", tmp_path)
+        monkeypatch.setattr(mcp_context, "OUTPUTS_DIR", tmp_path)
         mock_kb.return_value.list_entries.return_value = []
         mock_gen.return_value = "# Report\n\nempty-shell stub"
 
@@ -1023,7 +1024,7 @@ class TestGenerateOutputPreviewFallback:
         candidate and fall through to ``_render_empty_report``.  The rendered
         artifact is therefore judged directly, so that stub never reaches disk.
         """
-        monkeypatch.setattr(mcp_server, "OUTPUTS_DIR", tmp_path)
+        monkeypatch.setattr(mcp_context, "OUTPUTS_DIR", tmp_path)
         mock_kb.return_value.list_entries.return_value = [
             {"id": "raw-1", "title": "unprocessed", "tier": "01-Raw"}
         ]
@@ -1056,7 +1057,7 @@ class TestGenerateOutputPreviewFallback:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A genuine report must still be persisted (#379 no-regression)."""
-        monkeypatch.setattr(mcp_server, "OUTPUTS_DIR", tmp_path)
+        monkeypatch.setattr(mcp_context, "OUTPUTS_DIR", tmp_path)
         mock_kb.return_value.list_entries.return_value = [{"id": "wiki-1"}]
         mock_gen.return_value = "# Gaming — Report\n\n## Executive Summary\n\nReal content."
 
@@ -1299,7 +1300,7 @@ class TestAddSourceQualityWarning:
             "    topics: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_add_source(
                 name="pubmed",
                 url="https://eutils.ncbi.nlm.nih.gov",
@@ -1328,7 +1329,7 @@ class TestAddSourceQualityWarning:
             "    topics: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_add_source(
                 name="blog",
                 url="https://example.com/blog",
@@ -1363,7 +1364,7 @@ class TestAddSourceRequiresKey:
             "    topics: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_add_source(
                 name="NYT",
                 url="https://api.nytimes.com/svc",
@@ -1392,7 +1393,7 @@ class TestAddSourceRequiresKey:
             "    topics: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_add_source(
                 name="feed",
                 url="https://example.com/feed",
@@ -1417,7 +1418,7 @@ class TestAddSourceRequiresKey:
             "    topics: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_add_source(
                 name="alpha-vantage",
                 url="https://www.alphavantage.co/query",
@@ -1447,7 +1448,7 @@ class TestAddSourceRequiresKey:
             "    topics: []\n"
         )
 
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = _handle_add_sources(
                 sources=[
                     {

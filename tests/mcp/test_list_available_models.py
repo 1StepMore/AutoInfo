@@ -17,7 +17,7 @@ from unittest.mock import patch
 import pytest
 
 from autoinfo.config import ConfigNotFoundError
-from autoinfo.mcp import server as mcp_server
+from autoinfo.mcp import context as mcp_context
 from autoinfo.mcp.server import _handle_list_available_models
 
 
@@ -46,7 +46,7 @@ def _mock_load_config(config_dict: dict[str, Any]) -> Any:
     """Patch ``_load_config`` to return a config built from *config_dict*."""
     from autoinfo.config import _dict_to_config
 
-    return patch.object(mcp_server, "_load_config", return_value=_dict_to_config(config_dict))
+    return patch.object(mcp_context, "_load_config", return_value=_dict_to_config(config_dict))
 
 
 class TestListAvailableModelsFullPool:
@@ -138,7 +138,9 @@ class TestListAvailableModelsFullPool:
 
     def test_error_branch_preserved(self) -> None:
         """Missing config → canonical error envelope."""
-        with patch.object(mcp_server, "_load_config", side_effect=ConfigNotFoundError("no config")):
+        with patch.object(
+            mcp_context, "_load_config", side_effect=ConfigNotFoundError("no config")
+        ):
             result = _handle_list_available_models()
 
         assert result["success"] is False

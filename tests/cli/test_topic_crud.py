@@ -365,7 +365,7 @@ class TestMCPAddTopic:
         _setup_minimal_config(tmp_path)
 
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_add_topic(
@@ -384,7 +384,7 @@ class TestMCPAddTopic:
         _setup_minimal_config(tmp_path)
 
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result1 = _handle_add_topic(
@@ -404,7 +404,7 @@ class TestMCPAddTopic:
         _setup_minimal_config(tmp_path)
 
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_add_topic(domain="nonexistent", name="Test")
@@ -415,7 +415,7 @@ class TestMCPAddTopic:
     def test_no_config_returns_error(self, tmp_path: Path) -> None:
         """When no config file exists, returns an error dict."""
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_add_topic(domain="medical-research", name="Test")
@@ -435,7 +435,7 @@ class TestMCPRemoveTopic:
         _setup_config_with_topics(tmp_path)
 
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_remove_topic(domain="medical-research", topic_id="IVF")
@@ -448,7 +448,7 @@ class TestMCPRemoveTopic:
         _setup_config_with_topics(tmp_path)
 
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_remove_topic(domain="medical-research", topic_id="nonexistent")
@@ -461,7 +461,7 @@ class TestMCPRemoveTopic:
         _setup_config_with_topics(tmp_path)
 
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_remove_topic(domain="nonexistent", topic_id="IVF")
@@ -472,7 +472,7 @@ class TestMCPRemoveTopic:
     def test_no_config_returns_error(self, tmp_path: Path) -> None:
         """When no config file exists, returns an error dict."""
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_remove_topic(domain="medical-research", topic_id="IVF")
@@ -492,7 +492,7 @@ class TestMCPListTopics:
         _setup_config_with_topics(tmp_path)
 
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_list_topics(domain="medical-research")
@@ -507,7 +507,7 @@ class TestMCPListTopics:
         _setup_minimal_config(tmp_path)
 
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_list_topics(domain="medical-research")
@@ -520,7 +520,7 @@ class TestMCPListTopics:
         _setup_minimal_config(tmp_path)
 
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_list_topics(domain="nonexistent")
@@ -531,7 +531,7 @@ class TestMCPListTopics:
     def test_no_config_returns_error(self, tmp_path: Path) -> None:
         """When no config file exists, returns an error dict."""
         with patch(
-            "autoinfo.mcp.server._config_path",
+            "autoinfo.mcp.context._config_path",
             return_value=tmp_path / ".autoinfo" / "config.yaml",
         ):
             result = _handle_list_topics(domain="medical-research")
@@ -587,7 +587,7 @@ class TestMCPToolRegistration:
                 arguments={"domain": "nonexistent"},
             ),
         )
-        with patch("autoinfo.mcp.server._config_path", return_value=config_path):
+        with patch("autoinfo.mcp.context._config_path", return_value=config_path):
             result = await handler(request)
         call_result = result.root
         data = json.loads(call_result.content[0].text)

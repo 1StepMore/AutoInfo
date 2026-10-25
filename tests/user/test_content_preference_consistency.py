@@ -173,8 +173,10 @@ class TestPresentationContentPreference:
             # Topic matches every fixture entry title, so tier filtering is
             # the only thing that distinguishes the prompt content.
             generate_presentation(
-                domain="test-domain", topic="article one",
-                user_id=user_id, allow_empty=True,
+                domain="test-domain",
+                topic="article one",
+                user_id=user_id,
+                allow_empty=True,
             )
             return mock_llm
 
@@ -185,9 +187,7 @@ class TestPresentationContentPreference:
         assert "Wiki tier article one" not in prompt
 
     def test_processed_only_excludes_raw_tier(self) -> None:
-        prompt = _llm_prompt(
-            self._call_presentation({"content_preference": "processed_only"})
-        )
+        prompt = _llm_prompt(self._call_presentation({"content_preference": "processed_only"}))
         assert "Raw tier article one" not in prompt
         assert "Draft tier article one" in prompt
         assert "Wiki tier article one" in prompt
@@ -261,7 +261,7 @@ class TestCrossDomainReportUserID:
             ]
         )
         with (
-            patch("autoinfo.mcp.server._load_config", return_value=config),
+            patch("autoinfo.mcp.context._load_config", return_value=config),
             patch("autoinfo.output.generate_report", return_value="REPORT") as mock_report,
         ):
             result = _handle_generate_cross_domain_report(
@@ -288,7 +288,7 @@ class TestCrossDomainReportUserID:
             ]
         )
         with (
-            patch("autoinfo.mcp.server._load_config", return_value=config),
+            patch("autoinfo.mcp.context._load_config", return_value=config),
             patch("autoinfo.output.generate_report", return_value="REPORT") as mock_report,
         ):
             result = _handle_generate_cross_domain_report(
@@ -390,9 +390,7 @@ class TestSchedulerUserID:
             user_id="u-9",
         )
         with (
-            patch(
-                "autoinfo.delivery.scheduler.DeliveryScheduler"
-            ) as mock_sched_cls,
+            patch("autoinfo.delivery.scheduler.DeliveryScheduler") as mock_sched_cls,
             patch("autoinfo.delivery.scheduler._deliver_output") as mock_deliver,
             patch("autoinfo.output.generate_digest", return_value="DIGEST") as mock_gen,
         ):
@@ -453,9 +451,7 @@ class TestSendToEnduserGuard:
         with (
             patch("autoinfo.user_store.get_profile", return_value=profile),
             patch("autoinfo.delivery.get_channel") as mock_channel,
-            patch(
-                "autoinfo.delivery.deliver_with_retry", return_value=delivered
-            ) as mock_deliver,
+            patch("autoinfo.delivery.deliver_with_retry", return_value=delivered) as mock_deliver,
         ):
             result = _handle_send_to_enduser(
                 end_user_id="u-1",

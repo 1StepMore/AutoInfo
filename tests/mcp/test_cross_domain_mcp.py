@@ -112,7 +112,7 @@ class TestDelegation:
         mock_config = MagicMock()
         mock_config.domains = [mock_domain_a, mock_domain_b]
 
-        with patch("autoinfo.mcp.server._load_config", return_value=mock_config):
+        with patch("autoinfo.mcp.context._load_config", return_value=mock_config):
             with patch("autoinfo.output.generate_report", autospec=True) as mock_gen:
                 mock_gen.return_value = "# Cross-Domain Report\n\n## executive summary\n\nTest."
                 result = _handle_generate_cross_domain_report(
@@ -158,7 +158,7 @@ class TestDelegation:
         mock_config = MagicMock()
         mock_config.domains = [mock_domain_a, mock_domain_b]
 
-        with patch("autoinfo.mcp.server._load_config", return_value=mock_config):
+        with patch("autoinfo.mcp.context._load_config", return_value=mock_config):
             with patch("autoinfo.output.generate_report", autospec=True) as mock_gen:
                 mock_gen.return_value = (
                     "# Cross-Domain Report\n\n## executive summary\n\nTest via dispatch."

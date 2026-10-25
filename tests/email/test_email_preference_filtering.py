@@ -72,12 +72,8 @@ class TestScheduledEmailUserID:
         sched = _schedule(user_id="u-42")
 
         with (
-            patch(
-                "autoinfo.delivery.scheduler.DeliveryScheduler"
-            ) as mock_sched_cls,
-            patch(
-                "autoinfo.output.generate_digest", return_value="DIGEST"
-            ) as mock_gen,
+            patch("autoinfo.delivery.scheduler.DeliveryScheduler") as mock_sched_cls,
+            patch("autoinfo.output.generate_digest", return_value="DIGEST") as mock_gen,
             patch("autoinfo.email_sender.send_digest") as mock_send,
         ):
             mock_sched_cls.return_value.get_due_schedules.return_value = [sched]
@@ -101,12 +97,8 @@ class TestScheduledEmailUserID:
         sched = _schedule(user_id="")
 
         with (
-            patch(
-                "autoinfo.delivery.scheduler.DeliveryScheduler"
-            ) as mock_sched_cls,
-            patch(
-                "autoinfo.output.generate_digest", return_value="DIGEST"
-            ) as mock_gen,
+            patch("autoinfo.delivery.scheduler.DeliveryScheduler") as mock_sched_cls,
+            patch("autoinfo.output.generate_digest", return_value="DIGEST") as mock_gen,
             patch("autoinfo.email_sender.send_digest") as mock_send,
         ):
             mock_sched_cls.return_value.get_due_schedules.return_value = [sched]
@@ -134,12 +126,8 @@ class TestSendDigestUserID:
         from autoinfo.email_sender import send_digest
 
         with (
-            patch(
-                "autoinfo.email_sender.generate_digest", return_value="# Digest"
-            ) as mock_gen,
-            patch(
-                "autoinfo.email_sender._md_to_html", return_value="<h1>Digest</h1>"
-            ),
+            patch("autoinfo.email_sender.generate_digest", return_value="# Digest") as mock_gen,
+            patch("autoinfo.email_sender._md_to_html", return_value="<h1>Digest</h1>"),
             patch("autoinfo.email_sender._send_smtp") as mock_smtp,
         ):
             result = send_digest(domain="test-domain", config=_EMAIL_CONFIG, **overrides)
@@ -173,7 +161,7 @@ class TestMcpSendEmailDigestUserID:
         from autoinfo.mcp.server import _handle_send_email_digest
 
         with (
-            patch("autoinfo.mcp.server._load_config", return_value=_EMAIL_CONFIG),
+            patch("autoinfo.mcp.context._load_config", return_value=_EMAIL_CONFIG),
             patch(
                 "autoinfo.email_sender.send_digest",
                 return_value={"success": True},
@@ -190,7 +178,7 @@ class TestMcpSendEmailDigestUserID:
         from autoinfo.mcp.server import _handle_send_email_digest
 
         with (
-            patch("autoinfo.mcp.server._load_config", return_value=_EMAIL_CONFIG),
+            patch("autoinfo.mcp.context._load_config", return_value=_EMAIL_CONFIG),
             patch(
                 "autoinfo.email_sender.send_digest",
                 return_value={"success": True},

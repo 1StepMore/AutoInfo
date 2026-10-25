@@ -193,7 +193,7 @@ def test_batch_routes_through_call_with_fallback(
 
     monkeypatch.delenv("AUTOINFO_CEFR_BATCH_WORKERS", raising=False)
     with (
-        mock.patch("autoinfo.mcp.server._config_path", return_value=config_path),
+        mock.patch("autoinfo.mcp.context._config_path", return_value=config_path),
         mock.patch("autoinfo.cefr.call_with_fallback", new=_fake_call_with_fallback),
     ):
         out = _handle_cefr_batch(texts, lang="en")

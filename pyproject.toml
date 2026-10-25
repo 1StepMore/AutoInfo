@@ -152,6 +152,11 @@ select = ["E", "F", "I", "N", "W"]
 # exemption (`ruff format` cannot split a string); reflowing them would break
 # the byte-identical tools/list surface this extraction is required to keep.
 "src/autoinfo/mcp/tools/*.py" = ["E501"]
+# mcp/context.py: the shared helper tier extracted verbatim from server.py
+# (#581 phase 3). Same rationale as mcp/tools/*.py — one moved string literal
+# (_PLATFORM_INFO api description) is 116 chars, and reflowing it would change
+# a value that the byte-identical tools/list surface depends on.
+"src/autoinfo/mcp/context.py" = ["E501"]
 # video.py: added 2026-08-13 (64daae5) with 37 pre-existing E501 long lines
 # (re-measured 2026-10-20); never lint-cleaned. Suppressing here so the
 # changed-files gate catches NEW errors without blocking legacy file touches

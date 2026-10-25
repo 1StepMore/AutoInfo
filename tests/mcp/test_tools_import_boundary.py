@@ -38,6 +38,11 @@ FUNCTION_BODY_IMPORT_ALLOWLIST = {
     ("system.py", "_TOOL_DISPATCH"),
 }
 
+# Always bound by the import system in any module, so never an unresolved read.
+MODULE_DUNDERS = frozenset(
+    {"__file__", "__name__", "__doc__", "__package__", "__loader__", "__spec__", "__builtins__"}
+)
+
 
 def _tool_paths() -> list[pathlib.Path]:
     return sorted(TOOLS_DIR.glob("*.py"))
@@ -161,7 +166,7 @@ def test_handler_free_globals_are_importable() -> None:
 
         for table in _handler_tables(module_table):
             for name in table.get_globals():
-                if name in module_names or name in builtin_names:
+                if name in module_names or name in builtin_names or name in MODULE_DUNDERS:
                     continue
                 hint = f" (use mcp_context.{name})" if hasattr(mcp_context, name) else ""
                 unresolved.append((path.name, table.get_name(), f"{name}{hint}"))

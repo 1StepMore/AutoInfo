@@ -88,7 +88,7 @@ dev = [
     # Pinned, not ranged: the full-tree lint count is only comparable across
     # machines/CI when the linter version is fixed (a >= range silently
     # upgrades ruff and changes the number and the rule set).
-    "ruff==0.17.1",
+    "ruff==0.17.2",
     "mypy>=1.10",
     "pre-commit>=3.7",
     "jsonschema>=4.23",
@@ -140,7 +140,7 @@ select = ["E", "F", "I", "N", "W"]
 
 # Pre-existing lint debt — suppressing here so the changed-files gate catches
 # NEW errors without blocking legacy file touches. The full-tree run under
-# the pinned ruff==0.17.1 is clean (0 errors, "All checks passed!",
+# the pinned ruff==0.17.2 is clean (0 errors, "All checks passed!",
 # 2026-10-20) because the entries below mask the remaining per-file findings
 # (server.py 229 / video.py 37 / delivery/__init__.py 1); they stay until
 # those files are lint-cleaned. server.py rows injected by direct commit

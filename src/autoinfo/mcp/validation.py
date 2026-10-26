@@ -16,8 +16,10 @@ import datetime
 import json
 import os
 import re
+import shlex
 import signal
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -584,6 +586,26 @@ class _StepCancelToken:
             _close_quietly(client)
 
 
+_PYTHON_COMMAND_RE = re.compile(r"(^|[;&|(\n])([ \t]*)(python3?(?:\.\d+)?)(?=\s|$)")
+
+
+def _resolve_cli_interpreter(command: str) -> str:
+    """Rewrite command-position ``python``/``python3`` to ``sys.executable``.
+
+    Scenario YAML must not depend on the caller's PATH (#622): the interpreter
+    running the MCP server is the one that imports ``autoinfo``, so a bare
+    ``python3`` that happens to be a different installation fails the step for
+    reasons unrelated to the product.  Only command-position tokens are
+    rewritten, which leaves argument-position text (``echo python3``) and
+    path-qualified interpreters (``.venv/bin/python``) untouched.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        return f"{match.group(1)}{match.group(2)}{shlex.quote(sys.executable)}"
+
+    return _PYTHON_COMMAND_RE.sub(_replace, command)
+
+
 def _run_cli_step(
     command: str,
     timeout: float = 180.0,
@@ -603,7 +625,7 @@ def _run_cli_step(
     is a backstop, not the sole defence).
     """
     proc = subprocess.Popen(
-        command,
+        _resolve_cli_interpreter(command),
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1741,6 +1763,24 @@ def _count_step_result(sr: dict[str, Any], counts: dict[str, int]) -> None:
         counts["failed"] += 1
 
 
+def _cleanup_failure_summary(cleanup_results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Expose failed cleanup steps so a silent fixture leak cannot hide (#622)."""
+    failed = [sr for sr in cleanup_results if sr.get("status") == "failed"]
+    if not failed:
+        return {}
+    return {
+        "cleanup_failed": True,
+        "failed_steps": [
+            {
+                "step_id": sr.get("step_id"),
+                "name": sr.get("name"),
+                "detail": sr.get("detail"),
+            }
+            for sr in failed
+        ],
+    }
+
+
 async def _execute_step_with_recovery(
     step_def: dict[str, Any],
     dispatch: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None,
@@ -1996,6 +2036,16 @@ async def run_all_scenarios(
         step_summary = res.get("summary") or {}
         summary["recovered"] += int(step_summary.get("recovered", 0) or 0)
     summary["total"] = len(results)
+    cleanup_failures = [
+        {
+            "scenario": res.get("scenario"),
+            "failed_steps": (res.get("cleanup") or {}).get("failed_steps", []),
+            "residuals": (res.get("cleanup") or {}).get("residuals", []),
+        }
+        for res in results
+        if res.get("cleanup_failed")
+    ]
+    summary["cleanup_failed"] = len(cleanup_failures)
 
     aggregate: dict[str, Any] = {
         "suite": True,
@@ -2003,6 +2053,7 @@ async def run_all_scenarios(
         "session_id": session_id,
         "status": _suite_status(summary),
         "summary": summary,
+        "cleanup_failures": cleanup_failures,
         "scenarios": [
             {
                 "scenario": res.get("scenario"),
@@ -2540,6 +2591,7 @@ async def _execute_scenario(
             },
             "steps": cleanup_results,
         }
+        cleanup.update(_cleanup_failure_summary(cleanup_results))
 
     result: dict[str, Any] = {
         "scenario": scenario["name"],
@@ -2570,20 +2622,32 @@ async def _execute_scenario(
     # Reported as a warning (never auto-deleted, never changes status).
     # R-S-07: a broken guard is NOT reported as "no leaks" — the swallowed
     # error is surfaced so the run is never silently mislabelled clean.
+    warnings: list[str] = []
+    if cleanup is not None and cleanup.get("cleanup_failed"):
+        result["cleanup_failed"] = True
+        failed_ids = ", ".join(str(s.get("step_id")) for s in cleanup["failed_steps"])
+        warnings.append(
+            f"CLEANUP_FAILED: {len(cleanup['failed_steps'])} cleanup step(s) failed "
+            f"({failed_ids}); fixture state may remain on disk (#622)"
+        )
     try:
         leaks = _scan_autoinfo_test_leaks()
     except LeakScanError as exc:
-        result["warnings"] = [
+        warnings.append(
             f"LEAK_SCAN_ERROR: scenario leak guard could not inspect the KB "
             f"store ({exc}). Leak status is UNKNOWN (not clean); fix the KB "
             "store and re-run."
-        ]
+        )
     else:
         if leaks:
-            result["warnings"] = [
+            warnings.append(
                 "SCENARIO_LEAK: %d scenario fixture(s) left in 01-Raw: %s"
                 % (len(leaks), ", ".join(leaks))
-            ]
+            )
+            if cleanup is not None and cleanup.get("cleanup_failed"):
+                cleanup["residuals"] = leaks
+    if warnings:
+        result["warnings"] = warnings
     for _key in ("regression", "regression_issue"):
         if _key in scenario:
             result[_key] = scenario[_key]

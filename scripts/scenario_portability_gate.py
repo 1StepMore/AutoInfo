@@ -49,6 +49,7 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -258,6 +259,44 @@ async def _run_project_pass(names: list[str], timeout: float) -> dict[str, tuple
     return results
 
 
+def _interpreter_portability_problem() -> str | None:
+    """Fail the gate when scenario CLI steps would depend on the caller's PATH (#622)."""
+    import shlex
+
+    from autoinfo.mcp.validation import _resolve_cli_interpreter
+
+    resolved = _resolve_cli_interpreter("python3 -c pass")
+    expected = shlex.quote(sys.executable)
+    if not resolved.startswith(expected):
+        return (
+            "Engine interpreter resolution is missing or broken: "
+            f"'python3 -c pass' resolved to {resolved!r}, expected a command "
+            f"starting with {expected!r}. Scenario CLI steps would fall back to "
+            "PATH python3. Fix autoinfo.mcp.validation._resolve_cli_interpreter "
+            "(issue #622)."
+        )
+    return None
+
+
+def _path_python_diagnostic() -> str | None:
+    """Warn when PATH python3 cannot import autoinfo (informational after #622)."""
+    python = shutil.which("python3")
+    if python is None:
+        return (
+            "PATH has no python3; scenario steps resolve to sys.executable, "
+            "so this is informational."
+        )
+    proc = subprocess.run([python, "-c", "import autoinfo"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        return (
+            f"PATH python3 ({python}) cannot import autoinfo. Scenario steps are "
+            "rewritten to sys.executable, so this run is unaffected, but humans "
+            "copying commands out of scenario YAML will hit the same ImportError. "
+            'Fix: export PATH="$PWD/.venv/bin:$PATH".'
+        )
+    return None
+
+
 async def _main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list", action="store_true", help="list candidates and exit")
@@ -269,6 +308,14 @@ async def _main(argv: list[str]) -> int:
         help="comma-separated scenario names to restrict the run (debugging)",
     )
     args = parser.parse_args(argv)
+
+    problem = _interpreter_portability_problem()
+    if problem:
+        print(problem, file=sys.stderr)
+        return 1
+    diagnostic = _path_python_diagnostic()
+    if diagnostic:
+        print(f"WARNING: {diagnostic}", file=sys.stderr)
 
     scenarios = load_scenarios()
     scenario_names = {scenario["name"] for scenario in scenarios}

@@ -294,6 +294,7 @@ def build_run_report(
             summary[status] += 1
         step_summary = result.get("summary") or {}
         summary["recovered"] += int(step_summary.get("recovered", 0) or 0)
+    summary["cleanup_failed"] = sum(1 for result in results if result.get("cleanup_failed"))
     summary["total"] = len(results)
 
     decisions: list[dict[str, Any]] = []

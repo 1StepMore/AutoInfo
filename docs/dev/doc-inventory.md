@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 114 |
-| Total lines | 36902 |
-| Active files | 85 |
+| Total files | 113 |
+| Total lines | 36763 |
+| Active files | 84 |
 | Archived files | 29 |
 | Category — archive | 29 files / 8944 lines |
 | Category — known-limitations | 2 files / 350 lines |
@@ -24,7 +24,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 13 files / 775 lines |
 | Category — specs | 12 files / 9767 lines |
 | Category — validation-reports | 15 files / 3788 lines |
-| Category — docs/dev | 31 files / 11113 lines |
+| Category — docs/dev | 30 files / 10974 lines |
 | Category — docs/root | 5 files / 983 lines |
 
 ## Inventory
@@ -74,7 +74,6 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `archive/remaining-source-gap-verdicts.md` | 116 | archive | archived | verdicts |
 | `archive/reports/global-content-paid-research-report-trae.md` | 973 | archive | archived | — |
 | `demo-release-standard.md` | 42 | docs/root | active | — |
-| `dev/2026-08-30-graph-engineering-调研与三项目落地-修正版.md` | 139 | docs/dev | active | — |
 | `dev/AutoInfo-development-brief-v2.md` | 226 | docs/dev | active | — |
 | `dev/AutoInfo-development-brief-v3.md` | 247 | docs/dev | active | — |
 | `dev/AutoInfo-development-brief-v4.md` | 310 | docs/dev | active | — |

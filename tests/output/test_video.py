@@ -73,7 +73,7 @@ class TestSelectTheme:
 
 
 class TestLayoutDiversity:
-    """Unit tests for the AutoMedia Gate VQ layout-diversity rule."""
+    """Unit tests for the Gate VQ layout-diversity rule."""
 
     def test_adjacent_scenes_differ(self) -> None:
         """No two adjacent scenes share a layout."""
@@ -83,7 +83,7 @@ class TestLayoutDiversity:
                 assert layouts[i] != layouts[i + 1], f"adjacent same at {i}"
 
     def test_five_scenes_four_layouts_minimum(self) -> None:
-        """5-scene video uses >= 4 distinct layouts (AutoMedia Gate VQ)."""
+        """5-scene video uses >= 4 distinct layouts (Gate VQ)."""
         layouts = _pick_layouts(5)
         assert len(set(layouts)) >= 4
 
@@ -99,7 +99,7 @@ class TestLayoutDiversity:
 
 
 class TestSceneDurationMath:
-    """Unit tests for scene-frame-boundary calculation (AutoMedia math)."""
+    """Unit tests for scene-frame-boundary calculation."""
 
     def test_character_ratio_split(self) -> None:
         """Scene durations scale with character counts; sum approx total."""

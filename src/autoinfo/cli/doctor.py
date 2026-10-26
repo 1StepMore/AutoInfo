@@ -26,12 +26,17 @@ def doctor(
         "--verbose",
         help="Extended diagnostics (run history, error rates, latency, source health, cost)",
     ),
+    probe_llm: bool = typer.Option(
+        False,
+        "--probe-llm",
+        help="Send one real request per LLM fallback entry; exit non-zero if any fails",
+    ),
 ) -> None:
     """Check system health and configuration."""
     try:
         from autoinfo.doctor import diagnose_pipeline, run_doctor
 
-        result = run_doctor()
+        result = run_doctor(probe_llm=probe_llm)
         if verbose:
             result["_verbose"] = diagnose_pipeline(deep=True)
             result["_verbose"]["health_score"] = calculate_health_score(result)
@@ -44,6 +49,8 @@ def doctor(
         if result.get("python", {}).get("status") == "error":
             raise typer.Exit(code=1)
         if result.get("config", {}).get("status") == "error":
+            raise typer.Exit(code=1)
+        if any(not entry.get("ok") for entry in result.get("fallback_probe", [])):
             raise typer.Exit(code=1)
         return
 
@@ -58,6 +65,8 @@ def doctor(
     if result.get("python", {}).get("status") == "error":
         raise typer.Exit(code=1)
     if result.get("config", {}).get("status") == "error":
+        raise typer.Exit(code=1)
+    if any(not entry.get("ok") for entry in result.get("fallback_probe", [])):
         raise typer.Exit(code=1)
 
 
@@ -108,6 +117,13 @@ def _print_human(result: dict[str, Any]) -> None:
                     inherited.append("key")
                 inherit_str = f" (inherits {', '.join(inherited)})" if inherited else ""
                 typer.echo(f"       ↳ {entry.get('model', '?')}{inherit_str}")
+                if entry.get("double_prefix"):
+                    typer.echo(
+                        "          ⚠ model id already starts with the provider "
+                        "prefix that will be prepended — the request will use a "
+                        "doubled id (e.g. openai/openai/...); remove the prefix "
+                        "from the fallback model"
+                    )
                 key_status = entry.get("key_status")
                 if key_status == "cross_endpoint_no_key":
                     typer.echo(
@@ -139,6 +155,22 @@ def _print_human(result: dict[str, Any]) -> None:
                 f"       primary: {primary.get('provider', '?')}/"
                 f"{primary.get('model', '?')}{flag_str}"
             )
+
+    # --- LLM fallback live probe (opt-in, issue #605) ---
+    probe = result.get("fallback_probe")
+    if probe is not None:
+        typer.echo("  LLM fallback probe:")
+        if not probe:
+            typer.echo("       (no fallback entries configured)")
+        for entry in probe:
+            icon = "✅" if entry.get("ok") else "❌"
+            line = (
+                f"    {icon} [{entry.get('index', '?')}] "
+                f"{entry.get('model', '?')} ({entry.get('latency_ms', 0):.0f}ms)"
+            )
+            if entry.get("error"):
+                line += f" — {entry['error']}"
+            typer.echo(line)
 
     # --- Sources ---
     sources = result.get("sources", [])

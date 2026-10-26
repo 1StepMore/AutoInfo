@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
@@ -1776,8 +1777,15 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
         Keys: ``configured`` (bool — a non-empty ``llm.fallback`` list),
         ``count`` (int), ``entries`` (list of per-fallback-entry dicts with
         ``model``/``provider``/``inherits_provider``/``inherits_key``/
-        ``key_status``), and ``primary`` (dict with ``model``/``provider``/
-        ``reasoning_model``/``json_mode``).
+        ``key_status``/``double_prefix``), and ``primary`` (dict with
+        ``model``/``provider``/``reasoning_model``/``json_mode``).
+
+        ``double_prefix`` is True when the entry's configured ``model``
+        already starts with the provider prefix that ``call_with_fallback``
+        will prepend (``<provider>/...``).  With an inherited provider that is
+        the primary provider.  Such an entry is requested as e.g.
+        ``openai/openai/openai/...`` — a configuration-level failure that
+        this report must surface, not silently repair (issue #605).
 
         ``inherits_provider`` is True when the entry's ``provider`` is empty
         (``call_with_fallback`` resolves it to the primary provider);
@@ -1801,6 +1809,7 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
     }
     primary_key = resolve_primary_api_key("", config)
     primary_base_url = llm.base_url or ""
+    primary_provider = llm.provider or DEFAULT_PROVIDER
     entries = []
     for fb in llm.fallback:
         _, key_status = resolve_fallback_api_key(
@@ -1809,6 +1818,10 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
             primary_api_key=primary_key,
             primary_base_url=primary_base_url,
         )
+        # The provider call_with_fallback will prepend: the entry's own when
+        # set, otherwise the inherited primary provider.  A model that already
+        # carries that prefix produces a doubled id at request time (#605).
+        effective_provider = fb.provider or primary_provider
         entries.append(
             {
                 "model": fb.model,
@@ -1816,6 +1829,9 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
                 "inherits_provider": not bool(fb.provider),
                 "inherits_key": key_status == "inherited_same_gateway",
                 "key_status": key_status,
+                "double_prefix": bool(
+                    fb.model and fb.model.startswith(f"{effective_provider}/")
+                ),
             }
         )
     return {
@@ -1824,6 +1840,145 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
         "entries": entries,
         "primary": primary,
     }
+
+
+_PROBE_MESSAGES: list[dict[str, str]] = [{"role": "user", "content": "只回复两个字：可用"}]
+_PROBE_MAX_TOKENS = 8
+_PROBE_ERROR_MAX_CHARS = 200
+
+
+def _redact_secret(text: str, secret: str) -> str:
+    """Remove *secret* from *text* so a probe error can never leak a key."""
+    if secret and secret in text:
+        return text.replace(secret, "***")
+    return text
+
+
+def _probe_completion(
+    *,
+    model: str,
+    provider: str,
+    api_key: str,
+    base_url: str,
+    timeout: float,
+    reasoning_model: bool,
+    config: Config | None = None,
+    fb: LLMConfig | None = None,
+) -> Any:
+    """Send exactly one real request through the SHARED LLM path (#605).
+
+    Routes through :func:`autoinfo.llm.call_with_fallback` instead of calling
+    litellm directly: the repo enforces a single completion call site
+    (``tests/llm/test_shared_rate_limit.py``) so every request passes through
+    the shared per-provider semaphore.  Probing therefore exercises the same
+    code path — including provider-prefix resolution — as production traffic.
+    """
+    import dataclasses
+
+    from autoinfo.llm import call_with_fallback
+
+    if config is None:
+        raise RuntimeError("probe requires a config to resolve the provider chain")
+
+    entry_llm = dataclasses.replace(
+        config.llm,
+        provider=provider,
+        # 传**已限定**的 id（provider/fb.model）：resolve_model 见到 "/" 会原样返回，
+        # 与生产链一致；传裸 fb.model 会让 litellm 把厂商路径误当 provider。
+        model=model,
+        api_key=api_key,
+        base_url=base_url or config.llm.base_url,
+        reasoning_model=reasoning_model,
+        fallback=[],
+    )
+    probe_config = dataclasses.replace(config, llm=entry_llm)
+    return call_with_fallback(
+        _PROBE_MESSAGES,
+        config=probe_config,
+        max_tokens=_PROBE_MAX_TOKENS,
+        temperature=0.0,
+        timeout=timeout,
+    )
+
+
+def probe_fallbacks(config: Config, timeout: float = 20) -> list[dict[str, Any]]:
+    """Probe every configured fallback entry with one real LLM request.
+
+    ``llm_fallback_health`` only reads configuration, so a chain that is
+    configured correctly but unreachable still looks healthy (#605).  This
+    function answers the other question: does the entry actually work?
+
+    Each entry is requested once with a tiny prompt (``max_tokens=8``).  Every
+    failure is captured per entry — never raised — so one broken fallback
+    cannot hide the results of the others.  Error text is truncated and the
+    entry's API key is redacted; keys are never returned or logged.
+
+    Returns
+    -------
+    list[dict]
+        One dict per entry, in configuration order, with ``index``,
+        ``model`` (the effective provider-qualified id), ``ok`` (bool),
+        ``status`` (``"ok"`` / ``"error"``), ``error`` (str or None) and
+        ``latency_ms``.
+    """
+    llm = config.llm
+    primary_provider = llm.provider or DEFAULT_PROVIDER
+    primary_key = resolve_primary_api_key("", config)
+    primary_base_url = llm.base_url or ""
+
+    results: list[dict[str, Any]] = []
+    for index, fb in enumerate(llm.fallback):
+        provider = fb.provider or primary_provider
+        model = f"{provider}/{fb.model or llm.model or _DEFAULT_MODEL}"
+        base_url = fb.base_url or ""
+        api_key, key_status = resolve_fallback_api_key(
+            fallback_api_key=fb.api_key or "",
+            fallback_base_url=base_url,
+            primary_api_key=primary_key,
+            primary_base_url=primary_base_url,
+        )
+        result: dict[str, Any] = {
+            "index": index,
+            "model": model,
+            "ok": False,
+            "status": "error",
+            "error": None,
+            "latency_ms": 0.0,
+        }
+
+        if not api_key:
+            # A request without a key would silently borrow a process-level
+            # env key or fail with a misleading auth error; report the real
+            # configuration problem instead.
+            result["error"] = (
+                "no usable API key for this fallback "
+                f"({key_status}); set an explicit api_key or ${{ENV}} reference"
+            )
+            results.append(result)
+            continue
+
+        started = time.monotonic()
+        try:
+            _probe_completion(
+                model=model,
+                provider=provider,
+                api_key=api_key,
+                base_url=base_url,
+                timeout=timeout,
+                reasoning_model=fb.reasoning_model,
+                config=config,
+                fb=fb,
+            )
+        except Exception as exc:
+            message = _redact_secret(str(exc), api_key) or exc.__class__.__name__
+            result["error"] = message[:_PROBE_ERROR_MAX_CHARS]
+        else:
+            result["ok"] = True
+            result["status"] = "ok"
+        result["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
+        results.append(result)
+
+    return results
 
 
 def ensure_config_exists() -> None:

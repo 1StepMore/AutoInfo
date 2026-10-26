@@ -1,0 +1,37 @@
+name: Preview smoke
+
+# 用现成的 .venv + uvicorn 起真服务，做 3 条 HTTP 断言（不需要 Docker、不需要 Playwright）。
+# 与单测的区别：单测验函数，这里验"用户请求进来之后看到什么"。
+#
+# 非 required：先跑一周观察稳定性，稳定后再升级为 required（改 required 属于冻结面，需 owner 批准）。
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: preview-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Preview smoke (uvicorn + 3 assertions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e .
+      - name: Seed one entry (fresh DB has no rows)
+        run: |
+          autoinfo import-kb --domain preview-smoke --format markdown \
+            --file .github/fixtures/preview_seed.md
+      - name: Run smoke
+        env:
+          PORT: "18000"
+          Q: preview-smoke
+        run: bash scripts/preview_smoke.sh .

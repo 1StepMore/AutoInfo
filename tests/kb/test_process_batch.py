@@ -12,6 +12,8 @@ Covers:
 
 from __future__ import annotations
 
+from contextlib import ExitStack
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -129,6 +131,8 @@ class TestBatchProcessing:
                 "autoinfo.process._read_progress",
                 return_value={"last_processed_index": 0, "total_items": 3},
             ),
+            patch("autoinfo.process._read_processed_ids", return_value=set()),
+            patch("autoinfo.process._mark_processed"),
             patch("autoinfo.process._write_progress") as mock_write,
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
@@ -161,8 +165,13 @@ class TestBatchProcessing:
             patch("autoinfo.process.load_cached_items", return_value=three_items),
             patch(
                 "autoinfo.process._read_progress",
-                return_value={"last_processed_index": 2, "total_items": 3},
+                return_value={"last_processed_index": 0, "total_items": 3},
             ),
+            patch(
+                "autoinfo.process._read_processed_ids",
+                return_value={"item-001", "item-002"},
+            ),
+            patch("autoinfo.process._mark_processed"),
             patch("autoinfo.process._write_progress"),
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
@@ -191,32 +200,44 @@ class TestBatchProcessing:
         mock_quality = MagicMock(return_value=_all_pass_gates())
         mock_store = _mock_kb_store()
 
-        # Track progress writes to simulate persistence between calls
-        progress_store: dict = {}
+        # Track the item-id ledger to simulate persistence between calls
+        # (AutoInfo#596: the cursor is the set of processed ids).
+        ledger: set[str] = set()
 
-        def mock_read(domain: str) -> dict:
-            return progress_store.get(
-                domain, {"last_processed_index": 0, "total_items": len(three_items)}
-            )
+        def mock_read_ids(domain: str) -> set[str]:
+            return set(ledger)
 
-        def mock_write(domain: str, index: int, total: int) -> None:
-            progress_store[domain] = {
-                "last_processed_index": index,
-                "total_items": total,
-            }
+        def mock_mark(domain: str, item_ids: Any) -> None:
+            ledger.update(str(i) for i in item_ids)
 
-        patches = [
-            patch("autoinfo.process.load_cached_items", return_value=three_items),
-            patch("autoinfo.process._read_progress", side_effect=mock_read),
-            patch("autoinfo.process._write_progress", side_effect=mock_write),
-            patch.object(LLMExtractor, "extract", mock_ext),
-            patch("autoinfo.process.run_quality_gates", mock_quality),
-            patch("autoinfo.process.KBStore", return_value=mock_store),
-        ]
+        def _run() -> ProcessResult:
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch("autoinfo.process.load_cached_items", return_value=three_items)
+                )
+                stack.enter_context(
+                    patch(
+                        "autoinfo.process._read_processed_ids",
+                        side_effect=mock_read_ids,
+                    )
+                )
+                stack.enter_context(
+                    patch("autoinfo.process._mark_processed", side_effect=mock_mark)
+                )
+                stack.enter_context(
+                    patch(
+                        "autoinfo.process._read_progress",
+                        return_value={"last_processed_index": 0, "total_items": 3},
+                    )
+                )
+                stack.enter_context(patch("autoinfo.process._write_progress"))
+                stack.enter_context(patch.object(LLMExtractor, "extract", mock_ext))
+                stack.enter_context(patch("autoinfo.process.run_quality_gates", mock_quality))
+                stack.enter_context(patch("autoinfo.process.KBStore", return_value=mock_store))
+                return run_processing("medical-research", batch_size=2)
 
         # First batch: process 2 items
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
-            r1 = run_processing("medical-research", batch_size=2)
+        r1 = _run()
 
         assert r1.processed_count == 2
         assert r1.remaining_count == 1
@@ -225,10 +246,10 @@ class TestBatchProcessing:
         assert sorted(processed_ids) == ["item-001", "item-002"]
         first_batch_ids = list(processed_ids)
         processed_ids.clear()
+        assert ledger == {"item-001", "item-002"}
 
         # Second batch: process remaining 1 item
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
-            r2 = run_processing("medical-research", batch_size=2)
+        r2 = _run()
 
         assert r2.processed_count == 1
         assert r2.remaining_count == 0
@@ -239,13 +260,14 @@ class TestBatchProcessing:
         all_ids = first_batch_ids + processed_ids
         assert len(all_ids) == 3
         assert len(set(all_ids)) == 3  # all unique
+        assert ledger == {"item-001", "item-002", "item-003"}
 
     def test_no_duplicates_on_restart(
         self,
         three_items: list[Item],
         mock_extraction: ExtractionResult,
     ) -> None:
-        """When total_items changed, progress resets to 0 (no duplication)."""
+        """Processed ids are skipped even when the cache shrank between runs."""
         processed_ids: list[str] = []
 
         def track_extraction(item: Item, **kwargs: Any) -> ExtractionResult:
@@ -256,12 +278,13 @@ class TestBatchProcessing:
         mock_quality = MagicMock(return_value=_all_pass_gates())
         mock_store = _mock_kb_store()
 
-        # Simulate: progress says 3 items, but only 2 items loaded
+        # Simulate: the ledger says item-003 was processed, but only the
+        # first two items are still in the cache.
         with (
             patch("autoinfo.process.load_cached_items", return_value=three_items[:2]),
             patch(
-                "autoinfo.process._read_progress",
-                return_value={"last_processed_index": 2, "total_items": 3},
+                "autoinfo.process._read_processed_ids",
+                return_value={"item-001", "item-002", "item-003"},
             ),
             patch("autoinfo.process._write_progress"),
             patch.object(LLMExtractor, "extract", mock_ext),
@@ -270,37 +293,69 @@ class TestBatchProcessing:
         ):
             result = run_processing("medical-research", batch_size=5)
 
-        # Cache changed => reset to start_index=0, re-process from start
+        # Every cached item was already processed => nothing to do, and
+        # specifically nothing is reprocessed just because the cache shrank.
         assert result.total_items == 2
-        assert result.processed_count == 2
-        # All items reprocessed when cache size changes (order not guaranteed)
-        assert sorted(processed_ids) == ["item-001", "item-002"]
+        assert result.processed_count == 0
+        assert result.remaining_count == 0
+        assert result.is_complete is True
+        assert processed_ids == []
 
-    def test_cache_change_resets_progress(self, three_items: list[Item]) -> None:
-        """When persisted total_items differs from cache, progress resets."""
-        mock_ext = MagicMock()
-        mock_quality = MagicMock()
+    def test_cache_change_does_not_reset_progress(
+        self,
+        three_items: list[Item],
+        mock_extraction: ExtractionResult,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """A changed cache total no longer resets the id cursor.
+
+        AutoInfo#596 regression: the old position cursor reset to 0 whenever
+        ``persisted_total != total_items``.  With an id ledger the first two
+        ids are already processed, so ``batch_size=2`` picks up exactly the
+        one remaining item instead of reprocessing the whole cache.
+        """
+        processed_ids: list[str] = []
+
+        def track_extraction(item: Item, **kwargs: Any) -> ExtractionResult:
+            processed_ids.append(item.id)
+            return mock_extraction
+
+        mock_ext = MagicMock(side_effect=track_extraction)
+        mock_quality = MagicMock(return_value=_all_pass_gates())
         mock_store = _mock_kb_store()
 
-        # persisted_total=5 but actual=3 → reset
+        # Keep the ledger write inside tmp_path — never touch the repo DB.
+        monkeypatch.setattr(
+            "autoinfo.process._get_progress_db_path", lambda: tmp_path / "autoinfo.db"
+        )
+
+        # Legacy row says total_items=5 while the cache holds 3 — the old code
+        # treated that mismatch as "cache changed, start over".
         with (
             patch("autoinfo.process.load_cached_items", return_value=three_items),
             patch(
                 "autoinfo.process._read_progress",
-                return_value={"last_processed_index": 3, "total_items": 5},
+                return_value={"last_processed_index": 2, "total_items": 5},
+            ),
+            patch(
+                "autoinfo.process._read_processed_ids",
+                return_value={"item-001", "item-002"},
             ),
             patch("autoinfo.process._write_progress") as mock_write,
             patch.object(LLMExtractor, "extract", mock_ext),
             patch("autoinfo.process.run_quality_gates", mock_quality),
             patch("autoinfo.process.KBStore", return_value=mock_store),
         ):
-            run_processing("medical-research", batch_size=2)
+            result = run_processing("medical-research", batch_size=2)
 
-        # Should have written progress from index 2 (after reset to 0)
-        mock_write.assert_called_once()
-        args = mock_write.call_args[0]
-        assert args[0] == "medical-research"
-        assert args[1] == 2  # processed 2 items after reset
+        # Only the pending id is processed; the two already-done ids are skipped.
+        assert sorted(processed_ids) == ["item-003"]
+        assert result.total_items == 3
+        assert result.processed_count == 1
+        assert result.remaining_count == 0
+        assert result.is_complete is True
+        mock_write.assert_called_once_with("medical-research", 3, 3)
 
 
 class TestBatchBackwardCompatibility:

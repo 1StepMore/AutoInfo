@@ -23,8 +23,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from autoinfo import db
 from autoinfo.config import (
@@ -449,12 +450,27 @@ def _connect_progress_db() -> sqlite3.Connection:
 
 
 def _init_progress_table(conn: sqlite3.Connection) -> None:
-    """Create the ``processing_progress`` table if it does not exist."""
+    """Create the progress tables if they do not exist.
+
+    ``processing_progress`` keeps the legacy position-based cursor (public
+    contract, see :func:`get_processing_progress`).  ``processing_items`` is
+    the item-id ledger: the cursor anchor is the stable ``Item.id``, so a
+    cache that grows or shrinks between runs no longer resets processing
+    (AutoInfo#596 / BACKLOG B7).
+    """
     conn.execute("""
         CREATE TABLE IF NOT EXISTS processing_progress (
             domain                  TEXT PRIMARY KEY,
             last_processed_index    INTEGER NOT NULL DEFAULT 0,
             total_items             INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS processing_items (
+            domain       TEXT NOT NULL,
+            item_id      TEXT NOT NULL,
+            processed_at TEXT NOT NULL,
+            PRIMARY KEY (domain, item_id)
         )
     """)
 
@@ -504,18 +520,76 @@ def _write_progress(domain: str, last_processed_index: int, total_items: int) ->
 
 
 def _reset_progress(domain: str) -> None:
-    """Delete the progress row for *domain* (forces a full re-process)."""
+    """Delete the progress rows for *domain* (forces a full re-process).
+
+    Clears both the legacy ``processing_progress`` row and every entry in the
+    item-id ledger, so ``--resume-from start`` genuinely restarts from the
+    beginning.
+    """
     db_path = _get_progress_db_path()
     if not db_path.is_file():
         return
     try:
         with _connect_progress_db() as conn:
+            _init_progress_table(conn)
             conn.execute(
                 "DELETE FROM processing_progress WHERE domain = ?",
                 (domain,),
             )
+            conn.execute(
+                "DELETE FROM processing_items WHERE domain = ?",
+                (domain,),
+            )
     except sqlite3.OperationalError:
         pass
+
+
+def _read_processed_ids(domain: str) -> set[str]:
+    """Return the set of item ids already processed for *domain*.
+
+    Reads the ``processing_items`` ledger.  An absent db or table means no
+    items have been processed yet (empty set).
+    """
+    db_path = _get_progress_db_path()
+    if not db_path.is_file():
+        return set()
+    try:
+        with _connect_progress_db() as conn:
+            _init_progress_table(conn)
+            rows = conn.execute(
+                "SELECT item_id FROM processing_items WHERE domain = ?",
+                (domain,),
+            ).fetchall()
+            return {str(row[0]) for row in rows}
+    except sqlite3.OperationalError:
+        logger.warning("Could not read processed item ids for '%s'", domain)
+    return set()
+
+
+def _mark_processed(domain: str, item_ids: Sequence[str]) -> None:
+    """Record *item_ids* as processed for *domain* (idempotent).
+
+    Each id is inserted once (``INSERT OR IGNORE``) with an ISO8601 UTC
+    ``processed_at`` timestamp.  Called per item as soon as that item's
+    processing finishes, so a run killed by an external timeout keeps its
+    completed work.
+    """
+    ids = [str(i) for i in item_ids]
+    if not ids:
+        return
+    db_path = _get_progress_db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    processed_at = datetime.now(timezone.utc).isoformat()
+    try:
+        with _connect_progress_db() as conn:
+            _init_progress_table(conn)
+            conn.executemany(
+                "INSERT OR IGNORE INTO processing_items (domain, item_id, processed_at) "
+                "VALUES (?, ?, ?)",
+                [(domain, item_id, processed_at) for item_id in ids],
+            )
+    except sqlite3.OperationalError as exc:
+        logger.warning("Could not mark items processed for '%s': %s", domain, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -873,25 +947,33 @@ def run_processing(
     persist_cursor = batch_size > 0 or resume_from in ("auto", "start")
     use_cursor = batch_size > 0 or resume_from == "auto"
     if use_cursor:
-        progress = _read_progress(domain)
-        start_index: int = progress["last_processed_index"]
-        persisted_total: int = progress["total_items"]
+        # AutoInfo#596 / BACKLOG B7: the cursor is anchored on stable item
+        # ids, not on a position + snapshot count.  Collection adds cache
+        # files every night, so a position cursor used to reset to zero on
+        # every run (reprocessing the whole cache).  An id ledger makes the
+        # cursor monotone: cached items are only "pending" when their id was
+        # never marked processed, regardless of how the total changed.
+        processed_ids = _read_processed_ids(domain)
+        if not processed_ids:
+            # One-shot migration seed: a pre-#596 domain has a legacy
+            # position cursor but an empty id ledger.  The old semantics were
+            # "the first N items in cache order were processed", so seed that
+            # prefix now and continue on the id path.
+            legacy = _read_progress(domain)
+            legacy_index = int(legacy["last_processed_index"])
+            if legacy_index > 0:
+                seed_ids = [it.id for it in cached_items[:legacy_index]]
+                _mark_processed(domain, seed_ids)
+                processed_ids = set(seed_ids)
 
-        # If the cache grew (new items collected), restart from 0 so nothing
-        # is missed.  If it shrank, also reset to avoid an out-of-range slice.
-        # Issue #213: quantity alone is a weak signal — a re-collect can
-        # produce the same count with entirely new items, leaving a stale
-        # cursor at the end that silently skips them.  A cursor past the end
-        # also indicates stale progress; reset in both cases.
-        if persisted_total != total_items or start_index >= total_items:
-            start_index = 0
-
-        effective_batch = batch_size if batch_size > 0 else total_items
-        items_slice = cached_items[start_index : start_index + effective_batch]
+        pending = [it for it in cached_items if it.id not in processed_ids]
+        effective_batch = batch_size if batch_size > 0 else len(pending)
+        items_slice = pending[:effective_batch]
         processed_count = len(items_slice)
-        new_index = start_index + processed_count
-        remaining_count = total_items - new_index
-        is_complete = new_index >= total_items
+        cumulative_processed = total_items - len(pending) + processed_count
+        remaining_count = len(pending) - processed_count
+        is_complete = remaining_count == 0
+        new_index = cumulative_processed
     else:
         items_slice = cached_items
         processed_count = total_items
@@ -1577,6 +1659,15 @@ def run_processing(
             logs_by_index[idx] = item_log
             logged_by_index[idx] = bool(stats.get("logged", True))
             completed += 1
+
+            if persist_cursor and item_log.get("status") != "error":
+                # Durable, per-item cursor advance (AutoInfo#596): record the
+                # id the moment its processing settles, so a run killed by an
+                # external timeout keeps the work it already finished.  An item
+                # whose handling raised an uncaught exception is surfaced as
+                # ``status="error"`` and deliberately left unmarked, so the next
+                # run retries it instead of silently sinking it.
+                _mark_processed(domain, [items_slice[idx].id])
 
             # -- Aggregate per-item stats on the main thread (no races) ------
             for k in ("prompt_tokens", "completion_tokens", "total_tokens"):

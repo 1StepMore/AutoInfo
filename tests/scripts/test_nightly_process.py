@@ -459,3 +459,166 @@ def test_derived_batch_capped_by_backlog(tmp_path: Path) -> None:
     assert rc == 0
     # The budget would allow 50 items; the backlog is the real cap.
     assert calls[0].batch_size == 10
+
+
+# ===================================================================
+# AutoInfo#596 / BACKLOG B7 — item-id cursor
+# ===================================================================
+
+
+def _seed_id_cache(tmp_path: Path, ids: list[str], domain: str = "alpha") -> None:
+    """Seed ``collections/<domain>/source/<date>/<id>.json`` cache files."""
+    cache_dir = tmp_path / "collections" / domain / "source" / "2026-10-21"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    for item_id in ids:
+        (cache_dir / f"{item_id}.json").write_text(
+            json.dumps(
+                {
+                    "id": item_id,
+                    "source_name": "source",
+                    "source_type": "api",
+                    "source_platform": "source",
+                    "source_url": f"https://example.com/{item_id}",
+                    "title": f"Title {item_id}",
+                    "content": f"Content for {item_id}.",
+                    "content_type": "text",
+                    "collected_at": "2026-10-21T10:00:00Z",
+                    "language": "en",
+                    "domain": domain,
+                    "topic_tags": [],
+                    "quality_tier": 1,
+                    "raw_data": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+
+def _all_pass_gates() -> dict:
+    from autoinfo.quality import QualityResult
+
+    return {
+        "G1-SourceAuthority": QualityResult(
+            gate_name="G1-SourceAuthority",
+            passed=True,
+            score=1.0,
+            details={"quality_tier": 1, "source_name": "source"},
+        ),
+        "G2-Dedup": QualityResult(
+            gate_name="G2-Dedup",
+            passed=True,
+            score=1.0,
+            details={"is_duplicate": False, "matched_by": None},
+        ),
+        "G3-RelevanceScoring": QualityResult(
+            gate_name="G3-RelevanceScoring",
+            passed=True,
+            score=80.0,
+            details={"hidden": False},
+        ),
+    }
+
+
+def test_cursor_survives_item_count_change(tmp_path: Path, monkeypatch) -> None:
+    """Growing the cache no longer resets the cursor (AutoInfo#596 / B7).
+
+    Seed 10 cached items and run a batch that consumes all of them; then add
+    3 more (10 → 13) and run again.  The second run must process exactly the
+    3 new ids, never re-process the 10 already-done ones, and complete.
+    """
+    from unittest.mock import MagicMock
+
+    from autoinfo import process as proc
+    from autoinfo.kb import KBStore
+    from autoinfo.llm import LLMExtractor
+    from autoinfo.models import ExtractionResult, KBEntry
+
+    # Isolate the progress DB inside tmp_path (process resolves it from cwd).
+    monkeypatch.setattr(proc, "_get_progress_db_path", lambda: tmp_path / "autoinfo.db")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AUTOINFO_CONFIG", raising=False)
+
+    domain = "alpha"
+    first_ids = [f"item-{i:03d}" for i in range(10)]
+    _seed_id_cache(tmp_path, first_ids, domain=domain)
+
+    processed: list[str] = []
+
+    def track(item, **kwargs):
+        processed.append(item.id)
+        return ExtractionResult(
+            item_id=item.id,
+            title=item.title,
+            tl_dr="summary",
+            key_points=["p"],
+            entities=[],
+            relevance_score=80.0,
+        )
+
+    entry = KBEntry(entry_id="e", title="t", domain=domain)
+    store = MagicMock(spec=KBStore)
+    store.store_entry.return_value = entry
+    store.list_entries.return_value = []
+
+    monkeypatch.setattr(LLMExtractor, "extract", MagicMock(side_effect=track))
+    monkeypatch.setattr(proc, "run_quality_gates", MagicMock(return_value=_all_pass_gates()))
+    monkeypatch.setattr(proc, "KBStore", MagicMock(return_value=store))
+
+    # Round 1 — the whole 10-item cache.
+    r1 = proc.run_processing(domain, batch_size=100)
+    assert r1.total_items == 10
+    assert r1.processed_count == 10
+    assert r1.is_complete is True
+    assert sorted(processed) == sorted(first_ids)
+
+    # The ledger is the anchor: 10 ids recorded.
+    assert proc._read_processed_ids(domain) == set(first_ids)
+    assert np.read_processed_count(tmp_path / "autoinfo.db", domain) == 10
+
+    # Round 2 — collect adds 3 new items (total 10 → 13).
+    new_ids = [f"item-{i:03d}" for i in range(10, 13)]
+    _seed_id_cache(tmp_path, new_ids, domain=domain)
+    processed.clear()
+
+    r2 = proc.run_processing(domain, batch_size=100)
+    assert r2.total_items == 13
+    # ... but the cursor does NOT reset: only the 3 new ids are processed.
+    assert r2.processed_count == 3
+    assert r2.is_complete is True
+    assert sorted(processed) == sorted(new_ids)
+    assert proc._read_processed_ids(domain) == set(first_ids) | set(new_ids)
+    assert np.read_processed_count(tmp_path / "autoinfo.db", domain) == 13
+
+
+def test_cursor_read_processed_count_prefers_ledger(tmp_path: Path) -> None:
+    """``read_processed_count`` reads the id ledger, not the legacy column."""
+    db_path = tmp_path / "autoinfo.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE processing_progress ("
+            "domain TEXT PRIMARY KEY, last_processed_index INTEGER NOT NULL DEFAULT 0, "
+            "total_items INTEGER NOT NULL DEFAULT 0)"
+        )
+        conn.execute(
+            "INSERT INTO processing_progress (domain, last_processed_index, total_items) "
+            "VALUES ('alpha', 3, 3)"
+        )
+        conn.execute(
+            "CREATE TABLE processing_items ("
+            "domain TEXT NOT NULL, item_id TEXT NOT NULL, processed_at TEXT NOT NULL, "
+            "PRIMARY KEY (domain, item_id))"
+        )
+        conn.executemany(
+            "INSERT INTO processing_items (domain, item_id, processed_at) VALUES ('alpha', ?, ?)",
+            [(f"i{n}", "2026-10-21T00:00:00+00:00") for n in range(7)],
+        )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    # The ledger wins over the stale legacy column.
+    assert np.read_processed_count(db_path, "alpha") == 7
+    # Unknown domains fall back to 0 (original "unavailable => 0" contract).
+    assert np.read_processed_count(db_path, "beta") == 0

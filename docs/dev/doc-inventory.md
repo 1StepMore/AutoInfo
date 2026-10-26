@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 114 |
-| Total lines | 36900 |
+| Total lines | 36902 |
 | Active files | 85 |
 | Archived files | 29 |
 | Category — archive | 29 files / 8944 lines |
@@ -24,7 +24,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 13 files / 775 lines |
 | Category — specs | 12 files / 9767 lines |
 | Category — validation-reports | 15 files / 3788 lines |
-| Category — docs/dev | 31 files / 11111 lines |
+| Category — docs/dev | 31 files / 11113 lines |
 | Category — docs/root | 5 files / 983 lines |
 
 ## Inventory
@@ -129,7 +129,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-reports/evidence-2026-08-12/ac5-report-standard.md` | 813 | validation-reports | active | — |
 | `dev/validation-reports/evidence-2026-08-12/ac5-tutorial-student.md` | 501 | validation-reports | active | — |
 | `dev/validation-reports/final-report-backup-issues-19-38.md` | 62 | validation-reports | active | — |
-| `dev/validation-scenario-contract.md` | 879 | docs/dev | active | — |
+| `dev/validation-scenario-contract.md` | 881 | docs/dev | active | — |
 | `dev/workflow-charter.md` | 67 | docs/dev | active | workflow-charter |
 | `dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md` | 234 | docs/dev | active | methodology |
 | `glossary.md` | 61 | docs/root | active | glossary |

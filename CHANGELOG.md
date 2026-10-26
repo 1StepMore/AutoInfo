@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.51](https://github.com/1StepMore/AutoInfo/compare/v1.17.50...v1.17.51) (2026-10-26)
+
+
+### Bug Fixes
+
+* **validation:** make regression-445 hermetic and gate LLM seams in CLI scenarios ([#623](https://github.com/1StepMore/AutoInfo/issues/623)) ([#626](https://github.com/1StepMore/AutoInfo/issues/626)) ([b27aa92](https://github.com/1StepMore/AutoInfo/commit/b27aa921757a2fd565e2f779497858132104ad7c))
+
 ## [1.17.50](https://github.com/1StepMore/AutoInfo/compare/v1.17.49...v1.17.50) (2026-10-26)
 
 

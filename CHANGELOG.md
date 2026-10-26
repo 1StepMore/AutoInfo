@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.53](https://github.com/1StepMore/AutoInfo/compare/v1.17.52...v1.17.53) (2026-10-26)
+
+
+### Bug Fixes
+
+* resolve scenario CLI interpreter from the running process ([#622](https://github.com/1StepMore/AutoInfo/issues/622)) ([#628](https://github.com/1StepMore/AutoInfo/issues/628)) ([18f6eb5](https://github.com/1StepMore/AutoInfo/commit/18f6eb5d41a8dd53733fe1732898f1ed4100a6e9))
+
 ## [1.17.52](https://github.com/1StepMore/AutoInfo/compare/v1.17.51...v1.17.52) (2026-10-26)
 
 

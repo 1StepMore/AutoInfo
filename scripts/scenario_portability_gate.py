@@ -135,6 +135,38 @@ def _has_llm_assert(scenario: dict[str, Any]) -> bool:
     return any((step.get("expect") or {}).get("llm_assert") for step in _steps(scenario))
 
 
+_LLM_JUDGE_SEAMS = (
+    "_run_product_judge",
+    "call_with_fallback",
+    "AUTOINFO_PRODUCT_JUDGE",
+    "_DELIVERY_GATES_BYPASS",
+)
+
+
+def _unneutralized_judge_steps(scenario: dict[str, Any]) -> list[str]:
+    """CLI steps that reach the product judge without neutralizing its LLM seam.
+
+    A ``kind: cli`` subprocess is invisible to the static enumeration above, so
+    a scenario can declare ``requires_env: []`` and still call a real LLM
+    through ``_apply_delivery_gates`` (issue #623).  Such a step is keyless-safe
+    only when it also patches ``call_with_fallback`` / ``_run_product_judge``
+    or disables the judge explicitly.
+    """
+    if scenario.get("requires_env"):
+        return []
+    offenders: list[str] = []
+    for step in _steps(scenario):
+        if step.get("kind") != "cli":
+            continue
+        command = step.get("command") or ""
+        if "_apply_delivery_gates(" not in command:
+            continue
+        if any(seam in command for seam in _LLM_JUDGE_SEAMS):
+            continue
+        offenders.append(step.get("name") or "<unnamed>")
+    return offenders
+
+
 def _uses_http(scenario: dict[str, Any]) -> bool:
     """True when the scenario needs network (HTTP step or requires_http)."""
     return bool(scenario.get("requires_http")) or any(
@@ -250,6 +282,19 @@ async def _main(argv: list[str]) -> int:
         return 1
 
     candidates = select_candidates(scenarios)
+    judge_leaks = {
+        scenario["name"]: steps
+        for scenario in scenarios
+        if (steps := _unneutralized_judge_steps(scenario))
+    }
+    if judge_leaks:
+        for name, steps in sorted(judge_leaks.items()):
+            print(
+                f"{name}: cli step(s) {steps} call _apply_delivery_gates without "
+                "neutralizing the product-judge LLM seam (issue #623)",
+                file=sys.stderr,
+            )
+        return 1
     candidate_names = {c["name"] for c in candidates}
     unknown_project = sorted(PROJECT_SCENARIOS - candidate_names)
     if unknown_project:

@@ -186,6 +186,18 @@ steps:
 
       # A flag that never surfaces is not an escalation: it must reach the
       # delivery warnings (and from there the packaged gate report).
+      # Hermetic judge seam (issue #623): the scenario declares no LLM and no
+      # network, so it must never reach a real product judge.  Force the shared
+      # completion call to raise 429; the production `_run_product_judge` fails
+      # open on infrastructure errors, so this step proves the same verdict on a
+      # keyed and a keyless machine alike.
+      import autoinfo.output as _out
+
+      def _always_429(*_args, **_kwargs):
+          raise RuntimeError("429 rate limit (hermetic fake judge)")
+
+      _out.call_with_fallback = _always_429
+
       from autoinfo.output import _apply_delivery_gates
       delivery = _apply_delivery_gates(
           ORPHAN, "markdown", [], {"product_type": "PROCESSED"}, "PROCESSED",

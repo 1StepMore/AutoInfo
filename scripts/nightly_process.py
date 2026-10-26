@@ -17,6 +17,15 @@ The cursor is intentionally read from the same ``autoinfo.db`` /
 missing table means "nothing processed yet" and therefore the full cache is
 treated as backlog.
 
+The stage runs under a hard total budget (#596): ``--max-seconds`` (default
+2400) is shared fairly across the due domains, so the lane returns inside the
+systemd window and cannot eat the next stage's time.  When ``--batch-size`` is
+left at 0 the per-domain item cap is derived from that fair share and
+``--seconds-per-item`` (default 40 s, measured on the 2026-10-21 backlog), which
+keeps a subprocess from being killed mid-item.  A domain that no longer fits is
+reported as ``skipped_budget`` instead of being started anyway.
+``--max-seconds 0`` disables the budget for manual / backlog runs.
+
 Exit codes:
     0  all selected domains processed successfully, or nothing was due
     1  at least one selected domain failed
@@ -35,6 +44,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -45,9 +55,22 @@ DEFAULT_COLLECTIONS = REPO / "collections"
 DEFAULT_DB = REPO / "autoinfo.db"
 DEFAULT_MIN_BACKLOG = 20
 DEFAULT_TIMEOUT = 7200
+DEFAULT_MAX_SECONDS = 2400
+DEFAULT_SECONDS_PER_ITEM = 40
 SCHEMA = "autoinfo-nightly-process/1"
 
-Runner = Callable[[str, Path, int], tuple[int, float]]
+
+@dataclass(frozen=True)
+class ProcessRequest:
+    """One planned ``autoinfo process`` invocation."""
+
+    domain: str
+    repo: Path
+    timeout_s: int
+    batch_size: int = 0
+
+
+Runner = Callable[[ProcessRequest], tuple[int, float]]
 
 
 def domain_names(domains_dir: Path) -> list[str]:
@@ -110,22 +133,33 @@ def _autoinfo_cmd(python: str) -> list[str]:
     return [python, "-m", "autoinfo.cli"]
 
 
-def _run_process(domain: str, repo: Path, timeout: int) -> tuple[int, float]:
+def _derive_batch_size(
+    allowance_s: float, seconds_per_item: int, backlog: int, budget_enabled: bool
+) -> int:
+    """Items that fit in *allowance_s*; 0 means "all" when no budget applies."""
+    if not budget_enabled:
+        return 0
+    return max(1, min(backlog, int(allowance_s // seconds_per_item)))
+
+
+def _run_process(request: ProcessRequest) -> tuple[int, float]:
     """Run ``autoinfo process --domain ... --resume-from auto``."""
     cmd = [
         *_autoinfo_cmd(sys.executable),
         "process",
         "--domain",
-        domain,
+        request.domain,
         "--resume-from",
         "auto",
     ]
+    if request.batch_size > 0:
+        cmd += ["--batch-size", str(request.batch_size)]
     started = time.monotonic()
     try:
         completed = subprocess.run(
             cmd,
-            cwd=str(repo),
-            timeout=timeout,
+            cwd=str(request.repo),
+            timeout=request.timeout_s,
             check=False,
         )
         return completed.returncode, round(time.monotonic() - started, 1)
@@ -133,6 +167,15 @@ def _run_process(domain: str, repo: Path, timeout: int) -> tuple[int, float]:
         return 124, round(time.monotonic() - started, 1)
     except OSError:
         return 127, round(time.monotonic() - started, 1)
+
+
+def _log_row(row: dict[str, object]) -> None:
+    print(
+        f"[nightly-process] {row['domain']}: cached={row['cached_items']} "
+        f"processed={row['processed_count']} backlog={row['backlog']} "
+        f"budget={row['budget_s']}s batch={row['batch_size']} -> {row['action']}",
+        flush=True,
+    )
 
 
 def _render_md(report: dict[str, object]) -> str:
@@ -145,26 +188,33 @@ def _render_md(report: dict[str, object]) -> str:
         "",
         f"- generated: {report['generated_at']}",
         f"- min backlog: {report['min_backlog']}",
+        f"- max seconds: {report['max_seconds']} (0 = unlimited)",
         f"- dry run: {str(report['dry_run']).lower()}",
         f"- selected: {summary['selected']} / executed: {summary['executed']} / "
-        f"failed: {summary['failed']} / skipped: {summary['skipped']}",
+        f"failed: {summary['failed']} / skipped: {summary['skipped']} / "
+        f"skipped_budget: {summary['skipped_budget']}",
         "",
-        "| domain | cached | processed | backlog | action | exit | seconds |",
-        "|:---|---:|---:|---:|:---|---:|---:|",
+        "| domain | cached | processed | backlog | action | budget_s | batch | exit | seconds |",
+        "|:---|---:|---:|---:|:---|---:|---:|---:|---:|",
     ]
     for row in rows:
         assert isinstance(row, dict)
         lines.append(
             f"| {row['domain']} | {row['cached_items']} | "
             f"{row['processed_count']} | {row['backlog']} | "
-            f"{row['action']} | {row['exit_code']} | {row['duration_s']} |"
+            f"{row['action']} | {row['budget_s']} | {row['batch_size']} | "
+            f"{row['exit_code']} | {row['duration_s']} |"
         )
     if not rows:
         lines += ["", "No configured domain has cached items."]
     return "\n".join(lines) + "\n"
 
 
-def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    runner: Runner | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> int:
     ap = argparse.ArgumentParser(
         prog="nightly_process.py",
         description="Run AutoInfo process only for domains with a cache backlog.",
@@ -187,10 +237,30 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
         f"(default: {DEFAULT_MIN_BACKLOG}).",
     )
     ap.add_argument(
+        "--max-seconds",
+        type=int,
+        default=DEFAULT_MAX_SECONDS,
+        help=f"Hard budget for the whole run in seconds; 0 disables it "
+        f"(default: {DEFAULT_MAX_SECONDS}).",
+    )
+    ap.add_argument(
+        "--seconds-per-item",
+        type=int,
+        default=DEFAULT_SECONDS_PER_ITEM,
+        help=f"Expected seconds per item, used to derive a per-domain batch size "
+        f"when --batch-size is 0 (default: {DEFAULT_SECONDS_PER_ITEM}).",
+    )
+    ap.add_argument(
+        "--batch-size",
+        type=int,
+        default=0,
+        help="Process at most N items per domain (0 = derive from the budget).",
+    )
+    ap.add_argument(
         "--timeout",
         type=int,
         default=DEFAULT_TIMEOUT,
-        help=f"Per-domain process timeout in seconds (default: {DEFAULT_TIMEOUT}).",
+        help=f"Per-domain process timeout cap in seconds (default: {DEFAULT_TIMEOUT}).",
     )
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--json-out", default="")
@@ -199,6 +269,12 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
 
     if args.min_backlog < 1:
         ap.error("--min-backlog must be >= 1")
+    if args.max_seconds < 0:
+        ap.error("--max-seconds must be >= 0")
+    if args.seconds_per_item < 1:
+        ap.error("--seconds-per-item must be >= 1")
+    if args.batch_size < 0:
+        ap.error("--batch-size must be >= 0")
     if args.timeout < 1:
         ap.error("--timeout must be >= 1")
 
@@ -230,7 +306,6 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
                 file=sys.stderr,
             )
 
-    run = runner or _run_process
     rows: list[dict[str, object]] = []
     for domain in configured:
         cached = count_cached_items(collections, domain)
@@ -238,44 +313,83 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
             continue
         processed = read_processed_count(db_path, domain)
         backlog = max(0, cached - processed)
-        should_run = backlog >= args.min_backlog
-
-        if not should_run:
-            action = "skip"
-            exit_code = 0
-            duration_s = 0.0
-        elif args.dry_run:
-            action = "would_run"
-            exit_code = 0
-            duration_s = 0.0
-        else:
-            action = "run"
-            exit_code, duration_s = run(domain, repo, args.timeout)
-
-        print(
-            f"[nightly-process] {domain}: cached={cached} "
-            f"processed={processed} backlog={backlog} -> {action}",
-            flush=True,
-        )
         rows.append(
             {
                 "domain": domain,
                 "cached_items": cached,
                 "processed_count": processed,
                 "backlog": backlog,
-                "action": action,
-                "exit_code": exit_code,
-                "duration_s": duration_s,
+                "action": "pending" if backlog >= args.min_backlog else "skip",
+                "budget_s": 0.0,
+                "batch_size": 0,
+                "exit_code": 0,
+                "duration_s": 0.0,
             }
         )
+
+    run = runner or _run_process
+    budget_enabled = args.max_seconds > 0
+    started_at = clock()
+    due_count = sum(1 for row in rows if row["action"] == "pending")
+    assigned = 0
+    projected_used = 0.0
+    for row in rows:
+        if row["action"] != "pending":
+            continue
+        assigned += 1
+        remaining_due = due_count - assigned + 1
+        backlog = int(row["backlog"])
+        allowance = float(args.timeout)
+        if budget_enabled:
+            # A dry run cannot observe real durations, so it projects that every
+            # domain consumes exactly its fair share; a real run uses elapsed time.
+            consumed = projected_used if args.dry_run else clock() - started_at
+            remaining = args.max_seconds - consumed
+            if remaining <= 0:
+                row["action"] = "skipped_budget"
+                _log_row(row)
+                continue
+            allowance = remaining / remaining_due
+            if allowance < args.seconds_per_item:
+                if remaining_due > 1:
+                    # Defer this domain: a smaller due set may still fit.
+                    row["action"] = "skipped_budget"
+                    _log_row(row)
+                    continue
+                allowance = remaining
+                if allowance < args.seconds_per_item:
+                    row["action"] = "skipped_budget"
+                    _log_row(row)
+                    continue
+        batch = args.batch_size or _derive_batch_size(
+            allowance, args.seconds_per_item, backlog, budget_enabled
+        )
+        if args.dry_run:
+            row.update(action="would_run", budget_s=round(allowance, 1), batch_size=batch)
+            projected_used += allowance
+        else:
+            timeout = max(1, int(min(args.timeout, allowance))) if budget_enabled else args.timeout
+            exit_code, duration_s = run(ProcessRequest(str(row["domain"]), repo, timeout, batch))
+            row.update(
+                action="run",
+                budget_s=float(timeout),
+                batch_size=batch,
+                exit_code=exit_code,
+                duration_s=duration_s,
+            )
+        _log_row(row)
 
     selected = sum(1 for row in rows if row["action"] in ("run", "would_run"))
     executed = sum(1 for row in rows if row["action"] == "run")
     failed = sum(1 for row in rows if row["action"] == "run" and row["exit_code"] != 0)
+    skipped_budget = sum(1 for row in rows if row["action"] == "skipped_budget")
     report = {
         "schema": SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "min_backlog": args.min_backlog,
+        "max_seconds": args.max_seconds,
+        "seconds_per_item": args.seconds_per_item,
+        "batch_size": args.batch_size,
         "dry_run": args.dry_run,
         "domains_dir": str(domains_dir),
         "collections": str(collections),
@@ -286,7 +400,9 @@ def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
             "selected": selected,
             "executed": executed,
             "failed": failed,
-            "skipped": len(rows) - selected,
+            "skipped": sum(1 for row in rows if row["action"] == "skip"),
+            "skipped_budget": skipped_budget,
+            "budget_exhausted": budget_enabled and skipped_budget > 0,
         },
     }
 

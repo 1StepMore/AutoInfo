@@ -9,7 +9,7 @@ version: 1.0.0
 
 The QA loop for developing AutoInfo. Canonical depth lives in
 `docs/dev/validation-scenario-contract.md` (Part 1 = scenario authoring
-contract, Part 2 = full-coverage agent-tester runbook, 768 lines) and
+contract, Part 2 = full-coverage agent-tester runbook) and
 `docs/dev/acceptance-framework.md` (AC1-AC9 grading authority). This skill is
 the loadable procedure — read the contract doc when authoring scenarios.
 
@@ -24,7 +24,7 @@ the loadable procedure — read the contract doc when authoring scenarios.
   auto-loads them).
 - **Acceptance run** → produce `docs/dev/validation-reports/acceptance-*.md`.
 
-## Scenario library (166 = 86 functional + 80 regression)
+## Scenario library (182 = 86 functional + 96 regression)
 
 Functional (`src/autoinfo/mcp/scenarios/*.yaml`): system-health, discovery,
 domain-management, source-management, topic-management, keyword-management,

@@ -85,7 +85,7 @@ output-tutorial-presentation, output-video, processing), products-billing needs
 `STRIPE_API_KEY`, and sources-a6-keyed needs `FRED_API_KEY` + `FINNHUB_API_KEY`.
 After configuring keys, re-run those to GREEN (`passed`, never
 `unconfigured`). Observed example (47-scenario suite, 2026-08-05): **37 passed / 0 failed
-/ 10 unconfigured**; the suite has since grown to 138 (65 functional + 73 regression; §1.8) — the baseline shape (all
+/ 10 unconfigured**; the suite has since grown to 182 (86 functional + 96 regression; §1.8) — the baseline shape (all
 env-gated `unconfigured`, nothing failed) is unchanged.
 
 ---
@@ -371,15 +371,17 @@ Run after writing scenarios:
 python3 scripts/coverage_audit.py   # reports covered/missing MCP tools
 ```
 Every tool must disappear from the MISSING list. The audit counts `Tool(name=...)`
-declarations in `src/autoinfo/mcp/server.py` (146 tools) against `kind: mcp` steps in
+declarations in `src/autoinfo/mcp/server.py` (149 tools) against `kind: mcp` steps in
 the scenario library. It also prints a `Regression scenarios: N (issues: ...)` metric —
 every scenario in `scenarios/regression/` must carry `regression: true` and a
 `regression_issue`, and the audit lists any that don't.
 
-## 1.8 Scenario inventory (as of 2026-09-01)
+## 1.8 Scenario inventory (as of 2026-10-26)
 
-138 scenario files in `src/autoinfo/mcp/scenarios/` (65 functional flat in `scenarios/`
-+ 73 regression in `scenarios/regression/`):
+182 scenario files in `src/autoinfo/mcp/scenarios/` (86 functional flat in `scenarios/`
++ 96 regression in `scenarios/regression/`). The list below is a wave-by-wave log, not an
+ exhaustive enum — for the live count and the full inventory always call
+ `list_validation_scenarios()` or `python3 scripts/coverage_audit.py`:
 
 - **System/Discovery**: system-health, discovery, meta-validation
 - **Errors**: error-boundary
@@ -448,7 +450,7 @@ every scenario in `scenarios/regression/` must carry `regression: true` and a
   appears with a "(regression)" suffix in verdicts plus a `## Regression failures`
   report section.
 
-Coverage: 146/146 MCP tools (100%), all 31 CLI command groups, 8 REST API endpoints,
+Coverage: 149/149 MCP tools (100%), all 31 CLI command groups, 8 REST API endpoints,
 plus collector platform reachability probes (collectors-e2e) and G4/G5 gate flags
 (processing, LLM-gated). Status profile depends on BYOK keys: LLM-gated and env-gated
 scenarios (requires_env) report `unconfigured` without the keys (never silently
@@ -463,7 +465,7 @@ the aggregate regression metric.
 ## 2.1 Purpose and scope
 
 Prove, with real calls and real artifacts, that AutoInfo works across its full surface:
-**146 MCP tools (35 categories), 31 CLI command groups, 8 REST endpoints, 13 delivery
+**149 MCP tools (35 categories), 31 CLI command groups, 8 REST endpoints, 13 delivery
 channels, 30 collector handlers, and every output format**. Each proof must leave a
 verifiable artifact on disk, in the SQLite store, in the audit log, or on a network
 sink, and that artifact must be shown to the director.
@@ -673,7 +675,7 @@ but the matrix row additionally requires the real call and the artifact.
 | EV-I3 | Metrics | MCP `get_metrics()` and `get_prometheus_metrics()`; REST `curl http://localhost:8741/metrics` | The metrics JSON and the Prometheus text exposition from the REST endpoint | no | observability |
 | EV-I4 | Alert rules | MCP `add_alert_rule(domain, topic_keywords, relevance_threshold, channel, kind)` → `get_alert_rules()` → trigger a rule → `remove_alert_rule(...)` | The rules YAML file (persisted), the alert list JSON, and the dispatch log line when the rule fired | no | webhooks-alerts |
 | EV-I5 | REST API | Start `uvicorn autoinfo.api.server:app --port 8741`; `curl` each endpoint: `GET /health`, `GET /api/v1/entries`, `POST /api/v1/entries`, `GET /api/v1/entries/{id}`, `DELETE /api/v1/entries/{id}`, `GET /api/v1/search`, `GET /dashboard`, `GET /metrics` | The envelope JSON for each endpoint (success + error envelopes) and the dashboard HTML | no | rest-api |
-| EV-I6 | Validation meta-coverage | MCP `list_validation_scenarios()`; `run_validation_scenario` for 138; then `python3 scripts/coverage_audit.py` | The 138-scenario inventory JSON, per-scenario results, and the audit report showing **146/146** covered with zero MISSING | no | meta-validation |
+| EV-I6 | Validation meta-coverage | MCP `list_validation_scenarios()`; `run_validation_scenario` for 182; then `python3 scripts/coverage_audit.py` | The 182-scenario inventory JSON, per-scenario results, and the audit report showing **149/149** covered with zero MISSING | no | meta-validation |
 
 ## 2.6 Step-by-Step Walkthrough
 
@@ -722,9 +724,9 @@ Rules inside the loop:
 
 ### 2.6.3 Final sweep
 
-1. Re-run 138 scenarios with keys configured — all must report `passed` (expect 0
+1. Re-run 182 scenarios with keys configured — all must report `passed` (expect 0
    failed, 0 unconfigured).
-2. Run `python3 scripts/coverage_audit.py`; report **146/146 covered, zero MISSING**.
+2. Run `python3 scripts/coverage_audit.py`; report **149/149 covered, zero MISSING**.
 3. Cleanup sweep: re-run every scenario's `cleanup_steps` result (they run
    automatically), remove any leftover test domain/source/topic/end-user, and confirm
    `git status --porcelain` shows only the intended deliverable.
@@ -795,8 +797,8 @@ Deliver this table to the director at the end of the walkthrough:
 
 Plus the two hard meta-results:
 
-- Scenario suite: **138/138 passed** (0 failed, 0 unconfigured) with keys set.
-- `scripts/coverage_audit.py`: **146/146 MCP tools covered, zero MISSING**.
+- Scenario suite: **182/182 passed** (0 failed, 0 unconfigured) with keys set.
+- `scripts/coverage_audit.py`: **149/149 MCP tools covered, zero MISSING**.
 
 ## 2.9 QA Checklist (Pre-Handoff)
 
@@ -806,7 +808,7 @@ Before handing off to the director, verify all of the following:
 - [ ] RED was recorded before GREEN for every row.
 - [ ] Every GREEN has a real artifact on disk / DB / log / sink, and that artifact was shown to the director (pasted or absolute path).
 - [ ] No `unconfigured` row was graded as a pass; each missing key was surfaced as a BYOK obligation.
-- [ ] All 138 scenarios re-run GREEN with keys configured (0 failed, 0 unconfigured); `python3 scripts/coverage_audit.py` reports 146/146 with zero MISSING.
+- [ ] All 182 scenarios re-run GREEN with keys configured (0 failed, 0 unconfigured); `python3 scripts/coverage_audit.py` reports 149/149 with zero MISSING.
 - [ ] All 8 REST endpoints exercised via `curl` against `uvicorn autoinfo.api.server:app --port 8741`.
 - [ ] All mutating calls have paired cleanup, verified by `list_*` and `git status --porcelain`.
 - [ ] Runtime artifacts (`collections/`, `knowledge/`, `outputs/`, `exports/`, `autoinfo.db`, `.autoinfo/`, `logs/`, `.omo/`) are NOT committed and the working tree is clean.

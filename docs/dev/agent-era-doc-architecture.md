@@ -178,7 +178,7 @@ like any doc. The sync mechanism:
 
 1. **Every skill that documents a count or a surface** (tool counts, scenario counts,
    command groups) **is checked by the same consistency checker** that checks
-   README/AGENTS. If a skill quotes "146 tools", the checker verifies 146 against the
+   README/AGENTS. If a skill quotes "149 tools", the checker verifies 149 against the
    source of truth — the skill can no longer drift silently.
 2. **Skill update is a code change**, subject to the same workflow: edit `SKILL.md`,
    regenerate inventory, run checker, commit. No "docs update" is exempt from the gate.

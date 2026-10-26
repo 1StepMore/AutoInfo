@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.18.0](https://github.com/1StepMore/AutoInfo/compare/v1.17.53...v1.18.0) (2026-10-26)
+
+
+### Features
+
+* **nightly:** hard budget and fair-share batching for process stage ([#596](https://github.com/1StepMore/AutoInfo/issues/596)) ([#635](https://github.com/1StepMore/AutoInfo/issues/635)) ([8c97182](https://github.com/1StepMore/AutoInfo/commit/8c971821aef9999e314eb26b4e58ff29ef6cde35))
+
 ## [1.17.53](https://github.com/1StepMore/AutoInfo/compare/v1.17.52...v1.17.53) (2026-10-26)
 
 

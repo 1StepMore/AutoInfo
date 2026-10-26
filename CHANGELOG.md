@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.48](https://github.com/1StepMore/AutoInfo/compare/v1.17.47...v1.17.48) (2026-10-26)
+
+
+### Miscellaneous Chores
+
+* **deps-dev:** bump ruff from 0.17.1 to 0.17.2 ([#619](https://github.com/1StepMore/AutoInfo/issues/619)) ([11d2ed2](https://github.com/1StepMore/AutoInfo/commit/11d2ed24db3d659b4e49783525244d1d607ede8d))
+
 ## [1.17.47](https://github.com/1StepMore/AutoInfo/compare/v1.17.46...v1.17.47) (2026-10-26)
 
 

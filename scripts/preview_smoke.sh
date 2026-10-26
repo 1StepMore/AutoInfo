@@ -8,8 +8,17 @@ PORT="${PORT:-18000}"
 Q="${Q:-test}"
 cd "$REPO" || exit 2
 
-PY=".venv/bin/python"
-[ -x "$PY" ] || { echo "❌ 没有 .venv/bin/python"; exit 2; }
+# 解释器解析：优先 PYTHON 显式指定，其次仓内 .venv，最后 PATH 里的 python3。
+# CI 用系统 python（pip install -e .），本机开发用 .venv —— 两者都不再写死。
+PY="${PYTHON:-}"
+if [ -z "$PY" ]; then
+  if [ -x .venv/bin/python ]; then
+    PY=".venv/bin/python"
+  else
+    PY="$(command -v python3 || command -v python || true)"
+  fi
+fi
+[ -n "$PY" ] || { echo "❌ 找不到 python 解释器（可用 PYTHON=... 指定）"; exit 2; }
 
 "$PY" -m uvicorn autoinfo.api.server:app --port "$PORT" --log-level warning >/tmp/preview_smoke.log 2>&1 &
 SRV=$!

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.52](https://github.com/1StepMore/AutoInfo/compare/v1.17.51...v1.17.52) (2026-10-26)
+
+
+### Bug Fixes
+
+* **docs:** gate drift-prone counts in living docs ([#621](https://github.com/1StepMore/AutoInfo/issues/621)) ([#627](https://github.com/1StepMore/AutoInfo/issues/627)) ([eda086d](https://github.com/1StepMore/AutoInfo/commit/eda086d48ceef49b32753dcfa72c19551d90f4fb))
+
 ## [1.17.51](https://github.com/1StepMore/AutoInfo/compare/v1.17.50...v1.17.51) (2026-10-26)
 
 

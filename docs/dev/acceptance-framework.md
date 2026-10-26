@@ -50,7 +50,7 @@ The user model is **not** invented by this framework; it is the ratified foundat
 | User | Definition | Interface | Role in acceptance |
 |------|-----------|-----------|--------------------|
 | **B1 End User** | The paying customer. Buys Raw and Processed data. Treated uniformly (individual, creator, publisher, enterprise, licensor, agent delegate). | Receives delivered products; intent expressed via subscription config, never ad-hoc commands | The ultimate judge of value; the lens through which every deliverable is assessed (as a human) |
-| **B2 Direct User** | The AI agent that operates the platform. Agent as user **and** agent as tester. | MCP tools (147 tools, 35 categories); CLI is fallback | Executes acceptance evidence; drafts verdicts |
+| **B2 Direct User** | The AI agent that operates the platform. Agent as user **and** agent as tester. | MCP tools (149 tools, 35 categories); CLI is fallback | Executes acceptance evidence; drafts verdicts |
 | **B3 Director User** | The human owner of the agent. Configures at deploy time, monitors at runtime, intervenes on exceptions. | Natural language with the agent | Adjudicates verdicts; performs human reading of deliverables; signs off |
 
 **Critical nuance (director decision, 2026-08-08):** the acceptance lens for deliverables is **always human-first**. Even when an agent performs a test or validation, the standard of judgment is "a human, as the end user, would find this acceptable." An agent-delegate end user (B1 subtype) does not weaken this: human judgment remains the primary view.
@@ -388,7 +388,7 @@ AutoInfo is an agent-facing tool: the primary consumer of its documentation is a
 Two layers, judged separately:
 
 - **(a) Test layer** — the pytest suite (~6478 tests) that verifies the code itself. Industry best practice: organized by subject, mirroring the `src/` package structure; named by subject, not issue number; pyramid-shaped (many fast unit tests, few integration, very few end-to-end).
-- **(b) Validation layer** — the agent-facing scenario suite (116 scenarios, 65 functional + 51 regression) executed through the MCP surface by an agent (agent as tester / validator). This layer is the executable specification at the top of the pyramid: real-surface calls, `unconfigured` never passes, per-step trace + root-cause report, regression flywheel. **Judged compliant with best practice as of 2026-08-08** (current: 182 scenarios, 86 functional + 96 regression); it is retained as positive acceptance evidence.
+- **(b) Validation layer** — the agent-facing scenario suite (116 scenarios, 65 functional + 51 regression) executed through the MCP surface by an agent (agent as tester / validator). This layer is the executable specification at the top of the pyramid: real-surface calls, `unconfigured` never passes, per-step trace + root-cause report, regression flywheel. **Judged compliant with best practice as of 2026-08-08** (current: 182 scenarios, 86 functional + 96 regression); it is retained as positive acceptance evidence. <!-- counts-ignore: historical 2026-08-08 snapshot -->
 
 ### Binary acceptance criteria
 

@@ -218,7 +218,10 @@ FACTS: list[tuple[str, str]] = [
 #: (fact name, regex) tuned to the doc-manager skill's own phrasing (§3 Step 3);
 #: checked against the README value so the skill's numbers cannot drift silently.
 SKILL_FACTS: list[tuple[str, str]] = [
-    ("MCP tool count", r"MCP tools?\s+(\d+)"),
+    (
+        "MCP tool count",
+        r"(?:MCP tools?\s+(\d+)|\((\d+)\s+tools?,\s*\d+\s+categories\))",
+    ),
     ("CLI command groups", r"CLI groups\s+(\d+)"),
     ("Delivery channels", r"delivery channels\s+(\d+)"),
     ("Validation scenarios", r"validation scenarios\s+(\d+)"),
@@ -230,7 +233,115 @@ SKILL_FACTS: list[tuple[str, str]] = [
 
 def extract_number(text: str, pattern: str) -> str | None:
     m = re.search(pattern, text)
-    return m.group(1) if m else None
+    if not m:
+        return None
+    return next((g for g in m.groups() if g is not None), None)
+
+
+#: Living docs that state drift-prone counts (issue #621). Archived snapshots,
+#: ADRs, plans and validation reports are deliberately excluded — their numbers
+#: are historical records, not claims about the current tree.
+LIVING_DOCS: list[str] = [
+    "docs/dev/validation-scenario-contract.md",
+    "docs/dev/acceptance-framework.md",
+    "docs/dev/director-user-guide.md",
+    "docs/dev/mcp-usage-examples.md",
+    "docs/dev/specs/expectations.md",
+    "docs/dev/specs/end-user-matrix.yaml",
+    "docs/skills/autoinfo-skill/SKILL.md",
+    ".opencode/skills/validation-runner-skill/SKILL.md",
+    ".opencode/skills/deep-modules-skill/SKILL.md",
+]
+
+#: ``(label, regex, facts)`` — each named group is compared with the live value
+#: of the fact in the same position. Identifiers such as ``E1 MCP tools`` are
+#: excluded by the negative lookbehind; deliberate historical statements opt
+#: out with a ``counts-ignore`` comment on the line.
+_LIVING_PATTERNS: list[tuple[str, re.Pattern[str], tuple[str, ...]]] = [
+    (
+        "tool count",
+        re.compile(r"(?<![A-Za-z0-9])(?P<v>\d+)\s+(?:MCP\s+)?tools?\b"),
+        ("tools",),
+    ),
+    (
+        "tool count pair",
+        re.compile(r"(?<![A-Za-z0-9])(?P<a>\d+)/(?P<b>\d+)\s+(?:MCP\s+)?tools?\b"),
+        ("tools", "tools"),
+    ),
+    (
+        "CLI group count",
+        re.compile(r"(?<![A-Za-z0-9])(?P<v>\d+)\s+CLI\s+(?:command\s+)?groups?\b"),
+        ("cli_groups",),
+    ),
+    (
+        "CLI group count",
+        re.compile(r"(?<![A-Za-z0-9])(?P<v>\d+)\s+command groups?\b"),
+        ("cli_groups",),
+    ),
+    (
+        "CLI group count",
+        re.compile(r"cli/\s*\((?P<v>\d+)\s+groups?\b"),
+        ("cli_groups",),
+    ),
+    (
+        "scenario total",
+        re.compile(r"(?<![A-Za-z0-9])(?P<v>\d{3,})\s+(?:validation\s+)?scenarios?\b"),
+        ("scenarios",),
+    ),
+    (
+        "scenario file count",
+        re.compile(r"(?<![A-Za-z0-9])(?P<v>\d+)\s+scenario files?\b"),
+        ("scenarios",),
+    ),
+    (
+        "scenario split",
+        re.compile(r"(?<![A-Za-z0-9])(?P<f>\d+)\s+functional\s*\+\s*(?P<r>\d+)\s+regression"),
+        ("functional", "regression"),
+    ),
+    (
+        "scenario split",
+        re.compile(
+            r"(?<![A-Za-z0-9])(?P<t>\d+)\s*=\s*(?P<f>\d+)\s+functional\s*\+\s*"
+            r"(?P<r>\d+)\s+regression"
+        ),
+        ("scenarios", "functional", "regression"),
+    ),
+]
+
+
+def find_count_violations(text: str, expected: dict[str, int]) -> list[str]:
+    violations: list[str] = []
+    for label, pattern, facts in _LIVING_PATTERNS:
+        for match in pattern.finditer(text):
+            line_start = text.rfind("\n", 0, match.start()) + 1
+            line_end = text.find("\n", match.start())
+            line = text[line_start : line_end if line_end != -1 else len(text)]
+            if "counts-ignore" in line:
+                continue
+            lineno = text.count("\n", 0, match.start()) + 1
+            seen = [g for g in match.groups() if g is not None]
+            for fact, value in zip(facts, seen, strict=False):
+                want = expected.get(fact)
+                if want is not None and int(value) != want:
+                    violations.append(f"line {lineno}: {label} {value} != {want} ({fact})")
+    return violations
+
+
+def _check_living_docs(expected: dict[str, int]) -> list[str]:
+    failures: list[str] = []
+    for rel in LIVING_DOCS:
+        path = ROOT / rel
+        if not path.exists():
+            print(f"  Living doc {rel}: MISSING")
+            failures.append(f"living doc missing: {rel}")
+            continue
+        problems = find_count_violations(read_text(path), expected)
+        if problems:
+            print(f"  Living doc {rel}: {len(problems)} stale count claim(s) -> MISMATCH")
+            failures.extend(f"{rel}: {p}" for p in problems)
+        else:
+            print(f"  Living doc {rel}: counts match -> ok")
+    return failures
 
 
 def _run(args: list[str], timeout: int) -> tuple[int, str, str] | None:
@@ -589,6 +700,17 @@ def run_check() -> list[str]:
         failures.append(f"tests/ contains {len(stray)} test_bug_* file(s): {names}")
     else:
         print("  Stray test_bug_* files in tests/: none -> ok")
+
+    expected_counts: dict[str, int] = {
+        "scenarios": sum(1 for _ in SCENARIOS_DIR.rglob("*.yaml")),
+        "functional": sum(1 for _ in SCENARIOS_DIR.glob("*.yaml")),
+        "regression": sum(1 for _ in (SCENARIOS_DIR / "regression").glob("*.yaml")),
+    }
+    if live_count is not None:
+        expected_counts["tools"] = live_count
+    if readme_values.get("CLI command groups") is not None:
+        expected_counts["cli_groups"] = int(readme_values["CLI command groups"])
+    failures.extend(_check_living_docs(expected_counts))
 
     if not OUT.exists():
         print("  docs/dev/doc-inventory.md: does not exist -> FAIL")

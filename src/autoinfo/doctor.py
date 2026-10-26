@@ -30,6 +30,7 @@ from autoinfo.config import (
     get_config_path,
     llm_fallback_health,
     load_config,
+    probe_fallbacks,
     validate_config,
 )
 from autoinfo.defaults import COLLECTIONS_DIR
@@ -40,8 +41,13 @@ from autoinfo.schema import get_schema_version as _get_schema_version
 # ---------------------------------------------------------------------------
 
 
-def run_doctor() -> dict[str, Any]:
+def run_doctor(*, probe_llm: bool = False) -> dict[str, Any]:
     """Run a comprehensive system health check.
+
+    *probe_llm* sends one real request per configured LLM fallback entry
+    (issue #605) and adds a ``fallback_probe`` list to the report.  It is
+    off by default so a normal ``doctor`` run performs no LLM calls and
+    keeps its historical output and exit behavior.
 
     Returns
     -------
@@ -133,6 +139,26 @@ def run_doctor() -> dict[str, Any]:
         except Exception:
             pass
     results["fallback_health"] = fallback_health
+
+    # -- LLM fallback-chain live probe (opt-in, issue #605) ------------------
+    if probe_llm:
+        probe_results: list[dict[str, Any]] = []
+        if config_path:
+            try:
+                cfg = load_config(config_path)
+                probe_results = probe_fallbacks(cfg)
+            except Exception as exc:
+                probe_results = [
+                    {
+                        "index": -1,
+                        "model": "?",
+                        "ok": False,
+                        "status": "error",
+                        "error": f"fallback probe failed: {exc}",
+                        "latency_ms": 0.0,
+                    }
+                ]
+        results["fallback_probe"] = probe_results
 
     # -- Source reachability checks -----------------------------------------
     sources_status: list[dict[str, Any]] = []

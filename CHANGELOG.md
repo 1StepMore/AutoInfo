@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.46](https://github.com/1StepMore/AutoInfo/compare/v1.17.45...v1.17.46) (2026-10-26)
+
+
+### Documentation
+
+* **validation:** sync tool/scenario counts to 149/182 after phase-3 refactor ([#620](https://github.com/1StepMore/AutoInfo/issues/620)) ([414035d](https://github.com/1StepMore/AutoInfo/commit/414035d014e29bb10038a4a5df772d17f0e6e7c3))
+
 ## [1.17.45](https://github.com/1StepMore/AutoInfo/compare/v1.17.44...v1.17.45) (2026-10-25)
 
 

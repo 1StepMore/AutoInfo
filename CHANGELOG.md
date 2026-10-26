@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.50](https://github.com/1StepMore/AutoInfo/compare/v1.17.49...v1.17.50) (2026-10-26)
+
+
+### Bug Fixes
+
+* **llm:** probe fallback chain and flag double-prefixed model ids ([#605](https://github.com/1StepMore/AutoInfo/issues/605)) ([#606](https://github.com/1StepMore/AutoInfo/issues/606)) ([d001682](https://github.com/1StepMore/AutoInfo/commit/d00168257886ed8db3f6d01f15f8748ffdbebc7f))
+
 ## [1.17.49](https://github.com/1StepMore/AutoInfo/compare/v1.17.48...v1.17.49) (2026-10-26)
 
 

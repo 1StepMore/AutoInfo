@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.47](https://github.com/1StepMore/AutoInfo/compare/v1.17.46...v1.17.47) (2026-10-26)
+
+
+### Miscellaneous Chores
+
+* **boundary:** stop citing other product lines in the validation LOOP-LOG ([#603](https://github.com/1StepMore/AutoInfo/issues/603)) ([935f6cb](https://github.com/1StepMore/AutoInfo/commit/935f6cb2ed8523a26335456d57395d567a0311d5))
+
 ## [1.17.46](https://github.com/1StepMore/AutoInfo/compare/v1.17.45...v1.17.46) (2026-10-26)
 
 

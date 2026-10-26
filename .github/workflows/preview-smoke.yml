@@ -34,4 +34,5 @@ jobs:
         env:
           PORT: "18000"
           Q: preview-smoke
+          PYTHON: python3
         run: bash scripts/preview_smoke.sh .

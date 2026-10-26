@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.17.49](https://github.com/1StepMore/AutoInfo/compare/v1.17.48...v1.17.49) (2026-10-26)
+
+
+### Miscellaneous Chores
+
+* **boundary:** move portfolio analysis out; make code provenance repo-agnostic ([#604](https://github.com/1StepMore/AutoInfo/issues/604)) ([a17bb9f](https://github.com/1StepMore/AutoInfo/commit/a17bb9ff06e0d3caf7134ec5b4abc4d102bff7be))
+
 ## [1.17.48](https://github.com/1StepMore/AutoInfo/compare/v1.17.47...v1.17.48) (2026-10-26)
 
 

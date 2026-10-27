@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 123 |
-| Total lines | 37394 |
+| Total lines | 37395 |
 | Active files | 94 |
 | Archived files | 29 |
 | Category — archive | 29 files / 8944 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — skills | 3 files / 785 lines |
 | Category — adr | 13 files / 775 lines |
 | Category — specs | 12 files / 9767 lines |
-| Category — validation-reports | 23 files / 4176 lines |
+| Category — validation-reports | 23 files / 4177 lines |
 | Category — docs/dev | 32 files / 11217 lines |
 | Category — docs/root | 5 files / 983 lines |
 
@@ -117,7 +117,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 96 | validation-reports | active | — |
 | `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 565 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/README.md` | 52 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/README.md` | 53 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/l0-l1-baseline.md` | 58 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/README.md` | 14 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/blockers-2026-10-27.md` | 39 | validation-reports | active | — |

@@ -1,0 +1,5 @@
+$ .venv/bin/python scripts/quality_gate.py outputs/language-learning
+QUALITY GATE FAILED:
+  - tutorial-markdown-20261003-125046.md: H3 bullet serialization glue: '- ' after '5' (not a new line): ...to Teach The Great Gatsby: A Full 5- to 7-Week Unit, Plus 5 Book Pa...
+  (1 defects across 1 file(s))
+exit 1

@@ -34,6 +34,7 @@ import argparse
 import datetime
 import difflib
 import json
+import os
 import re
 import sys
 import zipfile
@@ -120,11 +121,15 @@ FORMAT_EXT = {
 # Persisted artifact filename: <product>-<format>-<YYYYmmdd-HHMMSS>.<ext>.
 # Product names may contain dashes (magazine-digest, premium-briefing, ...),
 # so the format token is anchored to the known format set.
-# Stamp variants: standard %Y%m%d-%H%M%S (persist path) and the
-# regenerate_paygrade.py literal "YYYYmmdd-paygrade" (issue #182 sweep).
+# Stamp variants accepted:
+#   * %Y%m%d-%H%M%S — the MCP persist path;
+#   * %Y%m%d-paygrade — the regenerate_paygrade.py literal (issue #182 sweep);
+#   * bare %Y%m%d — emitted by scripts/validation_delivery.py and older MCP
+#     runs. A date-only stamp is a real artifact, not a malformed name:
+#     rejecting it silently hid 20 real outputs from the coverage matrix.
 _PERSISTED_RE = re.compile(
     r"^(?P<product>.+?)-(?P<format>markdown|html|json|agent|audio|video|epub|audiobook)"
-    r"-\d{8}(?:-\d{6}|-paygrade)(?P<ext>\.md|\.json|\.html|\.mp3|\.mp4|\.epub|\.zip)$"
+    r"-\d{8}(?:-\d{6}|-paygrade)?(?P<ext>\.md|\.json|\.html|\.mp3|\.mp4|\.epub|\.zip)$"
 )
 
 Cell = tuple[str, str, str]  # (domain, product, format)
@@ -320,20 +325,38 @@ def scan_evidence(evidence_dir: str | Path) -> set[Cell]:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_unusable_loader_key(value: str) -> str:
+    if value.startswith("${") and value.endswith("}"):
+        return os.environ.get(value[2:-1], "")
+    return value
+
+
 def detect_llm_available(config_path: str | Path | None = None) -> bool:
     """Detect LLM availability from the project config.
 
-    Reads ``.autoinfo/config.yaml`` (override with *config_path*) and returns
-    True when ``llm.api_key`` is a non-empty string. A missing/unreadable
-    config file is treated as "not available".
+    The project config stores ``api_key: ${AUTOINFO_LLM_API_KEY}``, so a
+    non-empty raw string proves nothing: with the env var unset the
+    placeholder resolves to ``''``. Resolve through ``load_config`` — the
+    same path every LLM call uses — so this detector cannot drift from the
+    real availability rule. Falls back to resolving a ``${VAR}`` reference
+    directly only when the package loader is unavailable (e.g. a bare
+    ``python3 scripts/...`` run without the package installed).
     """
     path = Path(config_path) if config_path else Path(".autoinfo/config.yaml")
+    if not path.is_file():
+        return False
+    try:
+        from autoinfo.config import load_config
+
+        return bool(str(load_config(path).llm.api_key or "").strip())
+    except Exception:
+        pass
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
         return False
     llm = data.get("llm") or {}
-    return bool(str(llm.get("api_key", "") or "").strip())
+    return bool(str(_resolve_unusable_loader_key(str(llm.get("api_key", "") or ""))).strip())
 
 
 def classify_grid(
@@ -1117,6 +1140,14 @@ def main(argv: list[str] | None = None) -> int:
     if not evidence_dir.is_dir():
         print(f"ERROR: evidence directory not found: {args.evidence}", file=sys.stderr)
         return 2
+    if evidence_dir.name == "outputs" or (evidence_dir / "outputs").is_dir():
+        if not (evidence_dir / "collections").is_dir():
+            print(
+                f"WARNING: {evidence_dir} has no collections/ next to outputs/; "
+                "SOURCE_COVERAGE and KB_TIER_COVERAGE will be inert. "
+                "Use --evidence . to measure sources and KB tiers.",
+                file=sys.stderr,
+            )
 
     produced = scan_evidence(evidence_dir)
     source_evidence = scan_source_evidence(evidence_dir)

@@ -153,7 +153,16 @@ def _is_retryable_error(exc: Exception) -> bool:
 
     Any other status (including non-retryable 4xx like 400/403/404) or an
     error without an HTTP status surfaces immediately — no retry.
+
+    Authentication/permission failures are never retried even when the
+    provider SDK mislabels its client-side credential error as HTTP 500
+    (LiteLLM's ``AuthenticationError`` reports ``status_code=500`` when the
+    key is absent).  Retrying cannot supply a missing key; it only burns the
+    caller's time budget.
     """
+    name = type(exc).__name__.lower()
+    if "authentication" in name or "permission" in name or "unauthorized" in name:
+        return False
     status = _error_status(exc)
     if status is None:
         return False

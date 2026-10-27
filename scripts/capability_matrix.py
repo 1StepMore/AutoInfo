@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any, Callable, cast
 
 import yaml
+from coverage_matrix import detect_llm_available
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SPEC = ROOT / "docs" / "dev" / "specs" / "end-user-matrix.yaml"
@@ -156,6 +157,9 @@ class RouteContext:
     product: str
     topic: str = ""
     template: Any = None
+    disable_llm: bool = False
+    max_synthesis_attempts: int | None = None
+    retry_backoff_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -195,6 +199,12 @@ def _digest_route(needs_template: bool) -> Route:
         }
         if needs_template:
             kwargs["product_template"] = _require_template(ctx)
+        if ctx.disable_llm:
+            kwargs["disable_llm"] = True
+        if ctx.max_synthesis_attempts is not None:
+            kwargs["max_synthesis_attempts"] = ctx.max_synthesis_attempts
+        if ctx.retry_backoff_seconds is not None:
+            kwargs["retry_backoff_seconds"] = ctx.retry_backoff_seconds
         return GenerationCall(generate_digest, kwargs, needs_template)
 
     return Route(factory, needs_template=needs_template)
@@ -211,6 +221,12 @@ def _report_route(needs_template: bool) -> Route:
         }
         if needs_template:
             kwargs["product_template"] = _require_template(ctx)
+        if ctx.disable_llm:
+            kwargs["disable_llm"] = True
+        if ctx.max_synthesis_attempts is not None:
+            kwargs["max_synthesis_attempts"] = ctx.max_synthesis_attempts
+        if ctx.retry_backoff_seconds is not None:
+            kwargs["retry_backoff_seconds"] = ctx.retry_backoff_seconds
         return GenerationCall(generate_report, kwargs, needs_template)
 
     return Route(factory, needs_template=needs_template)
@@ -572,10 +588,29 @@ def generate_cell(
     artifact_root: Path,
     force: bool,
     keyed: str,
+    llm_available: bool | None = None,
+    llm_attempts: int | None = None,
+    llm_backoff: float | None = None,
 ) -> dict[str, Any]:
     """Generate one artifact through the real path and evaluate L1/L2/L3."""
     started = time.monotonic()
     row = _base_row(combo, domain, keyed)
+    no_llm = (not llm_available) if llm_available is not None else keyed == "unkeyed"
+
+    if no_llm and combo.gated:
+        return _blocked(
+            row,
+            "blocked-no-llm-key",
+            _detail_parts(
+                [
+                    "generation skipped: the LLM prerequisite is provably absent "
+                    "(no API key configured), and this product is LLM-gated",
+                    RETRY_POLICY,
+                ]
+            ),
+            started,
+        )
+
     if combo.product == "presentation" and not topic:
         return _blocked(
             row,
@@ -588,6 +623,13 @@ def generate_cell(
             ),
             started,
         )
+
+    max_synthesis_attempts = llm_attempts
+    if max_synthesis_attempts is None and no_llm:
+        max_synthesis_attempts = 1
+    retry_backoff_seconds = llm_backoff
+    if retry_backoff_seconds is None and no_llm:
+        retry_backoff_seconds = 0.0
 
     if combo.format == "video":
         # The video pipeline writes its intermediate MP4 under AUTOINFO_TMPDIR;
@@ -602,6 +644,9 @@ def generate_cell(
         product=combo.product,
         topic=topic,
         template=template,
+        disable_llm=no_llm,
+        max_synthesis_attempts=max_synthesis_attempts,
+        retry_backoff_seconds=retry_backoff_seconds,
     )
     try:
         call = route(ctx)
@@ -913,6 +958,26 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--spec", default=str(DEFAULT_SPEC), help="end-user-matrix spec path")
     parser.add_argument("--json", action="store_true", help="emit rows as JSONL on stdout")
     parser.add_argument("--force", action="store_true", help="re-run cells already recorded")
+    parser.add_argument(
+        "--llm-attempts",
+        type=int,
+        default=None,
+        metavar="INT",
+        help=(
+            "override synthesis attempts per digest/report call (default: 1 when no "
+            "LLM key is configured, else the generator's shipped default)"
+        ),
+    )
+    parser.add_argument(
+        "--llm-backoff",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help=(
+            "override synthesis retry backoff seconds (default: 0.0 when no LLM key "
+            "is configured, else the generator's shipped default)"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -958,6 +1023,11 @@ def main(argv: list[str] | None = None) -> int:
     if not domains:
         return _usage_error("--domains is empty")
 
+    if args.llm_attempts is not None and args.llm_attempts < 1:
+        return _usage_error("--llm-attempts must be >= 1")
+    if args.llm_backoff is not None and args.llm_backoff < 0:
+        return _usage_error("--llm-backoff must be >= 0")
+
     selected = [combo for combo in combinations if not only or combo.key in only]
 
     if args.list:
@@ -979,6 +1049,11 @@ def main(argv: list[str] | None = None) -> int:
         return _usage_error(f"cannot read checkpoint {checkpoint}: {exc}")
 
     keyed = keyed_state()
+    llm_available = detect_llm_available(CONFIG_PATH)
+    if not llm_available:
+        # A no-key run cannot reach a provider, so skip LiteLLM's remote
+        # model-cost-map fetch (tens of seconds on a blocked network).
+        os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
     topics = load_topics()
     existing = {_row_key(row): row for row in existing_rows}
     final: dict[tuple[str, str, str], dict[str, Any]] = dict(existing)
@@ -1028,6 +1103,9 @@ def main(argv: list[str] | None = None) -> int:
                     artifact_root=ARTIFACT_ROOT,
                     force=args.force,
                     keyed=keyed,
+                    llm_available=llm_available,
+                    llm_attempts=args.llm_attempts,
+                    llm_backoff=args.llm_backoff,
                 )
                 final[_row_key(row)] = row
                 run_rows.append(row)

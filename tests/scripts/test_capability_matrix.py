@@ -223,3 +223,89 @@ def test_only_assert_without_recorded_row_exits_1(tmp_path: Path, capsys: Any) -
     )
     assert rc == 1
     assert "no recorded row" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# 7. T17: no-key runs skip LLM-gated cells and collapse non-gated retry budget
+# ---------------------------------------------------------------------------
+
+
+def _capture_route(seen: list[Any], *, fail: bool = True) -> Any:
+    def factory(ctx: Any) -> Any:
+        seen.append(ctx)
+        if fail:
+            def _boom(**kwargs: Any) -> Any:
+                raise RuntimeError("generation stopped by test")
+
+            return cm.GenerationCall(_boom, {}, False)
+        return cm.GenerationCall(lambda **kwargs: "", {}, False)
+
+    return cm.Route(factory, needs_template=False)
+
+
+def test_no_key_gated_cell_is_blocked_without_invoking_route(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    calls: list[Any] = []
+    monkeypatch.setitem(cm.ROUTES, "premium-briefing", _capture_route(calls))
+    combo = cm.Combination(product="premium-briefing", format="markdown", gated=True)
+
+    row = cm.generate_cell(
+        combo,
+        domain="medical-research",
+        topic="IVF",
+        artifact_root=tmp_path,
+        force=False,
+        keyed="unkeyed",
+        llm_available=False,
+    )
+
+    assert row["reached"] == "blocked-no-llm-key"
+    assert "LLM prerequisite is provably absent" in row["detail"]
+    assert calls == []
+
+
+def test_no_key_non_gated_cell_collapses_retry_budget(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    seen: list[Any] = []
+    monkeypatch.setitem(cm.ROUTES, "digest", _capture_route(seen))
+    combo = cm.Combination(product="digest", format="markdown", gated=False)
+
+    cm.generate_cell(
+        combo,
+        domain="medical-research",
+        topic="IVF",
+        artifact_root=tmp_path,
+        force=False,
+        keyed="unkeyed",
+        llm_available=False,
+    )
+
+    assert seen[0].disable_llm is True
+    assert seen[0].max_synthesis_attempts == 1
+    assert seen[0].retry_backoff_seconds == 0.0
+
+
+def test_explicit_llm_flags_override_no_key_defaults(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    seen: list[Any] = []
+    monkeypatch.setitem(cm.ROUTES, "report", _capture_route(seen))
+    combo = cm.Combination(product="report", format="markdown", gated=False)
+
+    cm.generate_cell(
+        combo,
+        domain="medical-research",
+        topic="IVF",
+        artifact_root=tmp_path,
+        force=False,
+        keyed="unkeyed",
+        llm_available=False,
+        llm_attempts=5,
+        llm_backoff=2.0,
+    )
+
+    assert seen[0].disable_llm is True
+    assert seen[0].max_synthesis_attempts == 5
+    assert seen[0].retry_backoff_seconds == 2.0

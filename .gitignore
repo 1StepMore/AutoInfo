@@ -57,6 +57,11 @@ exports/
 # Runtime artifacts
 backups/
 logs/
+# Capability-27x3 evidence logs ARE committed (T10-T11: "logs committed").
+# The generic rule above matches any directory named logs/, so re-include this
+# one explicitly; everything else named logs/ stays ignored.
+!docs/dev/validation-reports/capability-27x3/logs/
+!docs/dev/validation-reports/capability-27x3/logs/**
 reports/
 knowledge_graph_export.json
 autoinfo.db-wal

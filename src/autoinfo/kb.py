@@ -462,6 +462,15 @@ beneath it reuse the verdict without another subprocess.
 """
 
 
+_NON_TIER_DIRS = frozenset({"_failed", "_archive"})
+"""Directories under ``knowledge/`` that hold no KB tier.
+
+``_failed/`` is the G0 quarantine and ``_archive/`` holds superseded material.
+Indexing them presents blocked items as promotable Drafts and archived files as
+live Raw entries, which breaks file/index parity for every domain.
+"""
+
+
 def _git_check_ignore(rel_path: str, repo_root: str) -> bool:
     """Return True when *rel_path* is ignored by git (never raises)."""
     try:
@@ -981,32 +990,24 @@ class SQLiteIndex:
             ).fetchone()
             return dict(row) if row else None
 
-    def delete_entry(self, entry_id: str, *, actor: str | None = None) -> bool:
-        """Delete an entry from the index, FTS5 table, and disk file.
+    def delete_index_row(self, entry_id: str) -> bool:
+        """Remove *entry_id* from every index table, leaving the file on disk.
 
-        Returns ``True`` when the entry existed and was deleted,
-        ``False`` when no entry with *entry_id* was found.
+        Used when the row must stop being counted as a KB entry but the
+        markdown itself is not ours to delete — a quarantined ``_failed/``
+        item or archived material.
 
-        Raises
-        ------
-        DirectorOnlyError
-            If the entry lives in the 03-Wiki tier and *actor* is not
-            whitelisted in ``AUTOINFO_DIRECTOR_ACTORS`` (03-Wiki is
-            append-only; only a director may purge curated entries).
+        Returns ``True`` when a row existed, ``False`` otherwise.
         """
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT file_path, rowid, tier FROM entries WHERE entry_id = ?",
+                "SELECT rowid FROM entries WHERE entry_id = ?",
                 (entry_id,),
             ).fetchone()
             if row is None:
                 return False
 
-            _ensure_wiki_delete_allowed(row["tier"], actor=actor, entry_id=entry_id)
-
-            file_path = row["file_path"]
             rowid = row["rowid"]
-
             conn.execute("DELETE FROM entries_fts5 WHERE rowid = ?", (rowid,))
             conn.execute("DELETE FROM entries WHERE entry_id = ?", (entry_id,))
             conn.execute("DELETE FROM entities WHERE entry_id = ?", (entry_id,))
@@ -1023,6 +1024,34 @@ class SQLiteIndex:
                 "DELETE FROM entry_versions WHERE entry_id = ?",
                 (entry_id,),
             )
+        return True
+
+    def delete_entry(self, entry_id: str, *, actor: str | None = None) -> bool:
+        """Delete an entry from the index, FTS5 table, and disk file.
+
+        Returns ``True`` when the entry existed and was deleted,
+        ``False`` when no entry with *entry_id* was found.
+
+        Raises
+        ------
+        DirectorOnlyError
+            If the entry lives in the 03-Wiki tier and *actor* is not
+            whitelisted in ``AUTOINFO_DIRECTOR_ACTORS`` (03-Wiki is
+            append-only; only a director may purge curated entries).
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT file_path, tier FROM entries WHERE entry_id = ?",
+                (entry_id,),
+            ).fetchone()
+            if row is None:
+                return False
+
+            _ensure_wiki_delete_allowed(row["tier"], actor=actor, entry_id=entry_id)
+            file_path = row["file_path"]
+
+        if not self.delete_index_row(entry_id):
+            return False
 
         if file_path:
             fp = Path(file_path)
@@ -4774,6 +4803,8 @@ class KBStore:
             }
 
         for md_file in search_root.rglob("*.md"):
+            if _NON_TIER_DIRS.intersection(md_file.parts):
+                continue
             try:
                 raw = md_file.read_text(encoding="utf-8")
                 if not raw.startswith("---"):

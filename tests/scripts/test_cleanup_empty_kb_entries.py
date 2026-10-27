@@ -25,7 +25,8 @@ sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import cleanup_empty_kb_entries as clean  # noqa: E402  (sys.path insert above)
 
-from autoinfo.kb import MIN_KB_CONTENT_CHARS  # noqa: E402
+from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore  # noqa: E402
+from autoinfo.models import KBEntry  # noqa: E402
 
 
 def _write_entry(root: Path, tier: str, name: str, body: str) -> Path:
@@ -87,3 +88,73 @@ def test_dry_run_prints_report_and_leaves_files(
     assert short_raw.exists()
     assert long_raw.exists()
     assert short_wiki.exists()
+
+
+# ===================================================================
+# --prune-missing (T9: index/file parity)
+# ===================================================================
+
+
+def _index_row(root: Path, entry_id: str, tier: str, file_path: Path) -> None:
+    """Index *file_path* directly, bypassing the store's write path."""
+    KBStore(base_path=root).index.index_entry(
+        KBEntry(
+            entry_id=entry_id,
+            title="fixture",
+            domain="medical-research",
+            tier=tier,
+            file_path=str(file_path),
+        )
+    )
+
+
+def test_prune_missing_dry_run_counts_and_keeps_rows(tmp_path: Path) -> None:
+    kb, *_ = _fixture_tree(tmp_path)
+    _index_row(kb, "gone", "01-Raw", kb / "medical-research" / "01-Raw" / "gone.md")
+
+    per_domain, total = clean.prune_missing_index_rows(kb, apply=False)
+
+    assert (per_domain, total) == ({"medical-research": [1, 0]}, 1)
+    assert KBStore(base_path=kb).index.get_entry("gone") is not None
+
+
+def test_prune_missing_apply_deletes_only_dangling_rows(tmp_path: Path) -> None:
+    kb, short_raw, *_ = _fixture_tree(tmp_path)
+    _index_row(kb, "keep", "01-Raw", short_raw)
+    _index_row(kb, "gone", "01-Raw", kb / "medical-research" / "01-Raw" / "gone.md")
+    store = KBStore(base_path=kb)
+
+    per_domain, total = clean.prune_missing_index_rows(kb, apply=True)
+
+    assert (per_domain, total) == ({"medical-research": [1, 0]}, 1)
+    assert store.index.get_entry("gone") is None
+    assert store.index.get_entry("keep") is not None
+    assert short_raw.exists()
+
+
+def test_prune_outside_tier_drops_row_but_keeps_file(tmp_path: Path) -> None:
+    kb = tmp_path / "knowledge"
+    quarantine = kb / "_failed" / "medical-research" / "blocked.md"
+    quarantine.parent.mkdir(parents=True)
+    quarantine.write_text("---\ntier: 02-Draft\n---\n\nblocked", encoding="utf-8")
+    _index_row(kb, "blocked", "02-Draft", quarantine)
+
+    per_domain, total = clean.prune_missing_index_rows(kb, apply=True)
+
+    assert (per_domain, total) == ({"medical-research": [0, 1]}, 1)
+    assert KBStore(base_path=kb).index.get_entry("blocked") is None
+    assert quarantine.exists()
+
+
+def test_main_prune_missing_is_dry_run_by_default(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    kb, *_ = _fixture_tree(tmp_path)
+    _index_row(kb, "gone", "01-Raw", kb / "medical-research" / "01-Raw" / "gone.md")
+
+    assert clean.main(["--prune-missing", str(kb)]) == 0
+
+    out = capsys.readouterr().out
+    assert "1 (stale 1, outside-tier 0)" in out
+    assert "1 dangling index rows flagged" in out
+    assert KBStore(base_path=kb).index.get_entry("gone") is not None

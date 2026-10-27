@@ -523,6 +523,32 @@ class TestKBStoreFTS5:
         search_result = store.search_knowledge_base("orphaned")
         assert search_result["total_count"] >= 1
 
+    @pytest.mark.parametrize("non_tier", ["_failed", "_archive"])
+    def test_reindex_skips_non_tier_dirs(
+        self, tmp_path: Path, store: KBStore, non_tier: str
+    ) -> None:
+        """Quarantined and archived files are not KB entries (T9)."""
+        md_dir = tmp_path / "knowledge" / non_tier / "medical-research"
+        md_dir.mkdir(parents=True, exist_ok=True)
+        entry_id = f"non-tier-{non_tier}"
+        fm = {
+            "title": "Blocked item",
+            "domain": "medical-research",
+            "tier": "02-Draft",
+            "entry_id": entry_id,
+            "source_url": "https://example.com/blocked",
+        }
+        (md_dir / "blocked.md").write_text(
+            f"---\n{yaml.dump(fm, default_flow_style=False)}---\n\n"
+            "Quarantined body content long enough to be indexed.\n",
+            encoding="utf-8",
+        )
+
+        result = store.reindex_knowledge_base()
+
+        assert result["errors"] == []
+        assert store.index.get_entry(entry_id) is None
+
     def test_mcp_search_returns_expected_shape(
         self, store: KBStore, sample_items: list[Item]
     ) -> None:

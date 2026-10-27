@@ -1,0 +1,16 @@
+$ .venv/bin/python -m autoinfo.cli collect --domain language-learning --limit 20
+RSS fetch failed for https://feeds.bbci.co.uk/learningenglish/features/6minuteenglish/rss.xml: [Errno 104] Connection reset by peer
+  ✗ bbc-learning-english: 0 new / 0 found (1.8s)
+  ✓ news-in-levels: 10 new / 10 found (4.9s)
+  ✓ commonlit: 15 new / 15 found (2.3s)
+  ✓ project-gutenberg: 20 new / 20 found (2.6s)
+Collection col-20261027T072436-e6cbe029 for domain 'language-learning'
+
+  ✗ bbc-learning-english: 0 new / 0 found (1.8s)
+      ↳ RSS fetch failed for https://feeds.bbci.co.uk/learningenglish/features/6minuteenglish/rss.xml: [Errno 104] Connection reset by peer
+  ✓ news-in-levels: 10 new / 10 found (4.9s)
+  ✓ commonlit: 15 new / 15 found (2.3s)
+  ✓ project-gutenberg: 20 new / 20 found (2.6s)
+
+Total: 45 new items from 45 found in 14.5s
+exit 0

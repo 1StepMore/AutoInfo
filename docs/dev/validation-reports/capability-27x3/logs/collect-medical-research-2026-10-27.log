@@ -1,0 +1,36 @@
+$ .venv/bin/python -m autoinfo.cli collect --domain medical-research --limit 20
+fetch_depth=fulltext but no PMC ID for PMID 42933587
+fetch_depth=fulltext but no PMC ID for PMID 42933403
+fetch_depth=fulltext but no PMC ID for PMID 42932986
+fetch_depth=fulltext but no PMC ID for PMID 42931041
+fetch_depth=fulltext but no PMC ID for PMID 42929030
+fetch_depth=fulltext but no PMC ID for PMID 42929017
+fetch_depth=fulltext but no PMC ID for PMID 42929015
+fetch_depth=fulltext but no PMC ID for PMID 42929004
+fetch_depth=fulltext but no PMC ID for PMID 42928227
+fetch_depth=fulltext but no PMC ID for PMID 42925945
+fetch_depth=fulltext but no PMC ID for PMID 42924873
+  ✓ pubmed: 20 new / 20 found (15.3s)
+  ✓ CrossRef: 0 new / 0 found (4.4s)
+  ✓ Unpaywall: 0 new / 0 found (1.4s)
+  ✓ openalex: 0 new / 0 found (1.9s)
+  ✗ semantic-scholar: 0 new / 0 found (0.5s)
+  ✗ uspto: 0 new / 0 found (0.5s)
+DBLP API request failed for query '': Expecting value: line 1 column 1 (char 0)
+  ✓ dblp: 0 new / 0 found (1.4s)
+  ✓ arXiv: 20 new / 20 found (2.6s)
+Collection col-20261027T072324-ba5bb472 for domain 'medical-research'
+
+  ✓ pubmed: 20 new / 20 found (15.3s)
+  ✓ CrossRef: 0 new / 0 found (4.4s)
+  ✓ Unpaywall: 0 new / 0 found (1.4s)
+  ✓ openalex: 0 new / 0 found (1.9s)
+  ✗ semantic-scholar: 0 new / 0 found (0.5s)
+      ↳ Semantic Scholar API rate-limited (HTTP 429) without an API key — set AUTOINFO_S2_API_KEY for a higher rate limit
+  ✗ uspto: 0 new / 0 found (0.5s)
+      ↳ PatentsView API retired by USPTO (HTTP 301; migrated to data.uspto.gov) — no keyless patent search API available
+  ✓ dblp: 0 new / 0 found (1.4s)
+  ✓ arXiv: 20 new / 20 found (2.6s)
+
+Total: 40 new items from 40 found in 31.5s
+exit 0

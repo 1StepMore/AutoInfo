@@ -13,17 +13,17 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 122 |
-| Total lines | 37340 |
-| Active files | 93 |
+| Total files | 126 |
+| Total lines | 38972 |
+| Active files | 97 |
 | Archived files | 29 |
 | Category — archive | 29 files / 8944 lines |
-| Category — known-limitations | 2 files / 350 lines |
+| Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — skills | 3 files / 785 lines |
 | Category — adr | 13 files / 775 lines |
 | Category — specs | 12 files / 9767 lines |
-| Category — validation-reports | 22 files / 4122 lines |
+| Category — validation-reports | 26 files / 5752 lines |
 | Category — docs/dev | 32 files / 11217 lines |
 | Category — docs/root | 5 files / 983 lines |
 
@@ -117,11 +117,15 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 96 | validation-reports | active | — |
 | `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 565 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/README.md` | 52 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/README.md` | 55 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/evidence-pack.md` | 325 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/l0-l1-baseline.md` | 58 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/README.md` | 14 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/blockers-2026-10-27.md` | 39 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/collect-delta-2026-10-27.md` | 46 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/kb-purge-2026-10-27.md` | 58 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/matrix.json` | 1149 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/matrix.md` | 95 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/runs/README.md` | 24 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/source-diagnosis.md` | 101 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |
@@ -143,7 +147,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `glossary.md` | 61 | docs/root | active | glossary |
 | `handoff-2026-09-17.md` | 151 | docs/root | active | — |
 | `known-limitations/blocked-sources.md` | 288 | known-limitations | active | — |
-| `known-limitations/demo-quality-residuals.md` | 62 | known-limitations | active | — |
+| `known-limitations/demo-quality-residuals.md` | 64 | known-limitations | active | — |
 | `project-evaluation-2026-09-06.md` | 288 | docs/root | active | — |
 | `project-health-assessment-2026-09-17.md` | 441 | docs/root | active | — |
 | `schemas/knowledge-base-export-v1.json` | 72 | schemas | active | — |

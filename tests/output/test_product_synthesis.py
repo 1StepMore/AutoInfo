@@ -324,7 +324,7 @@ class TestDigestProductFieldsFlow:
         """Render a digest; returns (rendered, prompt_sent_to_llm)."""
         captured_prompt: list[str] = []
 
-        def _fake_llm(prompt: str, config: Any = None) -> dict[str, Any]:
+        def _fake_llm(prompt: str, config: Any = None, **_kwargs: Any) -> dict[str, Any]:
             captured_prompt.append(prompt)
             return _SAMPLE_DIGEST_SYNTHESIS
 

@@ -21,12 +21,13 @@ import html
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import date, timedelta
 from datetime import datetime as datetime
 from datetime import timezone as timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Callable, Final, cast
 
 from autoinfo.output.audience import _AUDIENCE_DESCRIPTIONS as _AUDIENCE_DESCRIPTIONS
 from autoinfo.output.audience import _REPORT_AUDIENCE_DESCRIPTIONS as _REPORT_AUDIENCE_DESCRIPTIONS
@@ -1693,11 +1694,21 @@ def _build_digest_llm_prompt(
 def _call_llm_for_digest(
     prompt: str,
     config: Config | None = None,
+    *,
+    max_synthesis_attempts: int = 2,
+    retry_backoff_seconds: float = 0.0,
+    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
     """Call LiteLLM to synthesize a digest from entries.
 
     Uses the same LiteLLM pattern as :class:`LLMExtractor` but with
     a custom summarization prompt.
+
+    *max_synthesis_attempts* bounds the retry loop (default 2 — the historical
+    "#217 retry once" behaviour for direct callers).  ``generate_digest``
+    forwards its own public knobs here so a caller can collapse the budget to
+    a single attempt (e.g. when the LLM prerequisite is provably absent) and
+    *retry_backoff_seconds* is slept via *sleep_fn* between attempts.
     """
     from autoinfo.output import fault_inject  # noqa: PLC0415
 
@@ -1724,9 +1735,14 @@ def _call_llm_for_digest(
     # long prompts (empty content / unparseable JSON).  Retry once — a
     # probabilistic empty output usually succeeds on the second attempt —
     # before giving up and returning an empty dict (which the caller then
-    # fills deterministically from the real entries).
+    # fills deterministically from the real entries).  The bound and the
+    # inter-attempt sleep are injectable (T17), defaulting to the historical
+    # 2-attempt / no-sleep behaviour.
+    attempts = max(1, max_synthesis_attempts)
     last: dict[str, Any] = {}
-    for _attempt in range(2):
+    for _attempt in range(attempts):
+        if _attempt > 0:
+            sleep_fn(retry_backoff_seconds)
         try:
             response = call_with_fallback(
                 model=full_model,
@@ -1751,8 +1767,9 @@ def _call_llm_for_digest(
             return parsed
         last = parsed
         logger.warning(
-            "LLM digest synthesis returned empty/missing fields (attempt %d/2) — retrying",
+            "LLM digest synthesis returned empty/missing fields (attempt %d/%d) — retrying",
             _attempt + 1,
+            attempts,
         )
 
     return last
@@ -2695,6 +2712,9 @@ def generate_digest(
     domains: list[str] | None = None,
     language: str = "",
     ref_limit: int | None = None,
+    *,
+    max_synthesis_attempts: int = 2,
+    retry_backoff_seconds: float = 0.0,
 ) -> str | DeliveryOutput:
     """Generate a digest of KB entries for *domain* over the given *period*.
 
@@ -3133,7 +3153,12 @@ def generate_digest(
         audience_prompt = _REPORT_AUDIENCE_PROMPTS.get(audience, "")
         if audience_prompt:
             prompt += f"\n\n{audience_prompt}"
-        llm_synthesis = _call_llm_for_digest(prompt, config=llm_config)
+        llm_synthesis = _call_llm_for_digest(
+            prompt,
+            config=llm_config,
+            max_synthesis_attempts=max_synthesis_attempts,
+            retry_backoff_seconds=retry_backoff_seconds,
+        )
     else:
         llm_synthesis = {}
 
@@ -3419,6 +3444,9 @@ def generate_report(
     llm_config: Config | None = None,
     language: str = "",
     ref_limit: int | None = None,
+    *,
+    max_synthesis_attempts: int = _RETRY_MAX_ATTEMPTS,
+    retry_backoff_seconds: float = _RETRY_BACKOFF_SECONDS,
 ) -> str | DeliveryOutput:
     """Generate a structured report for the given *domain* (or *domains*).
 
@@ -3777,8 +3805,8 @@ def generate_report(
         )
 
     # -- Thematic grouping via LLM ----------------------------------------
-    extractor = LLMExtractor()
     _reset_grouping_degraded()
+    extractor = LLMExtractor()
     groupings = _group_by_theme(
         extractor,
         entries,
@@ -3817,6 +3845,8 @@ def generate_report(
         target_audience=target_audience,
         domains=report_domains if is_cross_domain else None,
         product_family=report_family,
+        max_synthesis_attempts=max_synthesis_attempts,
+        retry_backoff_seconds=retry_backoff_seconds,
     )
     # The synthesis returns a dict of ``{executive_summary, key_findings,
     # recommendations}`` (plus the §2.4 product fields for product template

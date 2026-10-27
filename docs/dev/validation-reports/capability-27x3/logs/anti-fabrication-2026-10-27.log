@@ -1,0 +1,41 @@
+# T19 anti-fabrication checks
+# captured: 2026-10-27T21:04:01+08:00
+# tree: feat/capability-matrix-27x3 d824016c
+
+## (a) every 01-Raw source_url traceable to a collections item
+$ .venv/bin/python scripts/check_kb_provenance.py
+raw entries: 70  exact: 40  query-string drift: 28  unmatched: 2
+  UNMATCHED medical-research https://api.openalex.org/works/https://openalex.org/W4409168731
+  UNMATCHED medical-research https://api.openalex.org/works/https://openalex.org/W7198700870
+exit 1
+
+## (b) no outputs/ artifact matches a fixture sentinel
+$ .venv/bin/pytest tests/validation/test_no_fixture_artifacts.py -q
+...                                                                      [100%]
+3 passed in 3.04s
+
+## (c) every Wiki entry carries promotion_source: agent and a Draft ancestor
+$ sqlite3 autoinfo.db "select tier, count(*) from entries where deleted=0 group by tier"
+Traceback (most recent call last):
+  File "<string>", line 4, in <module>
+    print('wiki rows with promotion_source:', list(c.execute("select count(*) from entries where deleted=0 and tier='03-Wiki' and promotion_source='agent'")))
+                                                   ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: no such column: promotion_source
+('01-Raw', 104)
+
+### correction to (c)
+The query above is wrong: `promotion_source` is not a column on `entries`.
+$ .venv/bin/python -c "import sqlite3; print([r[1] for r in sqlite3.connect('autoinfo.db').execute('pragma table_info(entries)')])"
+['entry_id', 'title', 'domain', 'tier', 'source_url', 'source_type', 'source_platform', 'collected_at', 'summary', 'quality_tier', 'relevance_score', 'dedup_status', 'file_path', 'tags', 'created_at', 'importance', 'custom_fields', 'language', 'content_type', 'user_id', 'cefr', 'deleted', 'deleted_at', 'version', 'previous_version', 'supersedes', 'source_score']
+It is frontmatter written to the Wiki Markdown file by `_move_draft_to_wiki` (src/autoinfo/kb.py:3959), reachable in SQL via the `kb_entries`-style projection at kb.py:5158, not the `entries` table.
+
+check (c) is VACUOUS, not passed: `select count(*) from entries where deleted=0 and tier='03-Wiki'` = 0.
+There is no Wiki entry to carry `promotion_source: agent` and no Draft ancestor to point at, so criterion #6
+(>=1 Draft and >=1 Wiki created during this run) is NOT met — this run created 0 KB entries of any tier.
+
+## suite diff vs T1 baseline
+baseline (main 335a7c3f): 6459 passed, 49 skipped, 0 failed
+PR3 final run:            6557 passed, 49 skipped, 1 failed
+$ .venv/bin/pytest tests/collectors/test_source_failure_detection.py -q  # isolates the one failure
+.............                                                            [100%]
+13 passed in 5.15s

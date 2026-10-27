@@ -349,7 +349,7 @@ class TestProductTemplate:
         # Prevent actual LLM calls during testing
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
-            lambda prompt=None, config=None: {},
+            lambda prompt=None, config=None, **kw: {},
         )
 
         result = generate_digest(
@@ -442,7 +442,7 @@ class TestDigestDeliveryGates:
         monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
-            lambda prompt=None, config=None: {},
+            lambda prompt=None, config=None, **kw: {},
         )
 
         result = generate_digest(domain="test", period="daily", format="markdown")
@@ -462,7 +462,7 @@ class TestDigestDeliveryGates:
         # Return empty LLM synthesis — all D1 sections will be empty/missing
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
-            lambda prompt=None, config=None: {},
+            lambda prompt=None, config=None, **kw: {},
         )
 
         configs = {"D1": {"enabled": True, "action_on_failure": "block"}}
@@ -524,7 +524,7 @@ class TestDigestDeliveryGates:
         monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
-            lambda prompt=None, config=None: {},
+            lambda prompt=None, config=None, **kw: {},
         )
 
         configs = {
@@ -567,7 +567,7 @@ class TestDigestDeliveryGates:
         monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
         monkeypatch.setattr(
             "autoinfo.output._call_llm_for_digest",
-            lambda prompt=None, config=None: {},
+            lambda prompt=None, config=None, **kw: {},
         )
 
         configs: dict[str, dict[str, Any]] = {

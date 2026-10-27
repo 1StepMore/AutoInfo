@@ -1,0 +1,24 @@
+$ .venv/bin/python scripts/agent_review/battery.py outputs/medical-research --semantic
+[92m15:37:45 - LiteLLM:WARNING[0m: get_model_cost_map.py:271 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 104] Connection reset by peer. Falling back to local backup.
+LLM fallback openai/Qwen3.8-Flash-Next has no usable API key: it shares the primary gateway but no primary key is configured (set AUTOINFO_LLM_API_KEY or llm.api_key)
+LLM model openai/Qwen3.8-27B attempt 1/3 failed (litellm.AuthenticationError: AuthenticationError: OpenAIException - The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable); retrying in 1.07s
+LLM model openai/Qwen3.8-27B attempt 2/3 failed (litellm.AuthenticationError: AuthenticationError: OpenAIException - The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable); retrying in 2.33s
+LLM model openai/Qwen3.8-27B failed (attempted 1/2): litellm.AuthenticationError: AuthenticationError: OpenAIException - The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable
+LLM model openai/Qwen3.8-Flash-Next attempt 1/3 failed (litellm.AuthenticationError: AuthenticationError: OpenAIException - The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable); retrying in 1.21s
+LLM model openai/Qwen3.8-Flash-Next attempt 2/3 failed (litellm.AuthenticationError: AuthenticationError: OpenAIException - The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable); retrying in 2.33s
+LLM model openai/Qwen3.8-Flash-Next failed (attempted 2/2): litellm.AuthenticationError: AuthenticationError: OpenAIException - The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable
+L1 battery — outputs/medical-research
+L0 defects: 55
+  L0: - column-markdown-20260810-220854.md: H3 bullet serialization glue: '- ' after 'h' (not a new line): ...Surviv
+  L0: - column-markdown-20260811-012034.md: H3 bullet serialization glue: '- ' after 'h' (not a new line): ...Surviv
+  L0: - column-markdown-20260811-074309.md: H3 bullet serialization glue: '- ' after 'h' (not a new line): ...Surviv
+  L0: - column-markdown-20260811-081114.md: H3 bullet serialization glue: '- ' after 'h' (not a new line): ...Surviv
+  L0: - column-markdown-20260811-093057.md: H3 bullet serialization glue: '- ' after 'h' (not a new line): ...Surviv
+  L0: - column-markdown-20260811-101337.md: H3 bullet serialization glue: '- ' after 'h' (not a new line): ...Surviv
+  L0: - column-markdown-20260811-110155.md: H3 bullet serialization glue: '- ' after 'h' (not a new line): ...Surviv
+  L0: - column-markdown-20260811-121906.md: H3 bullet serialization glue: '- ' after 'h' (not a new line): ...Surviv
+Worklist: 1 item(s)
+  [ESCALATE] cross-product-entity-consistency (all): LLM channel unreachable: All LLM models (primary + fallback) failed: openai/Qwen3.8-27B, openai/Qwen
+Honesty: ['cross-product-entity-consistency (all)']
+SUMMARY: 0 PASS / 0 FLAG / 1 ESCALATE
+exit 1

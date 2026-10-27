@@ -1140,6 +1140,14 @@ def main(argv: list[str] | None = None) -> int:
     if not evidence_dir.is_dir():
         print(f"ERROR: evidence directory not found: {args.evidence}", file=sys.stderr)
         return 2
+    if evidence_dir.name == "outputs" or (evidence_dir / "outputs").is_dir():
+        if not (evidence_dir / "collections").is_dir():
+            print(
+                f"WARNING: {evidence_dir} has no collections/ next to outputs/; "
+                "SOURCE_COVERAGE and KB_TIER_COVERAGE will be inert. "
+                "Use --evidence . to measure sources and KB tiers.",
+                file=sys.stderr,
+            )
 
     produced = scan_evidence(evidence_dir)
     source_evidence = scan_source_evidence(evidence_dir)

@@ -544,6 +544,19 @@ def test_detect_llm_available(tmp_path):
     assert cm.detect_llm_available(cfg) is False
 
 
+def test_detect_llm_available_resolves_env_placeholder(tmp_path, monkeypatch):
+    monkeypatch.delenv("AUTOINFO_LLM_API_KEY", raising=False)
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "llm:\n  provider: openai\n  api_key: ${AUTOINFO_LLM_API_KEY}\n",
+        encoding="utf-8",
+    )
+    assert cm.detect_llm_available(cfg) is False
+
+    monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "sk-test")
+    assert cm.detect_llm_available(cfg) is True
+
+
 # ---------------------------------------------------------------------------
 # Report rendering
 # ---------------------------------------------------------------------------

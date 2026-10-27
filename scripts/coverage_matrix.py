@@ -34,6 +34,7 @@ import argparse
 import datetime
 import difflib
 import json
+import os
 import re
 import sys
 import zipfile
@@ -324,20 +325,38 @@ def scan_evidence(evidence_dir: str | Path) -> set[Cell]:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_unusable_loader_key(value: str) -> str:
+    if value.startswith("${") and value.endswith("}"):
+        return os.environ.get(value[2:-1], "")
+    return value
+
+
 def detect_llm_available(config_path: str | Path | None = None) -> bool:
     """Detect LLM availability from the project config.
 
-    Reads ``.autoinfo/config.yaml`` (override with *config_path*) and returns
-    True when ``llm.api_key`` is a non-empty string. A missing/unreadable
-    config file is treated as "not available".
+    The project config stores ``api_key: ${AUTOINFO_LLM_API_KEY}``, so a
+    non-empty raw string proves nothing: with the env var unset the
+    placeholder resolves to ``''``. Resolve through ``load_config`` — the
+    same path every LLM call uses — so this detector cannot drift from the
+    real availability rule. Falls back to resolving a ``${VAR}`` reference
+    directly only when the package loader is unavailable (e.g. a bare
+    ``python3 scripts/...`` run without the package installed).
     """
     path = Path(config_path) if config_path else Path(".autoinfo/config.yaml")
+    if not path.is_file():
+        return False
+    try:
+        from autoinfo.config import load_config
+
+        return bool(str(load_config(path).llm.api_key or "").strip())
+    except Exception:
+        pass
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
         return False
     llm = data.get("llm") or {}
-    return bool(str(llm.get("api_key", "") or "").strip())
+    return bool(str(_resolve_unusable_loader_key(str(llm.get("api_key", "") or ""))).strip())
 
 
 def classify_grid(

@@ -282,7 +282,7 @@ class _FixtureStore:
         return {}
 
 
-def _canned_digest_llm(prompt: str, config: Any = None) -> dict[str, Any]:
+def _canned_digest_llm(prompt: str, config: Any = None, **_kwargs: Any) -> dict[str, Any]:
     """Canned LLM synthesis (no network) — the digest render is template-driven."""
     del prompt, config
     return {
@@ -328,7 +328,7 @@ class TestDigestEntryFiltersBoundary:
         monkeypatch.chdir(project)
         captured: dict[str, str] = {}
 
-        def _capture(prompt: str, config: Any = None) -> dict[str, Any]:
+        def _capture(prompt: str, config: Any = None, **_kwargs: Any) -> dict[str, Any]:
             captured["prompt"] = prompt
             return _canned_digest_llm(prompt, config)
 

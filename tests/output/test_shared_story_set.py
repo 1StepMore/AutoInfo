@@ -103,7 +103,7 @@ def _entry(i: int, *, drifted: bool = False) -> dict[str, Any]:
     }
 
 
-def _canned_llm(prompt: str, config: Any = None) -> dict[str, Any]:
+def _canned_llm(prompt: str, config: Any = None, **_kwargs: Any) -> dict[str, Any]:
     del prompt, config
     return {
         "executive_summary": (
@@ -334,7 +334,7 @@ class TestDigestPresentationCoherence:
         digest_captured: dict[str, Any] = {}
         presentation_captured: dict[str, Any] = {}
 
-        def _capture_digest(prompt: str, config: Any = None) -> dict[str, Any]:
+        def _capture_digest(prompt: str, config: Any = None, **_kwargs: Any) -> dict[str, Any]:
             digest_captured["prompt"] = prompt
             return _canned_llm(prompt, config)
 

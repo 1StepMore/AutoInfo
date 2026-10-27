@@ -1,0 +1,10 @@
+$ git switch main && git rev-parse --short HEAD
+335a7c3f
+
+$ .venv/bin/python -m pytest -q --timeout=600
+6459 passed, 49 skipped, 3 warnings in 1813.79s (0:30:13)
+
+Captured on main at 335a7c3f (pre-PR1 baseline, re-captured 2026-10-27 because
+the T3 capture step was never executed). 6459 passed / 49 skipped / 0 failed in 1813.79s.
+T19 diffs the PR3 suite against this file: any failure here is pre-existing.
+exit 0

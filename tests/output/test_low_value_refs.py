@@ -303,7 +303,7 @@ class TestSynthesisPromptLowValueFilter:
             store.list_entries.return_value = entries
             return store
 
-        def _llm(prompt: str, config: Any = None) -> dict[str, Any]:
+        def _llm(prompt: str, config: Any = None, **_kwargs: Any) -> dict[str, Any]:
             captured["prompt"] = prompt
             return {
                 "executive_summary": "Synthesis.",

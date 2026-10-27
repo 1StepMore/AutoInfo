@@ -129,7 +129,7 @@ def _generic_platform_entry(i: int) -> dict[str, Any]:
     }
 
 
-def _canned_llm(prompt: str, config: Any = None) -> dict[str, Any]:
+def _canned_llm(prompt: str, config: Any = None, **_kwargs: Any) -> dict[str, Any]:
     del prompt, config
     return {
         "executive_summary": (

@@ -1,0 +1,6 @@
+$ .venv/bin/python scripts/quality_gate.py outputs/capability-matrix/language-learning
+QUALITY GATE FAILED:
+  - digest-markdown-20261027-094006-725691.md: H3 bullet serialization glue: '- ' after '5' (not a new line): ...How to Teach Frankenstein: A Full 5- to 7-Week Unit, Plus 5 Book Pa...
+  - report-markdown-20261027-094119-618662.md: H3 bullet serialization glue: '- ' after '5' (not a new line): ...How to Teach Frankenstein: A Full 5- to 7-Week Unit, Plus 5 Book Pa...
+  (2 defects across 2 file(s))
+exit 1

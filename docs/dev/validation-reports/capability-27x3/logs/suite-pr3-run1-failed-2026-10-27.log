@@ -1,0 +1,3204 @@
+$ .venv/bin/python -m pytest -q --timeout=600
+# branch: feat/capability-matrix-27x3 at d824016c
+# captured: 2026-10-27T18:44:52+08:00
+........................................................................ [  1%]
+........................................................................ [  2%]
+......................................s................................. [  3%]
+........................................................................ [  4%]
+........................................................................ [  5%]
+........................................................................ [  6%]
+........................................................................ [  7%]
+........................................................................ [  8%]
+....................................................................s... [  9%]
+........................................................................ [ 10%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 14%]
+........................................................................ [ 15%]
+........................................................................ [ 16%]
+........................................................................ [ 17%]
+........................................................................ [ 18%]
+........................................................................ [ 19%]
+........................................................................ [ 20%]
+........................................................................ [ 21%]
+........................................................................ [ 22%]
+................................................................ssssss.s [ 23%]
+sssss.s................................................................. [ 25%]
+........................................................................ [ 26%]
+........................................................................ [ 27%]
+........................................................................ [ 28%]
+........................................................................ [ 29%]
+........................................................................ [ 30%]
+.........................ssssss......................................... [ 31%]
+........................................................................ [ 32%]
+........................................................................ [ 33%]
+........................................................................ [ 34%]
+........................................................................ [ 35%]
+...............F..F..FF................................................. [ 37%]
+..............................sss....................................... [ 38%]
+........................................................................ [ 39%]
+........................................................................ [ 40%]
+........................................................................ [ 41%]
+........................................................................ [ 42%]
+............................................s........................... [ 43%]
+........................................................................ [ 44%]
+........................................................................ [ 45%]
+.........................................s..s........................... [ 46%]
+........................................................................ [ 47%]
+........................................................................ [ 49%]
+........................................................................ [ 50%]
+........................................................................ [ 51%]
+.......................................................................s [ 52%]
+........................................................................ [ 53%]
+........................................................................ [ 54%]
+........................................................................ [ 55%]
+........................................................................ [ 56%]
+........................................................................ [ 57%]
+........................................................................ [ 58%]
+........................................................................ [ 59%]
+........................................................................ [ 61%]
+........................................................................ [ 62%]
+........................................................................ [ 63%]
+........................................................................ [ 64%]
+........................................................................ [ 65%]
+........................................................................ [ 66%]
+.................................................................s...... [ 67%]
+................................................................ssss.... [ 68%]
+........................................................................ [ 69%]
+................................FF...................F.................. [ 70%]
+s.s..................................................................... [ 71%]
+...........................FFF.......................................... [ 73%]
+........................................................................ [ 74%]
+........................................................................ [ 75%]
+..................FFF................................................... [ 76%]
+..............................................ssssss.................... [ 77%]
+........................................................................ [ 78%]
+.............FFF..........FFFF.......................................... [ 79%]
+........................................................................ [ 80%]
+........................................................................ [ 81%]
+.........................ssssssss....................................... [ 82%]
+........................................................................ [ 83%]
+........................................................................ [ 85%]
+........................................................................ [ 86%]
+........................................................................ [ 87%]
+........................................................................ [ 88%]
+........................................................................ [ 89%]
+........................................................................ [ 90%]
+........................................................................ [ 91%]
+........................................................................ [ 92%]
+........................................................................ [ 93%]
+........................................................................ [ 94%]
+.........F.............................................................. [ 95%]
+........................................................................ [ 96%]
+........................................................................ [ 98%]
+........................................................................ [ 99%]
+.......................................................                  [100%]
+=================================== FAILURES ===================================
+_____________ TestProductTemplate.test_backward_compatible_digest ______________
+
+self = <tests.delivery.test_v1_5_delivery.TestProductTemplate object at 0x7f7e9dff0cb0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e99dafcb0>
+
+    def test_backward_compatible_digest(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """generate_digest still works without the product_template parameter."""
+    
+        # Mock KBStore so we don't need a real knowledge base
+        class _MockStore:
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "title": "Entry 1",
+                        "summary": "A test entry",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+    
+        # TRIAGE #35 — retarget from autoinfo.kb.KBStore: f83bd8d hoisted
+        # `from autoinfo.kb import KBStore` to module level at
+        # src/autoinfo/output/__init__.py:49, so generate_digest resolves the
+        # name as autoinfo.output.KBStore (used at output/__init__.py:2402).
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
+        # Prevent actual LLM calls during testing
+        monkeypatch.setattr(
+            "autoinfo.output._call_llm_for_digest",
+            lambda prompt=None, config=None: {},
+        )
+    
+>       result = generate_digest(
+            domain="test",
+            period="daily",
+            format="markdown",
+        )
+
+tests/delivery/test_v1_5_delivery.py:355: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+domain = 'test', period = 'daily', format = 'markdown', llm_config = None
+custom_instructions = '', target_audience = '', include_stale = False
+recipients = None, product_template = None, product_type = 'PROCESSED'
+delivery_gate_configs = None, user_id = '', max_items = 0, domains = None
+language = '', ref_limit = None
+
+    def generate_digest(
+        domain: str,
+        period: str = "weekly",
+        format: str = "markdown",
+        llm_config: Config | None = None,
+        custom_instructions: str = "",
+        target_audience: str = "",
+        include_stale: bool = False,
+        recipients: list[str] | None = None,
+        product_template: ProductTemplate | None = None,
+        product_type: str = "PROCESSED",
+        delivery_gate_configs: dict[str, dict[str, Any]] | _DeliveryGatesBypass | None = None,
+        user_id: str = "",
+        max_items: int = 0,
+        domains: list[str] | None = None,
+        language: str = "",
+        ref_limit: int | None = None,
+        *,
+        max_synthesis_attempts: int = 2,
+        retry_backoff_seconds: float = 0.0,
+    ) -> str | DeliveryOutput:
+        """Generate a digest of KB entries for *domain* over the given *period*.
+    
+        When *domains* is provided with 2+ entries, entries are aggregated
+        from all listed domains for a cross-domain digest.
+    
+        Parameters
+        ----------
+        domain:
+            Domain to generate the digest for (e.g. ``"medical-research"``).
+        period:
+            Digest period.  One of ``"daily"``, ``"weekly"``, ``"monthly"``.
+            Defaults to ``"weekly"``.
+        format:
+            Output format.  One of ``"markdown"``, ``"html"``, ``"json"``,
+            ``"agent"``.  The ``"agent"`` format returns JSON-LD
+            (``@type: KnowledgeDigest``) optimized for LLM re-consumption.
+            Defaults to ``"markdown"``.
+        llm_config:
+            Optional :class:`Config` override for LLM settings.  When omitted,
+            the config is auto-detected from the project directory.
+        custom_instructions:
+            Optional string of additional instructions to append to the LLM
+            generation prompt.  Ignored when empty/absent.
+        include_stale:
+            When ``True``, include stale entries (below domain freshness
+            threshold) in the digest.  Defaults to ``False``, which excludes
+            them and logs the count of excluded items.
+        recipients:
+            Optional list of email recipient addresses for direct delivery.
+            When provided, the digest can be sent to these addresses via
+            the delivery channel.  Defaults to ``None``.
+        product_template:
+            Optional :class:`ProductTemplate` instance for template rendering.
+            When provided, the digest is rendered through the product template
+            system (with domain-specific overrides).  When ``None`` (default),
+            the existing direct Jinja2 rendering is used (backward compatible).
+        product_type:
+            Product type for delivery gate checking.  ``"PROCESSED"`` (default)
+            enables D1-D3 checks when *delivery_gate_configs* is provided.
+            ``"RAW"`` skips all delivery gates.
+        delivery_gate_configs:
+            Optional dict of ``{gate_name: config_dict}`` for D1-D3 delivery
+            gates.  When provided, D1-D3 are run after rendering and the return
+            type changes to :class:`DeliveryOutput`.  When ``None`` (default),
+            no gates are run and a plain ``str`` is returned (backward
+            compatible).
+        user_id:
+            Optional user ID.  When non-empty, stored preferences from
+            :func:`autoinfo.user_store.get_preferences` are auto-loaded and
+            used to set *target_audience*, *format*, and *max_items* if they
+            were not explicitly provided.  When empty (default), behavior is
+            unchanged and no preferences are loaded.
+        max_items:
+            Optional maximum number of KB entries to include in the digest.
+            Defaults to ``0`` (uses built-in limit of 200).  When *user_id*
+            is provided and the user's stored preferences include a
+            ``max_items`` key, that value is used instead.
+        language:
+            Optional ISO-639 language code (``"zh"`` / ``"en"``, case/alias
+            tolerant: ``zh_CN``, ``中文``, ``en-US`` all match).  When provided,
+            only entries whose detected ``language`` matches are included, so a
+            digest never mixes languages (issue #309).  Empty (default) includes
+            all languages as before.
+        ref_limit:
+            Optional maximum number of KB references to include in the rendered
+            product.  Defaults to ``output.ref_limit`` from the project config
+            (60).  Applied at the digest product-context build
+            (:func:`_normalize_digest_product_context`), sorted by (has non-empty
+            summary desc, ``relevance_score`` desc) — identical to the report
+            path (issue #11).
+    
+        Returns
+        -------
+        str or DeliveryOutput
+            Plain ``str`` when *delivery_gate_configs* is ``None`` (default).
+            :class:`DeliveryOutput` with gate results when *delivery_gate_configs*
+            is provided.
+    
+        Raises
+        ------
+        ValueError
+            If *period* is not one of ``"daily"``, ``"weekly"``, ``"monthly"``,
+            or if *format* is not one of ``"markdown"``, ``"html"``, ``"json"``,
+            ``"agent"``, ``"epub"``, ``"audiobook"``.
+        """
+        # --- Validate parameters ------------------------------------------------
+        if period not in PERIOD_DAYS:
+            raise ValueError(
+                f"Invalid period '{period}'. Must be one of: {', '.join(sorted(PERIOD_DAYS))}"
+            )
+        valid_formats = {"markdown", "html", "json", "agent", "audio", "epub", "audiobook"}
+        if format not in valid_formats:
+            raise ValueError(
+                f"Invalid format '{format}'. Must be one of: {', '.join(sorted(valid_formats))}"
+            )
+    
+        # --- Resolve delivery-gate config (issue #298: default-on in production) --
+        # ``None`` resolves from the project config (domain ``delivery_gates`` /
+        # global ``delivery_gates``); the ``_DELIVERY_GATES_BYPASS`` sentinel
+        # explicitly bypasses.  When resolution yields nothing, the caller keeps
+        # getting a plain ``str`` (backward compatible).
+        delivery_gate_configs = _resolve_delivery_gate_configs(domain, delivery_gate_configs)
+    
+        # --- Free-tier quota gate (todo 12) — named users only; user_id="" (batch) skips
+    
+        check_free_tier_generation(
+            user_id=user_id, domain=domain, product_type="digest", raise_on_block=True
+        )
+    
+        # --- Determine cross-domain mode -----------------------------------------
+        is_cross_domain_digest: bool = domains is not None and len(domains) >= 2
+        if is_cross_domain_digest:
+            digest_domains: list[str] = domains  # type: ignore[assignment]
+            digest_title_domain: str = "Cross-Domain"
+        else:
+            digest_domains = [domain]
+            digest_title_domain = domain
+        # Issue #144: the H1 title must use the user-facing domain name
+        # (e.g. "Medical Research"), never the internal slug — but the slug
+        # stays for internal product_id / domain keys.
+        digest_title_domain_display: str = _domain_display_name(digest_title_domain)
+    
+        # --- Auto-load preferences from user profile (G10) -----------------------
+        content_preference: str = _resolve_content_preference(user_id)
+        if user_id:
+            try:
+                from autoinfo.user_store import (  # noqa: PLC0415
+                    get_preferences,
+                )
+    
+                prefs_result = get_preferences(user_id)
+                if "preferences" in prefs_result:
+                    stored_prefs: dict[str, Any] = prefs_result["preferences"]
+                    # Auto-set target_audience if not explicitly provided
+                    if not target_audience and stored_prefs.get("target_audience"):
+                        target_audience = str(stored_prefs["target_audience"])
+                        logger.debug(
+                            "Applied stored target_audience='%s' for user '%s'",
+                            target_audience,
+                            user_id,
+                        )
+                    # Auto-set format if still at default
+                    if format == "markdown" and stored_prefs.get("format"):
+                        stored_fmt = str(stored_prefs["format"]).lower()
+                        if stored_fmt in valid_formats:
+                            format = stored_fmt
+                            logger.debug(
+                                "Applied stored format='%s' for user '%s'",
+                                format,
+                                user_id,
+                            )
+                    # Auto-set max_items if not explicitly provided
+                    if max_items == 0 and stored_prefs.get("max_items"):
+                        try:
+                            max_items = int(stored_prefs["max_items"])
+                            if max_items < 1:
+                                max_items = 0
+                            logger.debug(
+                                "Applied stored max_items=%d for user '%s'",
+                                max_items,
+                                user_id,
+                            )
+                        except (ValueError, TypeError):
+                            pass
+            except Exception:
+                logger.debug(
+                    "Failed to load preferences for user '%s'",
+                    user_id,
+                    exc_info=True,
+                )
+    
+        # --- Freemium access gating (G15) ----------------------------------------
+        if user_id and product_template is not None:
+            product_access = getattr(product_template, "access_level", "free")
+            if product_access != "free":
+                from autoinfo.billing import check_access  # noqa: PLC0415
+    
+                access_result = check_access(user_id, product_access)
+                if not access_result["allowed"]:
+                    period_label = PERIOD_LABELS.get(period, period.capitalize())
+                    blocked_message = (
+                        f"# {period_label} Digest \u2014 {domain}\n\n"
+                        f"**{access_result['upgrade_prompt'] or 'Access denied.'}**\n\n"
+                        f"_Reason_: {access_result['reason']}\n\n"
+                        f"_Access level required_: `{product_access}`\n"
+                        f"_Your status_: {access_result['profile_status']} "
+                        f"(plan: {access_result['plan']})\n"
+                    )
+                    if delivery_gate_configs is not None:
+                        return DeliveryOutput(
+                            output=blocked_message,
+                            gate_results={},
+                            delivery_blocked=True,
+                            delivery_format=format,
+                            warnings=[f"G15 blocked: {access_result['reason']}"],
+                        )
+                    return blocked_message
+    
+        # --- Compute date range --------------------------------------------------
+        period_label = PERIOD_LABELS.get(period, period.capitalize())
+    
+        # --- Query KB entries ----------------------------------------------------
+        store = KBStore()
+        query_limit = max_items if max_items > 0 else 200
+    
+        if is_cross_domain_digest:
+            date_from, date_to = _compute_date_range(period)
+            entries: list[dict[str, Any]] = []
+            per_domain_limit = max(query_limit // len(digest_domains), 10)
+            for d in digest_domains:
+                domain_entries = store.list_entries(
+                    domain=d,
+                    date_from=date_from,
+                    limit=per_domain_limit,
+                )
+                for e in domain_entries:
+                    if "domain" not in e:
+                        e["domain"] = d
+                entries.extend(domain_entries)
+            entries = entries[:query_limit]
+            period_was_empty = False
+        else:
+            # Single-domain story set — shared with presentation/report (#119).
+            entries, (date_from, date_to), period_was_empty = _select_story_set(
+                store,
+                domain,
+                period=period,
+                product="digest",
+                query_limit=query_limit,
+            )
+            entries = _filter_drifted_entries(entries, domain)
+    
+        # --- Archive/deprecated exclusion + test/empty filter + convergence ------
+        # Shared chain (see _filter_digest_entries) so the #83 full-domain
+        # fallback below runs identical filters over its candidate set.
+        entries = _filter_digest_entries(entries)
+    
+        # Issue #83: the window query returned rows but they were ALL dropped by
+        # the archive/deprecated/test filters — the digest would be an empty
+        # shell even though valid out-of-window content exists.  Recover the
+        # full-domain set (same relaxation as the zero-row fallback above) and
+        # re-run the identical filter chain.  Only non-archived active content
+        # survives, so archived/low-quality entries are never resurrected.
+        # Single-domain only — the cross-domain path has no window fallback.
+        if not entries and not period_was_empty and not is_cross_domain_digest:
+            logger.info(
+                "In-window entries for domain '%s' all dropped by archive/test "
+                "filters — falling back to full domain set",
+                domain,
+            )
+            entries = _filter_digest_entries(
+                _filter_drifted_entries(
+                    store.list_entries(domain=domain, limit=query_limit),
+                    domain,
+                )
+            )
+            period_was_empty = not entries
+    
+        # --- Language filter (issue #309 / #317) --------------------------------
+        # When a user requests a specific language (or a domain declares a
+        # default_language), drop entries in other languages so a digest/report is
+        # internally consistent (no zh/en interleave).  An explicit param wins;
+        # otherwise the domain default fills in; cross-domain never auto-picks one.
+        effective_language = _resolve_effective_language(
+            language, domain, cross_domain=is_cross_domain_digest
+        )
+        if effective_language:
+            filtered_entries, collapsed = _filter_entries_by_language_product_safe(
+                entries, effective_language
+            )
+            if collapsed:
+                # Issue #53: the resolved language collapsed the domain's primary
+                # corpus (stale seed/config), the safety net already fell back to
+                # the unfiltered input and logged — use it as-is.
+                entries = filtered_entries
+            else:
+                if (
+                    not filtered_entries
+                    and entries
+                    and not period_was_empty
+                    and not is_cross_domain_digest
+                ):
+                    # The period window held entries in OTHER languages while the
+                    # domain's default-language corpus is fully out-of-window (e.g. a
+                    # zh domain whose people.cn corpus is dated months ago + fresh en
+                    # in-window).  Relax the DATE window (keep the language filter) so
+                    # the digest is never an empty shell (backup-repo #28 evidence).
+                    logger.info(
+                        "No '%s'-language entries in the '%s' window for domain '%s' "
+                        "- relaxing the date window, keeping the language filter",
+                        effective_language,
+                        period,
+                        domain,
+                    )
+                    relaxed = store.list_entries(domain=domain, limit=query_limit)
+                    if relaxed:
+                        filtered_entries = _filter_entries_by_language(relaxed, effective_language)
+                entries = filtered_entries
+    
+        # --- Per-domain exclude_keywords filter (issue #319) ---------------------
+        # Cross-domain noise guard: drop entries whose title/summary/tags match a
+        # keyword on the entry's OWN domain's exclude_keywords blacklist BEFORE LLM
+        # synthesis.  Deterministic substring match, no LLM involvement.  No-op for
+        # domains with an empty list.
+        entries = _filter_entries_by_domain_exclusions(entries, domain)
+    
+        # --- Source-label enrichment (issue #325) --------------------------------
+        # Derive the specific source name for every entry (stale pre-#323 entries
+        # carry source_platform='rss') so ALL render surfaces — markdown entry
+        # table, magazine byline/clusters, json/agent formats — show the specific
+        # source name instead of the generic "(RSS)" label.  Per-entry own domain
+        # for cross-domain products.
+        entries = _label_entries(entries, domain)
+    
+        # --- Parse tags for each entry (they come as JSON strings from SQLite) ----
+        for entry in entries:
+            tags_raw = entry.get("tags", "")
+            if isinstance(tags_raw, str):
+                try:
+                    entry["tags"] = json.loads(tags_raw)
+                except (json.JSONDecodeError, TypeError):
+                    entry["tags"] = [tags_raw] if tags_raw else []
+            elif not isinstance(tags_raw, list):
+                entry["tags"] = []
+    
+        # --- Promotion trigger (T6): promote eligible 02-Draft entries ------------
+        # Best-effort per entry: a rejected/failed promotion never blocks the
+        # digest (rejections are expected — they stay in 02-Draft with a
+        # _failed/ marker).
+        _promote_eligible_drafts(
+            store, digest_domains if is_cross_domain_digest else [domain], caller="digest"
+        )
+    
+        # --- Content-preference tier filtering (B-001) ---------------------------
+        if content_preference != "both":
+            filtered_entries = _filter_entries_by_content_preference(entries, content_preference)
+            if len(filtered_entries) != len(entries):
+                logger.info(
+                    "Excluded %d entries from digest for domain '%s' due to content_preference='%s'",
+                    len(entries) - len(filtered_entries),
+                    domain,
+                    content_preference,
+                )
+            entries = filtered_entries
+    
+        # --- Stale filtering (F51) -----------------------------------------------
+        excluded_stale_count = 0
+        if not include_stale:
+            # Resolve domain-specific TTL and freshness threshold from the single
+            # source of truth (issue #366).
+            from autoinfo.config import resolve_domain_freshness  # noqa: PLC0415
+    
+            ttl_days, freshness_threshold = resolve_domain_freshness(domain)
+    
+            from autoinfo.kb import calculate_freshness_score  # noqa: PLC0415
+    
+            active_entries: list[dict[str, Any]] = []
+            for entry in entries:
+                entry_freshness = calculate_freshness_score(entry, ttl_days)
+                entry["freshness_score"] = round(entry_freshness, 4)
+                if entry_freshness < freshness_threshold:
+                    entry["is_stale"] = True
+                    excluded_stale_count += 1
+                else:
+                    entry["is_stale"] = False
+                    active_entries.append(entry)
+    
+            if excluded_stale_count > 0:
+                logger.info(
+                    "Excluded %d stale entries from digest for domain '%s'",
+                    excluded_stale_count,
+                    domain,
+                )
+            entries = active_entries
+    
+        # --- Stale-source guard (backup issue #52) --------------------------------
+        if not include_stale and excluded_stale_count > 0 and not entries:
+            stale_count = excluded_stale_count
+            stale_msg = (
+                f"All candidate entries for domain '{domain}' are stale "
+                f"(excluded {stale_count} entr{'y' if stale_count == 1 else 'ies'} "
+                f"older than the freshness threshold). "
+                f"Refusing to generate an empty-shell product. "
+                f"Re-run collection to refresh the source, or pass include_stale=true."
+            )
+            if delivery_gate_configs is not None:
+                return DeliveryOutput(
+                    output="",
+                    gate_results={},
+                    delivery_blocked=True,
+                    delivery_format=format,
+                    warnings=[f"STALE_SOURCE: {stale_msg}"],
+                )
+            raise StaleSourceError(stale_msg)
+    
+        # --- LLM synthesis -------------------------------------------------------
+        # Resolve the product template family up front (spec §2.4, todo 7) so the
+        # synthesis prompt can request the product-specific fields; the render
+        # site below reuses this resolution. Agent format is content-equivalent
+        # to markdown, so its family resolves against the markdown template file
+        # (todo 22) — otherwise premium-briefing/enterprise-briefing agent output
+        # would never request the per-product synthesis fields.
+        variant = FORMAT_TO_VARIANT.get(format, format)
+        family_variant = "md" if variant == "agent" else variant
+        digest_family = (
+            _resolve_digest_product_type(product_template, family_variant)
+            if product_template is not None
+            else "digest"
+        )
+        llm_synthesis: dict[str, Any] = {}
+        # Default the synthesis/context entry set to the full candidate list;
+        # premium/enterprise families replace it with a differentiated subset
+        # below (issue #145).  Initialised here so context_entries below never
+        # hits an unbound local when *entries* is empty.
+        synthesis_entries: list[dict[str, Any]] = entries
+        if entries:
+            # Issue #46: prune the LLM-synthesis candidate list the same way #42
+            # prunes References — low-value promo/obituary/celebrity entries must
+            # not reach the Executive Summary's leading enumeration.  Clean
+            # entries always stay; flagged entries are dropped for non-language
+            # domains with >= _REF_LOW_VALUE_MIN_REAL_ENTRIES clean candidates and
+            # demoted to the tail otherwise (language-learning keeps them as
+            # teaching material).  Deterministic, no LLM.  The full *entries* list
+            # still flows to References unchanged below.
+            synthesis_entries = _sorted_ref_entries(entries, domain=domain)
+            # Issue #145: premium/enterprise briefings source a DIFFERENTIATED
+            # entry subset (data layer) so their references diverge — a prompt
+            # directive alone cannot change a fixed reference set.  The subset
+            # feeds both the LLM synthesis and the reference derivation below.
+            synthesis_entries = _select_family_entry_subset(synthesis_entries, digest_family)
+            prompt = _build_digest_llm_prompt(synthesis_entries, product_family=digest_family)
+            if custom_instructions:
+                prompt += f"\n\nAdditional instructions: {custom_instructions}"
+            audience = _normalize_report_audience(target_audience)
+            audience_prompt = _REPORT_AUDIENCE_PROMPTS.get(audience, "")
+            if audience_prompt:
+                prompt += f"\n\n{audience_prompt}"
+>           llm_synthesis = _call_llm_for_digest(
+                prompt,
+                config=llm_config,
+                max_synthesis_attempts=max_synthesis_attempts,
+                retry_backoff_seconds=retry_backoff_seconds,
+            )
+E           TypeError: TestProductTemplate.test_backward_compatible_digest.<locals>.<lambda>() got an unexpected keyword argument 'max_synthesis_attempts'
+
+src/autoinfo/output/__init__.py:3156: TypeError
+------------------------------ Captured log call -------------------------------
+WARNING  autoinfo.output:__init__.py:1274 promote_eligible: could not list 02-Draft for 'test': '_MockStore' object has no attribute 'list_kb_tier'
+______ TestDigestDeliveryGates.test_backward_compat_no_config_returns_str ______
+
+self = <tests.delivery.test_v1_5_delivery.TestDigestDeliveryGates object at 0x7f7e99748c30>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e751f9780>
+
+    def test_backward_compat_no_config_returns_str(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Calling generate_digest without delivery_gate_configs returns str (backward compat)."""
+    
+        class _MockStore:
+            """Minimal KBStore mock that returns one entry."""
+    
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "title": "Entry 1",
+                        "summary": "A test entry",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+    
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
+        monkeypatch.setattr(
+            "autoinfo.output._call_llm_for_digest",
+            lambda prompt=None, config=None: {},
+        )
+    
+>       result = generate_digest(domain="test", period="daily", format="markdown")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/mnt/d/贯维/AutoInfo/tests/delivery/test_v1_5_delivery.py:448: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+domain = 'test', period = 'daily', format = 'markdown', llm_config = None
+custom_instructions = '', target_audience = '', include_stale = False
+recipients = None, product_template = None, product_type = 'PROCESSED'
+delivery_gate_configs = None, user_id = '', max_items = 0, domains = None
+language = '', ref_limit = None
+
+    def generate_digest(
+        domain: str,
+        period: str = "weekly",
+        format: str = "markdown",
+        llm_config: Config | None = None,
+        custom_instructions: str = "",
+        target_audience: str = "",
+        include_stale: bool = False,
+        recipients: list[str] | None = None,
+        product_template: ProductTemplate | None = None,
+        product_type: str = "PROCESSED",
+        delivery_gate_configs: dict[str, dict[str, Any]] | _DeliveryGatesBypass | None = None,
+        user_id: str = "",
+        max_items: int = 0,
+        domains: list[str] | None = None,
+        language: str = "",
+        ref_limit: int | None = None,
+        *,
+        max_synthesis_attempts: int = 2,
+        retry_backoff_seconds: float = 0.0,
+    ) -> str | DeliveryOutput:
+        """Generate a digest of KB entries for *domain* over the given *period*.
+    
+        When *domains* is provided with 2+ entries, entries are aggregated
+        from all listed domains for a cross-domain digest.
+    
+        Parameters
+        ----------
+        domain:
+            Domain to generate the digest for (e.g. ``"medical-research"``).
+        period:
+            Digest period.  One of ``"daily"``, ``"weekly"``, ``"monthly"``.
+            Defaults to ``"weekly"``.
+        format:
+            Output format.  One of ``"markdown"``, ``"html"``, ``"json"``,
+            ``"agent"``.  The ``"agent"`` format returns JSON-LD
+            (``@type: KnowledgeDigest``) optimized for LLM re-consumption.
+            Defaults to ``"markdown"``.
+        llm_config:
+            Optional :class:`Config` override for LLM settings.  When omitted,
+            the config is auto-detected from the project directory.
+        custom_instructions:
+            Optional string of additional instructions to append to the LLM
+            generation prompt.  Ignored when empty/absent.
+        include_stale:
+            When ``True``, include stale entries (below domain freshness
+            threshold) in the digest.  Defaults to ``False``, which excludes
+            them and logs the count of excluded items.
+        recipients:
+            Optional list of email recipient addresses for direct delivery.
+            When provided, the digest can be sent to these addresses via
+            the delivery channel.  Defaults to ``None``.
+        product_template:
+            Optional :class:`ProductTemplate` instance for template rendering.
+            When provided, the digest is rendered through the product template
+            system (with domain-specific overrides).  When ``None`` (default),
+            the existing direct Jinja2 rendering is used (backward compatible).
+        product_type:
+            Product type for delivery gate checking.  ``"PROCESSED"`` (default)
+            enables D1-D3 checks when *delivery_gate_configs* is provided.
+            ``"RAW"`` skips all delivery gates.
+        delivery_gate_configs:
+            Optional dict of ``{gate_name: config_dict}`` for D1-D3 delivery
+            gates.  When provided, D1-D3 are run after rendering and the return
+            type changes to :class:`DeliveryOutput`.  When ``None`` (default),
+            no gates are run and a plain ``str`` is returned (backward
+            compatible).
+        user_id:
+            Optional user ID.  When non-empty, stored preferences from
+            :func:`autoinfo.user_store.get_preferences` are auto-loaded and
+            used to set *target_audience*, *format*, and *max_items* if they
+            were not explicitly provided.  When empty (default), behavior is
+            unchanged and no preferences are loaded.
+        max_items:
+            Optional maximum number of KB entries to include in the digest.
+            Defaults to ``0`` (uses built-in limit of 200).  When *user_id*
+            is provided and the user's stored preferences include a
+            ``max_items`` key, that value is used instead.
+        language:
+            Optional ISO-639 language code (``"zh"`` / ``"en"``, case/alias
+            tolerant: ``zh_CN``, ``中文``, ``en-US`` all match).  When provided,
+            only entries whose detected ``language`` matches are included, so a
+            digest never mixes languages (issue #309).  Empty (default) includes
+            all languages as before.
+        ref_limit:
+            Optional maximum number of KB references to include in the rendered
+            product.  Defaults to ``output.ref_limit`` from the project config
+            (60).  Applied at the digest product-context build
+            (:func:`_normalize_digest_product_context`), sorted by (has non-empty
+            summary desc, ``relevance_score`` desc) — identical to the report
+            path (issue #11).
+    
+        Returns
+        -------
+        str or DeliveryOutput
+            Plain ``str`` when *delivery_gate_configs* is ``None`` (default).
+            :class:`DeliveryOutput` with gate results when *delivery_gate_configs*
+            is provided.
+    
+        Raises
+        ------
+        ValueError
+            If *period* is not one of ``"daily"``, ``"weekly"``, ``"monthly"``,
+            or if *format* is not one of ``"markdown"``, ``"html"``, ``"json"``,
+            ``"agent"``, ``"epub"``, ``"audiobook"``.
+        """
+        # --- Validate parameters ------------------------------------------------
+        if period not in PERIOD_DAYS:
+            raise ValueError(
+                f"Invalid period '{period}'. Must be one of: {', '.join(sorted(PERIOD_DAYS))}"
+            )
+        valid_formats = {"markdown", "html", "json", "agent", "audio", "epub", "audiobook"}
+        if format not in valid_formats:
+            raise ValueError(
+                f"Invalid format '{format}'. Must be one of: {', '.join(sorted(valid_formats))}"
+            )
+    
+        # --- Resolve delivery-gate config (issue #298: default-on in production) --
+        # ``None`` resolves from the project config (domain ``delivery_gates`` /
+        # global ``delivery_gates``); the ``_DELIVERY_GATES_BYPASS`` sentinel
+        # explicitly bypasses.  When resolution yields nothing, the caller keeps
+        # getting a plain ``str`` (backward compatible).
+        delivery_gate_configs = _resolve_delivery_gate_configs(domain, delivery_gate_configs)
+    
+        # --- Free-tier quota gate (todo 12) — named users only; user_id="" (batch) skips
+    
+        check_free_tier_generation(
+            user_id=user_id, domain=domain, product_type="digest", raise_on_block=True
+        )
+    
+        # --- Determine cross-domain mode -----------------------------------------
+        is_cross_domain_digest: bool = domains is not None and len(domains) >= 2
+        if is_cross_domain_digest:
+            digest_domains: list[str] = domains  # type: ignore[assignment]
+            digest_title_domain: str = "Cross-Domain"
+        else:
+            digest_domains = [domain]
+            digest_title_domain = domain
+        # Issue #144: the H1 title must use the user-facing domain name
+        # (e.g. "Medical Research"), never the internal slug — but the slug
+        # stays for internal product_id / domain keys.
+        digest_title_domain_display: str = _domain_display_name(digest_title_domain)
+    
+        # --- Auto-load preferences from user profile (G10) -----------------------
+        content_preference: str = _resolve_content_preference(user_id)
+        if user_id:
+            try:
+                from autoinfo.user_store import (  # noqa: PLC0415
+                    get_preferences,
+                )
+    
+                prefs_result = get_preferences(user_id)
+                if "preferences" in prefs_result:
+                    stored_prefs: dict[str, Any] = prefs_result["preferences"]
+                    # Auto-set target_audience if not explicitly provided
+                    if not target_audience and stored_prefs.get("target_audience"):
+                        target_audience = str(stored_prefs["target_audience"])
+                        logger.debug(
+                            "Applied stored target_audience='%s' for user '%s'",
+                            target_audience,
+                            user_id,
+                        )
+                    # Auto-set format if still at default
+                    if format == "markdown" and stored_prefs.get("format"):
+                        stored_fmt = str(stored_prefs["format"]).lower()
+                        if stored_fmt in valid_formats:
+                            format = stored_fmt
+                            logger.debug(
+                                "Applied stored format='%s' for user '%s'",
+                                format,
+                                user_id,
+                            )
+                    # Auto-set max_items if not explicitly provided
+                    if max_items == 0 and stored_prefs.get("max_items"):
+                        try:
+                            max_items = int(stored_prefs["max_items"])
+                            if max_items < 1:
+                                max_items = 0
+                            logger.debug(
+                                "Applied stored max_items=%d for user '%s'",
+                                max_items,
+                                user_id,
+                            )
+                        except (ValueError, TypeError):
+                            pass
+            except Exception:
+                logger.debug(
+                    "Failed to load preferences for user '%s'",
+                    user_id,
+                    exc_info=True,
+                )
+    
+        # --- Freemium access gating (G15) ----------------------------------------
+        if user_id and product_template is not None:
+            product_access = getattr(product_template, "access_level", "free")
+            if product_access != "free":
+                from autoinfo.billing import check_access  # noqa: PLC0415
+    
+                access_result = check_access(user_id, product_access)
+                if not access_result["allowed"]:
+                    period_label = PERIOD_LABELS.get(period, period.capitalize())
+                    blocked_message = (
+                        f"# {period_label} Digest \u2014 {domain}\n\n"
+                        f"**{access_result['upgrade_prompt'] or 'Access denied.'}**\n\n"
+                        f"_Reason_: {access_result['reason']}\n\n"
+                        f"_Access level required_: `{product_access}`\n"
+                        f"_Your status_: {access_result['profile_status']} "
+                        f"(plan: {access_result['plan']})\n"
+                    )
+                    if delivery_gate_configs is not None:
+                        return DeliveryOutput(
+                            output=blocked_message,
+                            gate_results={},
+                            delivery_blocked=True,
+                            delivery_format=format,
+                            warnings=[f"G15 blocked: {access_result['reason']}"],
+                        )
+                    return blocked_message
+    
+        # --- Compute date range --------------------------------------------------
+        period_label = PERIOD_LABELS.get(period, period.capitalize())
+    
+        # --- Query KB entries ----------------------------------------------------
+        store = KBStore()
+        query_limit = max_items if max_items > 0 else 200
+    
+        if is_cross_domain_digest:
+            date_from, date_to = _compute_date_range(period)
+            entries: list[dict[str, Any]] = []
+            per_domain_limit = max(query_limit // len(digest_domains), 10)
+            for d in digest_domains:
+                domain_entries = store.list_entries(
+                    domain=d,
+                    date_from=date_from,
+                    limit=per_domain_limit,
+                )
+                for e in domain_entries:
+                    if "domain" not in e:
+                        e["domain"] = d
+                entries.extend(domain_entries)
+            entries = entries[:query_limit]
+            period_was_empty = False
+        else:
+            # Single-domain story set — shared with presentation/report (#119).
+            entries, (date_from, date_to), period_was_empty = _select_story_set(
+                store,
+                domain,
+                period=period,
+                product="digest",
+                query_limit=query_limit,
+            )
+            entries = _filter_drifted_entries(entries, domain)
+    
+        # --- Archive/deprecated exclusion + test/empty filter + convergence ------
+        # Shared chain (see _filter_digest_entries) so the #83 full-domain
+        # fallback below runs identical filters over its candidate set.
+        entries = _filter_digest_entries(entries)
+    
+        # Issue #83: the window query returned rows but they were ALL dropped by
+        # the archive/deprecated/test filters — the digest would be an empty
+        # shell even though valid out-of-window content exists.  Recover the
+        # full-domain set (same relaxation as the zero-row fallback above) and
+        # re-run the identical filter chain.  Only non-archived active content
+        # survives, so archived/low-quality entries are never resurrected.
+        # Single-domain only — the cross-domain path has no window fallback.
+        if not entries and not period_was_empty and not is_cross_domain_digest:
+            logger.info(
+                "In-window entries for domain '%s' all dropped by archive/test "
+                "filters — falling back to full domain set",
+                domain,
+            )
+            entries = _filter_digest_entries(
+                _filter_drifted_entries(
+                    store.list_entries(domain=domain, limit=query_limit),
+                    domain,
+                )
+            )
+            period_was_empty = not entries
+    
+        # --- Language filter (issue #309 / #317) --------------------------------
+        # When a user requests a specific language (or a domain declares a
+        # default_language), drop entries in other languages so a digest/report is
+        # internally consistent (no zh/en interleave).  An explicit param wins;
+        # otherwise the domain default fills in; cross-domain never auto-picks one.
+        effective_language = _resolve_effective_language(
+            language, domain, cross_domain=is_cross_domain_digest
+        )
+        if effective_language:
+            filtered_entries, collapsed = _filter_entries_by_language_product_safe(
+                entries, effective_language
+            )
+            if collapsed:
+                # Issue #53: the resolved language collapsed the domain's primary
+                # corpus (stale seed/config), the safety net already fell back to
+                # the unfiltered input and logged — use it as-is.
+                entries = filtered_entries
+            else:
+                if (
+                    not filtered_entries
+                    and entries
+                    and not period_was_empty
+                    and not is_cross_domain_digest
+                ):
+                    # The period window held entries in OTHER languages while the
+                    # domain's default-language corpus is fully out-of-window (e.g. a
+                    # zh domain whose people.cn corpus is dated months ago + fresh en
+                    # in-window).  Relax the DATE window (keep the language filter) so
+                    # the digest is never an empty shell (backup-repo #28 evidence).
+                    logger.info(
+                        "No '%s'-language entries in the '%s' window for domain '%s' "
+                        "- relaxing the date window, keeping the language filter",
+                        effective_language,
+                        period,
+                        domain,
+                    )
+                    relaxed = store.list_entries(domain=domain, limit=query_limit)
+                    if relaxed:
+                        filtered_entries = _filter_entries_by_language(relaxed, effective_language)
+                entries = filtered_entries
+    
+        # --- Per-domain exclude_keywords filter (issue #319) ---------------------
+        # Cross-domain noise guard: drop entries whose title/summary/tags match a
+        # keyword on the entry's OWN domain's exclude_keywords blacklist BEFORE LLM
+        # synthesis.  Deterministic substring match, no LLM involvement.  No-op for
+        # domains with an empty list.
+        entries = _filter_entries_by_domain_exclusions(entries, domain)
+    
+        # --- Source-label enrichment (issue #325) --------------------------------
+        # Derive the specific source name for every entry (stale pre-#323 entries
+        # carry source_platform='rss') so ALL render surfaces — markdown entry
+        # table, magazine byline/clusters, json/agent formats — show the specific
+        # source name instead of the generic "(RSS)" label.  Per-entry own domain
+        # for cross-domain products.
+        entries = _label_entries(entries, domain)
+    
+        # --- Parse tags for each entry (they come as JSON strings from SQLite) ----
+        for entry in entries:
+            tags_raw = entry.get("tags", "")
+            if isinstance(tags_raw, str):
+                try:
+                    entry["tags"] = json.loads(tags_raw)
+                except (json.JSONDecodeError, TypeError):
+                    entry["tags"] = [tags_raw] if tags_raw else []
+            elif not isinstance(tags_raw, list):
+                entry["tags"] = []
+    
+        # --- Promotion trigger (T6): promote eligible 02-Draft entries ------------
+        # Best-effort per entry: a rejected/failed promotion never blocks the
+        # digest (rejections are expected — they stay in 02-Draft with a
+        # _failed/ marker).
+        _promote_eligible_drafts(
+            store, digest_domains if is_cross_domain_digest else [domain], caller="digest"
+        )
+    
+        # --- Content-preference tier filtering (B-001) ---------------------------
+        if content_preference != "both":
+            filtered_entries = _filter_entries_by_content_preference(entries, content_preference)
+            if len(filtered_entries) != len(entries):
+                logger.info(
+                    "Excluded %d entries from digest for domain '%s' due to content_preference='%s'",
+                    len(entries) - len(filtered_entries),
+                    domain,
+                    content_preference,
+                )
+            entries = filtered_entries
+    
+        # --- Stale filtering (F51) -----------------------------------------------
+        excluded_stale_count = 0
+        if not include_stale:
+            # Resolve domain-specific TTL and freshness threshold from the single
+            # source of truth (issue #366).
+            from autoinfo.config import resolve_domain_freshness  # noqa: PLC0415
+    
+            ttl_days, freshness_threshold = resolve_domain_freshness(domain)
+    
+            from autoinfo.kb import calculate_freshness_score  # noqa: PLC0415
+    
+            active_entries: list[dict[str, Any]] = []
+            for entry in entries:
+                entry_freshness = calculate_freshness_score(entry, ttl_days)
+                entry["freshness_score"] = round(entry_freshness, 4)
+                if entry_freshness < freshness_threshold:
+                    entry["is_stale"] = True
+                    excluded_stale_count += 1
+                else:
+                    entry["is_stale"] = False
+                    active_entries.append(entry)
+    
+            if excluded_stale_count > 0:
+                logger.info(
+                    "Excluded %d stale entries from digest for domain '%s'",
+                    excluded_stale_count,
+                    domain,
+                )
+            entries = active_entries
+    
+        # --- Stale-source guard (backup issue #52) --------------------------------
+        if not include_stale and excluded_stale_count > 0 and not entries:
+            stale_count = excluded_stale_count
+            stale_msg = (
+                f"All candidate entries for domain '{domain}' are stale "
+                f"(excluded {stale_count} entr{'y' if stale_count == 1 else 'ies'} "
+                f"older than the freshness threshold). "
+                f"Refusing to generate an empty-shell product. "
+                f"Re-run collection to refresh the source, or pass include_stale=true."
+            )
+            if delivery_gate_configs is not None:
+                return DeliveryOutput(
+                    output="",
+                    gate_results={},
+                    delivery_blocked=True,
+                    delivery_format=format,
+                    warnings=[f"STALE_SOURCE: {stale_msg}"],
+                )
+            raise StaleSourceError(stale_msg)
+    
+        # --- LLM synthesis -------------------------------------------------------
+        # Resolve the product template family up front (spec §2.4, todo 7) so the
+        # synthesis prompt can request the product-specific fields; the render
+        # site below reuses this resolution. Agent format is content-equivalent
+        # to markdown, so its family resolves against the markdown template file
+        # (todo 22) — otherwise premium-briefing/enterprise-briefing agent output
+        # would never request the per-product synthesis fields.
+        variant = FORMAT_TO_VARIANT.get(format, format)
+        family_variant = "md" if variant == "agent" else variant
+        digest_family = (
+            _resolve_digest_product_type(product_template, family_variant)
+            if product_template is not None
+            else "digest"
+        )
+        llm_synthesis: dict[str, Any] = {}
+        # Default the synthesis/context entry set to the full candidate list;
+        # premium/enterprise families replace it with a differentiated subset
+        # below (issue #145).  Initialised here so context_entries below never
+        # hits an unbound local when *entries* is empty.
+        synthesis_entries: list[dict[str, Any]] = entries
+        if entries:
+            # Issue #46: prune the LLM-synthesis candidate list the same way #42
+            # prunes References — low-value promo/obituary/celebrity entries must
+            # not reach the Executive Summary's leading enumeration.  Clean
+            # entries always stay; flagged entries are dropped for non-language
+            # domains with >= _REF_LOW_VALUE_MIN_REAL_ENTRIES clean candidates and
+            # demoted to the tail otherwise (language-learning keeps them as
+            # teaching material).  Deterministic, no LLM.  The full *entries* list
+            # still flows to References unchanged below.
+            synthesis_entries = _sorted_ref_entries(entries, domain=domain)
+            # Issue #145: premium/enterprise briefings source a DIFFERENTIATED
+            # entry subset (data layer) so their references diverge — a prompt
+            # directive alone cannot change a fixed reference set.  The subset
+            # feeds both the LLM synthesis and the reference derivation below.
+            synthesis_entries = _select_family_entry_subset(synthesis_entries, digest_family)
+            prompt = _build_digest_llm_prompt(synthesis_entries, product_family=digest_family)
+            if custom_instructions:
+                prompt += f"\n\nAdditional instructions: {custom_instructions}"
+            audience = _normalize_report_audience(target_audience)
+            audience_prompt = _REPORT_AUDIENCE_PROMPTS.get(audience, "")
+            if audience_prompt:
+                prompt += f"\n\n{audience_prompt}"
+>           llm_synthesis = _call_llm_for_digest(
+                prompt,
+                config=llm_config,
+                max_synthesis_attempts=max_synthesis_attempts,
+                retry_backoff_seconds=retry_backoff_seconds,
+            )
+E           TypeError: TestDigestDeliveryGates.test_backward_compat_no_config_returns_str.<locals>.<lambda>() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: TypeError
+------------------------------ Captured log call -------------------------------
+WARNING  autoinfo.output:__init__.py:1274 promote_eligible: could not list 02-Draft for 'test': '_MockStore' object has no attribute 'list_kb_tier'
+__________ TestDigestDeliveryGates.test_raw_skips_all_delivery_gates ___________
+
+self = <tests.delivery.test_v1_5_delivery.TestDigestDeliveryGates object at 0x7f7e9dfe1260>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e751f9470>
+
+    def test_raw_skips_all_delivery_gates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """RAW product type causes all D1-D3 gates to skip."""
+    
+        class _MockStore:
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "title": "E1",
+                        "summary": "S1",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+    
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
+        monkeypatch.setattr(
+            "autoinfo.output._call_llm_for_digest",
+            lambda prompt=None, config=None: {},
+        )
+    
+        configs = {
+            "D1": {"enabled": True},
+            "D2": {"enabled": True},
+            "D3": {"enabled": True},
+        }
+>       result = generate_digest(
+            domain="test",
+            period="daily",
+            format="markdown",
+            product_type="RAW",
+            delivery_gate_configs=configs,
+        )
+
+/mnt/d/贯维/AutoInfo/tests/delivery/test_v1_5_delivery.py:535: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+domain = 'test', period = 'daily', format = 'markdown', llm_config = None
+custom_instructions = '', target_audience = '', include_stale = False
+recipients = None, product_template = None, product_type = 'RAW'
+delivery_gate_configs = {'D1': {'enabled': True}, 'D2': {'enabled': True}, 'D3': {'enabled': True}}
+user_id = '', max_items = 0, domains = None, language = '', ref_limit = None
+
+    def generate_digest(
+        domain: str,
+        period: str = "weekly",
+        format: str = "markdown",
+        llm_config: Config | None = None,
+        custom_instructions: str = "",
+        target_audience: str = "",
+        include_stale: bool = False,
+        recipients: list[str] | None = None,
+        product_template: ProductTemplate | None = None,
+        product_type: str = "PROCESSED",
+        delivery_gate_configs: dict[str, dict[str, Any]] | _DeliveryGatesBypass | None = None,
+        user_id: str = "",
+        max_items: int = 0,
+        domains: list[str] | None = None,
+        language: str = "",
+        ref_limit: int | None = None,
+        *,
+        max_synthesis_attempts: int = 2,
+        retry_backoff_seconds: float = 0.0,
+    ) -> str | DeliveryOutput:
+        """Generate a digest of KB entries for *domain* over the given *period*.
+    
+        When *domains* is provided with 2+ entries, entries are aggregated
+        from all listed domains for a cross-domain digest.
+    
+        Parameters
+        ----------
+        domain:
+            Domain to generate the digest for (e.g. ``"medical-research"``).
+        period:
+            Digest period.  One of ``"daily"``, ``"weekly"``, ``"monthly"``.
+            Defaults to ``"weekly"``.
+        format:
+            Output format.  One of ``"markdown"``, ``"html"``, ``"json"``,
+            ``"agent"``.  The ``"agent"`` format returns JSON-LD
+            (``@type: KnowledgeDigest``) optimized for LLM re-consumption.
+            Defaults to ``"markdown"``.
+        llm_config:
+            Optional :class:`Config` override for LLM settings.  When omitted,
+            the config is auto-detected from the project directory.
+        custom_instructions:
+            Optional string of additional instructions to append to the LLM
+            generation prompt.  Ignored when empty/absent.
+        include_stale:
+            When ``True``, include stale entries (below domain freshness
+            threshold) in the digest.  Defaults to ``False``, which excludes
+            them and logs the count of excluded items.
+        recipients:
+            Optional list of email recipient addresses for direct delivery.
+            When provided, the digest can be sent to these addresses via
+            the delivery channel.  Defaults to ``None``.
+        product_template:
+            Optional :class:`ProductTemplate` instance for template rendering.
+            When provided, the digest is rendered through the product template
+            system (with domain-specific overrides).  When ``None`` (default),
+            the existing direct Jinja2 rendering is used (backward compatible).
+        product_type:
+            Product type for delivery gate checking.  ``"PROCESSED"`` (default)
+            enables D1-D3 checks when *delivery_gate_configs* is provided.
+            ``"RAW"`` skips all delivery gates.
+        delivery_gate_configs:
+            Optional dict of ``{gate_name: config_dict}`` for D1-D3 delivery
+            gates.  When provided, D1-D3 are run after rendering and the return
+            type changes to :class:`DeliveryOutput`.  When ``None`` (default),
+            no gates are run and a plain ``str`` is returned (backward
+            compatible).
+        user_id:
+            Optional user ID.  When non-empty, stored preferences from
+            :func:`autoinfo.user_store.get_preferences` are auto-loaded and
+            used to set *target_audience*, *format*, and *max_items* if they
+            were not explicitly provided.  When empty (default), behavior is
+            unchanged and no preferences are loaded.
+        max_items:
+            Optional maximum number of KB entries to include in the digest.
+            Defaults to ``0`` (uses built-in limit of 200).  When *user_id*
+            is provided and the user's stored preferences include a
+            ``max_items`` key, that value is used instead.
+        language:
+            Optional ISO-639 language code (``"zh"`` / ``"en"``, case/alias
+            tolerant: ``zh_CN``, ``中文``, ``en-US`` all match).  When provided,
+            only entries whose detected ``language`` matches are included, so a
+            digest never mixes languages (issue #309).  Empty (default) includes
+            all languages as before.
+        ref_limit:
+            Optional maximum number of KB references to include in the rendered
+            product.  Defaults to ``output.ref_limit`` from the project config
+            (60).  Applied at the digest product-context build
+            (:func:`_normalize_digest_product_context`), sorted by (has non-empty
+            summary desc, ``relevance_score`` desc) — identical to the report
+            path (issue #11).
+    
+        Returns
+        -------
+        str or DeliveryOutput
+            Plain ``str`` when *delivery_gate_configs* is ``None`` (default).
+            :class:`DeliveryOutput` with gate results when *delivery_gate_configs*
+            is provided.
+    
+        Raises
+        ------
+        ValueError
+            If *period* is not one of ``"daily"``, ``"weekly"``, ``"monthly"``,
+            or if *format* is not one of ``"markdown"``, ``"html"``, ``"json"``,
+            ``"agent"``, ``"epub"``, ``"audiobook"``.
+        """
+        # --- Validate parameters ------------------------------------------------
+        if period not in PERIOD_DAYS:
+            raise ValueError(
+                f"Invalid period '{period}'. Must be one of: {', '.join(sorted(PERIOD_DAYS))}"
+            )
+        valid_formats = {"markdown", "html", "json", "agent", "audio", "epub", "audiobook"}
+        if format not in valid_formats:
+            raise ValueError(
+                f"Invalid format '{format}'. Must be one of: {', '.join(sorted(valid_formats))}"
+            )
+    
+        # --- Resolve delivery-gate config (issue #298: default-on in production) --
+        # ``None`` resolves from the project config (domain ``delivery_gates`` /
+        # global ``delivery_gates``); the ``_DELIVERY_GATES_BYPASS`` sentinel
+        # explicitly bypasses.  When resolution yields nothing, the caller keeps
+        # getting a plain ``str`` (backward compatible).
+        delivery_gate_configs = _resolve_delivery_gate_configs(domain, delivery_gate_configs)
+    
+        # --- Free-tier quota gate (todo 12) — named users only; user_id="" (batch) skips
+    
+        check_free_tier_generation(
+            user_id=user_id, domain=domain, product_type="digest", raise_on_block=True
+        )
+    
+        # --- Determine cross-domain mode -----------------------------------------
+        is_cross_domain_digest: bool = domains is not None and len(domains) >= 2
+        if is_cross_domain_digest:
+            digest_domains: list[str] = domains  # type: ignore[assignment]
+            digest_title_domain: str = "Cross-Domain"
+        else:
+            digest_domains = [domain]
+            digest_title_domain = domain
+        # Issue #144: the H1 title must use the user-facing domain name
+        # (e.g. "Medical Research"), never the internal slug — but the slug
+        # stays for internal product_id / domain keys.
+        digest_title_domain_display: str = _domain_display_name(digest_title_domain)
+    
+        # --- Auto-load preferences from user profile (G10) -----------------------
+        content_preference: str = _resolve_content_preference(user_id)
+        if user_id:
+            try:
+                from autoinfo.user_store import (  # noqa: PLC0415
+                    get_preferences,
+                )
+    
+                prefs_result = get_preferences(user_id)
+                if "preferences" in prefs_result:
+                    stored_prefs: dict[str, Any] = prefs_result["preferences"]
+                    # Auto-set target_audience if not explicitly provided
+                    if not target_audience and stored_prefs.get("target_audience"):
+                        target_audience = str(stored_prefs["target_audience"])
+                        logger.debug(
+                            "Applied stored target_audience='%s' for user '%s'",
+                            target_audience,
+                            user_id,
+                        )
+                    # Auto-set format if still at default
+                    if format == "markdown" and stored_prefs.get("format"):
+                        stored_fmt = str(stored_prefs["format"]).lower()
+                        if stored_fmt in valid_formats:
+                            format = stored_fmt
+                            logger.debug(
+                                "Applied stored format='%s' for user '%s'",
+                                format,
+                                user_id,
+                            )
+                    # Auto-set max_items if not explicitly provided
+                    if max_items == 0 and stored_prefs.get("max_items"):
+                        try:
+                            max_items = int(stored_prefs["max_items"])
+                            if max_items < 1:
+                                max_items = 0
+                            logger.debug(
+                                "Applied stored max_items=%d for user '%s'",
+                                max_items,
+                                user_id,
+                            )
+                        except (ValueError, TypeError):
+                            pass
+            except Exception:
+                logger.debug(
+                    "Failed to load preferences for user '%s'",
+                    user_id,
+                    exc_info=True,
+                )
+    
+        # --- Freemium access gating (G15) ----------------------------------------
+        if user_id and product_template is not None:
+            product_access = getattr(product_template, "access_level", "free")
+            if product_access != "free":
+                from autoinfo.billing import check_access  # noqa: PLC0415
+    
+                access_result = check_access(user_id, product_access)
+                if not access_result["allowed"]:
+                    period_label = PERIOD_LABELS.get(period, period.capitalize())
+                    blocked_message = (
+                        f"# {period_label} Digest \u2014 {domain}\n\n"
+                        f"**{access_result['upgrade_prompt'] or 'Access denied.'}**\n\n"
+                        f"_Reason_: {access_result['reason']}\n\n"
+                        f"_Access level required_: `{product_access}`\n"
+                        f"_Your status_: {access_result['profile_status']} "
+                        f"(plan: {access_result['plan']})\n"
+                    )
+                    if delivery_gate_configs is not None:
+                        return DeliveryOutput(
+                            output=blocked_message,
+                            gate_results={},
+                            delivery_blocked=True,
+                            delivery_format=format,
+                            warnings=[f"G15 blocked: {access_result['reason']}"],
+                        )
+                    return blocked_message
+    
+        # --- Compute date range --------------------------------------------------
+        period_label = PERIOD_LABELS.get(period, period.capitalize())
+    
+        # --- Query KB entries ----------------------------------------------------
+        store = KBStore()
+        query_limit = max_items if max_items > 0 else 200
+    
+        if is_cross_domain_digest:
+            date_from, date_to = _compute_date_range(period)
+            entries: list[dict[str, Any]] = []
+            per_domain_limit = max(query_limit // len(digest_domains), 10)
+            for d in digest_domains:
+                domain_entries = store.list_entries(
+                    domain=d,
+                    date_from=date_from,
+                    limit=per_domain_limit,
+                )
+                for e in domain_entries:
+                    if "domain" not in e:
+                        e["domain"] = d
+                entries.extend(domain_entries)
+            entries = entries[:query_limit]
+            period_was_empty = False
+        else:
+            # Single-domain story set — shared with presentation/report (#119).
+            entries, (date_from, date_to), period_was_empty = _select_story_set(
+                store,
+                domain,
+                period=period,
+                product="digest",
+                query_limit=query_limit,
+            )
+            entries = _filter_drifted_entries(entries, domain)
+    
+        # --- Archive/deprecated exclusion + test/empty filter + convergence ------
+        # Shared chain (see _filter_digest_entries) so the #83 full-domain
+        # fallback below runs identical filters over its candidate set.
+        entries = _filter_digest_entries(entries)
+    
+        # Issue #83: the window query returned rows but they were ALL dropped by
+        # the archive/deprecated/test filters — the digest would be an empty
+        # shell even though valid out-of-window content exists.  Recover the
+        # full-domain set (same relaxation as the zero-row fallback above) and
+        # re-run the identical filter chain.  Only non-archived active content
+        # survives, so archived/low-quality entries are never resurrected.
+        # Single-domain only — the cross-domain path has no window fallback.
+        if not entries and not period_was_empty and not is_cross_domain_digest:
+            logger.info(
+                "In-window entries for domain '%s' all dropped by archive/test "
+                "filters — falling back to full domain set",
+                domain,
+            )
+            entries = _filter_digest_entries(
+                _filter_drifted_entries(
+                    store.list_entries(domain=domain, limit=query_limit),
+                    domain,
+                )
+            )
+            period_was_empty = not entries
+    
+        # --- Language filter (issue #309 / #317) --------------------------------
+        # When a user requests a specific language (or a domain declares a
+        # default_language), drop entries in other languages so a digest/report is
+        # internally consistent (no zh/en interleave).  An explicit param wins;
+        # otherwise the domain default fills in; cross-domain never auto-picks one.
+        effective_language = _resolve_effective_language(
+            language, domain, cross_domain=is_cross_domain_digest
+        )
+        if effective_language:
+            filtered_entries, collapsed = _filter_entries_by_language_product_safe(
+                entries, effective_language
+            )
+            if collapsed:
+                # Issue #53: the resolved language collapsed the domain's primary
+                # corpus (stale seed/config), the safety net already fell back to
+                # the unfiltered input and logged — use it as-is.
+                entries = filtered_entries
+            else:
+                if (
+                    not filtered_entries
+                    and entries
+                    and not period_was_empty
+                    and not is_cross_domain_digest
+                ):
+                    # The period window held entries in OTHER languages while the
+                    # domain's default-language corpus is fully out-of-window (e.g. a
+                    # zh domain whose people.cn corpus is dated months ago + fresh en
+                    # in-window).  Relax the DATE window (keep the language filter) so
+                    # the digest is never an empty shell (backup-repo #28 evidence).
+                    logger.info(
+                        "No '%s'-language entries in the '%s' window for domain '%s' "
+                        "- relaxing the date window, keeping the language filter",
+                        effective_language,
+                        period,
+                        domain,
+                    )
+                    relaxed = store.list_entries(domain=domain, limit=query_limit)
+                    if relaxed:
+                        filtered_entries = _filter_entries_by_language(relaxed, effective_language)
+                entries = filtered_entries
+    
+        # --- Per-domain exclude_keywords filter (issue #319) ---------------------
+        # Cross-domain noise guard: drop entries whose title/summary/tags match a
+        # keyword on the entry's OWN domain's exclude_keywords blacklist BEFORE LLM
+        # synthesis.  Deterministic substring match, no LLM involvement.  No-op for
+        # domains with an empty list.
+        entries = _filter_entries_by_domain_exclusions(entries, domain)
+    
+        # --- Source-label enrichment (issue #325) --------------------------------
+        # Derive the specific source name for every entry (stale pre-#323 entries
+        # carry source_platform='rss') so ALL render surfaces — markdown entry
+        # table, magazine byline/clusters, json/agent formats — show the specific
+        # source name instead of the generic "(RSS)" label.  Per-entry own domain
+        # for cross-domain products.
+        entries = _label_entries(entries, domain)
+    
+        # --- Parse tags for each entry (they come as JSON strings from SQLite) ----
+        for entry in entries:
+            tags_raw = entry.get("tags", "")
+            if isinstance(tags_raw, str):
+                try:
+                    entry["tags"] = json.loads(tags_raw)
+                except (json.JSONDecodeError, TypeError):
+                    entry["tags"] = [tags_raw] if tags_raw else []
+            elif not isinstance(tags_raw, list):
+                entry["tags"] = []
+    
+        # --- Promotion trigger (T6): promote eligible 02-Draft entries ------------
+        # Best-effort per entry: a rejected/failed promotion never blocks the
+        # digest (rejections are expected — they stay in 02-Draft with a
+        # _failed/ marker).
+        _promote_eligible_drafts(
+            store, digest_domains if is_cross_domain_digest else [domain], caller="digest"
+        )
+    
+        # --- Content-preference tier filtering (B-001) ---------------------------
+        if content_preference != "both":
+            filtered_entries = _filter_entries_by_content_preference(entries, content_preference)
+            if len(filtered_entries) != len(entries):
+                logger.info(
+                    "Excluded %d entries from digest for domain '%s' due to content_preference='%s'",
+                    len(entries) - len(filtered_entries),
+                    domain,
+                    content_preference,
+                )
+            entries = filtered_entries
+    
+        # --- Stale filtering (F51) -----------------------------------------------
+        excluded_stale_count = 0
+        if not include_stale:
+            # Resolve domain-specific TTL and freshness threshold from the single
+            # source of truth (issue #366).
+            from autoinfo.config import resolve_domain_freshness  # noqa: PLC0415
+    
+            ttl_days, freshness_threshold = resolve_domain_freshness(domain)
+    
+            from autoinfo.kb import calculate_freshness_score  # noqa: PLC0415
+    
+            active_entries: list[dict[str, Any]] = []
+            for entry in entries:
+                entry_freshness = calculate_freshness_score(entry, ttl_days)
+                entry["freshness_score"] = round(entry_freshness, 4)
+                if entry_freshness < freshness_threshold:
+                    entry["is_stale"] = True
+                    excluded_stale_count += 1
+                else:
+                    entry["is_stale"] = False
+                    active_entries.append(entry)
+    
+            if excluded_stale_count > 0:
+                logger.info(
+                    "Excluded %d stale entries from digest for domain '%s'",
+                    excluded_stale_count,
+                    domain,
+                )
+            entries = active_entries
+    
+        # --- Stale-source guard (backup issue #52) --------------------------------
+        if not include_stale and excluded_stale_count > 0 and not entries:
+            stale_count = excluded_stale_count
+            stale_msg = (
+                f"All candidate entries for domain '{domain}' are stale "
+                f"(excluded {stale_count} entr{'y' if stale_count == 1 else 'ies'} "
+                f"older than the freshness threshold). "
+                f"Refusing to generate an empty-shell product. "
+                f"Re-run collection to refresh the source, or pass include_stale=true."
+            )
+            if delivery_gate_configs is not None:
+                return DeliveryOutput(
+                    output="",
+                    gate_results={},
+                    delivery_blocked=True,
+                    delivery_format=format,
+                    warnings=[f"STALE_SOURCE: {stale_msg}"],
+                )
+            raise StaleSourceError(stale_msg)
+    
+        # --- LLM synthesis -------------------------------------------------------
+        # Resolve the product template family up front (spec §2.4, todo 7) so the
+        # synthesis prompt can request the product-specific fields; the render
+        # site below reuses this resolution. Agent format is content-equivalent
+        # to markdown, so its family resolves against the markdown template file
+        # (todo 22) — otherwise premium-briefing/enterprise-briefing agent output
+        # would never request the per-product synthesis fields.
+        variant = FORMAT_TO_VARIANT.get(format, format)
+        family_variant = "md" if variant == "agent" else variant
+        digest_family = (
+            _resolve_digest_product_type(product_template, family_variant)
+            if product_template is not None
+            else "digest"
+        )
+        llm_synthesis: dict[str, Any] = {}
+        # Default the synthesis/context entry set to the full candidate list;
+        # premium/enterprise families replace it with a differentiated subset
+        # below (issue #145).  Initialised here so context_entries below never
+        # hits an unbound local when *entries* is empty.
+        synthesis_entries: list[dict[str, Any]] = entries
+        if entries:
+            # Issue #46: prune the LLM-synthesis candidate list the same way #42
+            # prunes References — low-value promo/obituary/celebrity entries must
+            # not reach the Executive Summary's leading enumeration.  Clean
+            # entries always stay; flagged entries are dropped for non-language
+            # domains with >= _REF_LOW_VALUE_MIN_REAL_ENTRIES clean candidates and
+            # demoted to the tail otherwise (language-learning keeps them as
+            # teaching material).  Deterministic, no LLM.  The full *entries* list
+            # still flows to References unchanged below.
+            synthesis_entries = _sorted_ref_entries(entries, domain=domain)
+            # Issue #145: premium/enterprise briefings source a DIFFERENTIATED
+            # entry subset (data layer) so their references diverge — a prompt
+            # directive alone cannot change a fixed reference set.  The subset
+            # feeds both the LLM synthesis and the reference derivation below.
+            synthesis_entries = _select_family_entry_subset(synthesis_entries, digest_family)
+            prompt = _build_digest_llm_prompt(synthesis_entries, product_family=digest_family)
+            if custom_instructions:
+                prompt += f"\n\nAdditional instructions: {custom_instructions}"
+            audience = _normalize_report_audience(target_audience)
+            audience_prompt = _REPORT_AUDIENCE_PROMPTS.get(audience, "")
+            if audience_prompt:
+                prompt += f"\n\n{audience_prompt}"
+>           llm_synthesis = _call_llm_for_digest(
+                prompt,
+                config=llm_config,
+                max_synthesis_attempts=max_synthesis_attempts,
+                retry_backoff_seconds=retry_backoff_seconds,
+            )
+E           TypeError: TestDigestDeliveryGates.test_raw_skips_all_delivery_gates.<locals>.<lambda>() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: TypeError
+------------------------------ Captured log call -------------------------------
+WARNING  autoinfo.output:__init__.py:1274 promote_eligible: could not list 02-Draft for 'test': '_MockStore' object has no attribute 'list_kb_tier'
+________ TestDigestDeliveryGates.test_gate_results_in_delivery_metadata ________
+
+self = <tests.delivery.test_v1_5_delivery.TestDigestDeliveryGates object at 0x7f7e9dfe1370>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e77b51ef0>
+
+    def test_gate_results_in_delivery_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Gate results dict is included in DeliveryOutput when configs provided."""
+    
+        class _MockStore:
+            def list_entries(self, **kwargs: object) -> list[dict[str, object]]:
+                return [
+                    {
+                        "title": "E1",
+                        "summary": "S1",
+                        "tags": "[]",
+                        "source_platform": "web",
+                        "source_type": "article",
+                        "collected_at": (
+                            datetime.now(timezone.utc) - timedelta(days=1)
+                        ).isoformat(),
+                        "relevance_score": 85,
+                        "source_url": "http://example.com",
+                    }
+                ]
+    
+        monkeypatch.setattr("autoinfo.output.KBStore", lambda: _MockStore())
+        monkeypatch.setattr(
+            "autoinfo.output._call_llm_for_digest",
+            lambda prompt=None, config=None: {},
+        )
+    
+        configs: dict[str, dict[str, Any]] = {
+            "D1": {"enabled": True},
+            "D3": {"enabled": True, "action_on_failure": "flag"},
+        }
+>       result = generate_digest(
+            domain="test",
+            period="daily",
+            format="markdown",
+            delivery_gate_configs=configs,
+        )
+
+/mnt/d/贯维/AutoInfo/tests/delivery/test_v1_5_delivery.py:577: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+domain = 'test', period = 'daily', format = 'markdown', llm_config = None
+custom_instructions = '', target_audience = '', include_stale = False
+recipients = None, product_template = None, product_type = 'PROCESSED'
+delivery_gate_configs = {'D1': {'enabled': True}, 'D3': {'action_on_failure': 'flag', 'enabled': True}}
+user_id = '', max_items = 0, domains = None, language = '', ref_limit = None
+
+    def generate_digest(
+        domain: str,
+        period: str = "weekly",
+        format: str = "markdown",
+        llm_config: Config | None = None,
+        custom_instructions: str = "",
+        target_audience: str = "",
+        include_stale: bool = False,
+        recipients: list[str] | None = None,
+        product_template: ProductTemplate | None = None,
+        product_type: str = "PROCESSED",
+        delivery_gate_configs: dict[str, dict[str, Any]] | _DeliveryGatesBypass | None = None,
+        user_id: str = "",
+        max_items: int = 0,
+        domains: list[str] | None = None,
+        language: str = "",
+        ref_limit: int | None = None,
+        *,
+        max_synthesis_attempts: int = 2,
+        retry_backoff_seconds: float = 0.0,
+    ) -> str | DeliveryOutput:
+        """Generate a digest of KB entries for *domain* over the given *period*.
+    
+        When *domains* is provided with 2+ entries, entries are aggregated
+        from all listed domains for a cross-domain digest.
+    
+        Parameters
+        ----------
+        domain:
+            Domain to generate the digest for (e.g. ``"medical-research"``).
+        period:
+            Digest period.  One of ``"daily"``, ``"weekly"``, ``"monthly"``.
+            Defaults to ``"weekly"``.
+        format:
+            Output format.  One of ``"markdown"``, ``"html"``, ``"json"``,
+            ``"agent"``.  The ``"agent"`` format returns JSON-LD
+            (``@type: KnowledgeDigest``) optimized for LLM re-consumption.
+            Defaults to ``"markdown"``.
+        llm_config:
+            Optional :class:`Config` override for LLM settings.  When omitted,
+            the config is auto-detected from the project directory.
+        custom_instructions:
+            Optional string of additional instructions to append to the LLM
+            generation prompt.  Ignored when empty/absent.
+        include_stale:
+            When ``True``, include stale entries (below domain freshness
+            threshold) in the digest.  Defaults to ``False``, which excludes
+            them and logs the count of excluded items.
+        recipients:
+            Optional list of email recipient addresses for direct delivery.
+            When provided, the digest can be sent to these addresses via
+            the delivery channel.  Defaults to ``None``.
+        product_template:
+            Optional :class:`ProductTemplate` instance for template rendering.
+            When provided, the digest is rendered through the product template
+            system (with domain-specific overrides).  When ``None`` (default),
+            the existing direct Jinja2 rendering is used (backward compatible).
+        product_type:
+            Product type for delivery gate checking.  ``"PROCESSED"`` (default)
+            enables D1-D3 checks when *delivery_gate_configs* is provided.
+            ``"RAW"`` skips all delivery gates.
+        delivery_gate_configs:
+            Optional dict of ``{gate_name: config_dict}`` for D1-D3 delivery
+            gates.  When provided, D1-D3 are run after rendering and the return
+            type changes to :class:`DeliveryOutput`.  When ``None`` (default),
+            no gates are run and a plain ``str`` is returned (backward
+            compatible).
+        user_id:
+            Optional user ID.  When non-empty, stored preferences from
+            :func:`autoinfo.user_store.get_preferences` are auto-loaded and
+            used to set *target_audience*, *format*, and *max_items* if they
+            were not explicitly provided.  When empty (default), behavior is
+            unchanged and no preferences are loaded.
+        max_items:
+            Optional maximum number of KB entries to include in the digest.
+            Defaults to ``0`` (uses built-in limit of 200).  When *user_id*
+            is provided and the user's stored preferences include a
+            ``max_items`` key, that value is used instead.
+        language:
+            Optional ISO-639 language code (``"zh"`` / ``"en"``, case/alias
+            tolerant: ``zh_CN``, ``中文``, ``en-US`` all match).  When provided,
+            only entries whose detected ``language`` matches are included, so a
+            digest never mixes languages (issue #309).  Empty (default) includes
+            all languages as before.
+        ref_limit:
+            Optional maximum number of KB references to include in the rendered
+            product.  Defaults to ``output.ref_limit`` from the project config
+            (60).  Applied at the digest product-context build
+            (:func:`_normalize_digest_product_context`), sorted by (has non-empty
+            summary desc, ``relevance_score`` desc) — identical to the report
+            path (issue #11).
+    
+        Returns
+        -------
+        str or DeliveryOutput
+            Plain ``str`` when *delivery_gate_configs* is ``None`` (default).
+            :class:`DeliveryOutput` with gate results when *delivery_gate_configs*
+            is provided.
+    
+        Raises
+        ------
+        ValueError
+            If *period* is not one of ``"daily"``, ``"weekly"``, ``"monthly"``,
+            or if *format* is not one of ``"markdown"``, ``"html"``, ``"json"``,
+            ``"agent"``, ``"epub"``, ``"audiobook"``.
+        """
+        # --- Validate parameters ------------------------------------------------
+        if period not in PERIOD_DAYS:
+            raise ValueError(
+                f"Invalid period '{period}'. Must be one of: {', '.join(sorted(PERIOD_DAYS))}"
+            )
+        valid_formats = {"markdown", "html", "json", "agent", "audio", "epub", "audiobook"}
+        if format not in valid_formats:
+            raise ValueError(
+                f"Invalid format '{format}'. Must be one of: {', '.join(sorted(valid_formats))}"
+            )
+    
+        # --- Resolve delivery-gate config (issue #298: default-on in production) --
+        # ``None`` resolves from the project config (domain ``delivery_gates`` /
+        # global ``delivery_gates``); the ``_DELIVERY_GATES_BYPASS`` sentinel
+        # explicitly bypasses.  When resolution yields nothing, the caller keeps
+        # getting a plain ``str`` (backward compatible).
+        delivery_gate_configs = _resolve_delivery_gate_configs(domain, delivery_gate_configs)
+    
+        # --- Free-tier quota gate (todo 12) — named users only; user_id="" (batch) skips
+    
+        check_free_tier_generation(
+            user_id=user_id, domain=domain, product_type="digest", raise_on_block=True
+        )
+    
+        # --- Determine cross-domain mode -----------------------------------------
+        is_cross_domain_digest: bool = domains is not None and len(domains) >= 2
+        if is_cross_domain_digest:
+            digest_domains: list[str] = domains  # type: ignore[assignment]
+            digest_title_domain: str = "Cross-Domain"
+        else:
+            digest_domains = [domain]
+            digest_title_domain = domain
+        # Issue #144: the H1 title must use the user-facing domain name
+        # (e.g. "Medical Research"), never the internal slug — but the slug
+        # stays for internal product_id / domain keys.
+        digest_title_domain_display: str = _domain_display_name(digest_title_domain)
+    
+        # --- Auto-load preferences from user profile (G10) -----------------------
+        content_preference: str = _resolve_content_preference(user_id)
+        if user_id:
+            try:
+                from autoinfo.user_store import (  # noqa: PLC0415
+                    get_preferences,
+                )
+    
+                prefs_result = get_preferences(user_id)
+                if "preferences" in prefs_result:
+                    stored_prefs: dict[str, Any] = prefs_result["preferences"]
+                    # Auto-set target_audience if not explicitly provided
+                    if not target_audience and stored_prefs.get("target_audience"):
+                        target_audience = str(stored_prefs["target_audience"])
+                        logger.debug(
+                            "Applied stored target_audience='%s' for user '%s'",
+                            target_audience,
+                            user_id,
+                        )
+                    # Auto-set format if still at default
+                    if format == "markdown" and stored_prefs.get("format"):
+                        stored_fmt = str(stored_prefs["format"]).lower()
+                        if stored_fmt in valid_formats:
+                            format = stored_fmt
+                            logger.debug(
+                                "Applied stored format='%s' for user '%s'",
+                                format,
+                                user_id,
+                            )
+                    # Auto-set max_items if not explicitly provided
+                    if max_items == 0 and stored_prefs.get("max_items"):
+                        try:
+                            max_items = int(stored_prefs["max_items"])
+                            if max_items < 1:
+                                max_items = 0
+                            logger.debug(
+                                "Applied stored max_items=%d for user '%s'",
+                                max_items,
+                                user_id,
+                            )
+                        except (ValueError, TypeError):
+                            pass
+            except Exception:
+                logger.debug(
+                    "Failed to load preferences for user '%s'",
+                    user_id,
+                    exc_info=True,
+                )
+    
+        # --- Freemium access gating (G15) ----------------------------------------
+        if user_id and product_template is not None:
+            product_access = getattr(product_template, "access_level", "free")
+            if product_access != "free":
+                from autoinfo.billing import check_access  # noqa: PLC0415
+    
+                access_result = check_access(user_id, product_access)
+                if not access_result["allowed"]:
+                    period_label = PERIOD_LABELS.get(period, period.capitalize())
+                    blocked_message = (
+                        f"# {period_label} Digest \u2014 {domain}\n\n"
+                        f"**{access_result['upgrade_prompt'] or 'Access denied.'}**\n\n"
+                        f"_Reason_: {access_result['reason']}\n\n"
+                        f"_Access level required_: `{product_access}`\n"
+                        f"_Your status_: {access_result['profile_status']} "
+                        f"(plan: {access_result['plan']})\n"
+                    )
+                    if delivery_gate_configs is not None:
+                        return DeliveryOutput(
+                            output=blocked_message,
+                            gate_results={},
+                            delivery_blocked=True,
+                            delivery_format=format,
+                            warnings=[f"G15 blocked: {access_result['reason']}"],
+                        )
+                    return blocked_message
+    
+        # --- Compute date range --------------------------------------------------
+        period_label = PERIOD_LABELS.get(period, period.capitalize())
+    
+        # --- Query KB entries ----------------------------------------------------
+        store = KBStore()
+        query_limit = max_items if max_items > 0 else 200
+    
+        if is_cross_domain_digest:
+            date_from, date_to = _compute_date_range(period)
+            entries: list[dict[str, Any]] = []
+            per_domain_limit = max(query_limit // len(digest_domains), 10)
+            for d in digest_domains:
+                domain_entries = store.list_entries(
+                    domain=d,
+                    date_from=date_from,
+                    limit=per_domain_limit,
+                )
+                for e in domain_entries:
+                    if "domain" not in e:
+                        e["domain"] = d
+                entries.extend(domain_entries)
+            entries = entries[:query_limit]
+            period_was_empty = False
+        else:
+            # Single-domain story set — shared with presentation/report (#119).
+            entries, (date_from, date_to), period_was_empty = _select_story_set(
+                store,
+                domain,
+                period=period,
+                product="digest",
+                query_limit=query_limit,
+            )
+            entries = _filter_drifted_entries(entries, domain)
+    
+        # --- Archive/deprecated exclusion + test/empty filter + convergence ------
+        # Shared chain (see _filter_digest_entries) so the #83 full-domain
+        # fallback below runs identical filters over its candidate set.
+        entries = _filter_digest_entries(entries)
+    
+        # Issue #83: the window query returned rows but they were ALL dropped by
+        # the archive/deprecated/test filters — the digest would be an empty
+        # shell even though valid out-of-window content exists.  Recover the
+        # full-domain set (same relaxation as the zero-row fallback above) and
+        # re-run the identical filter chain.  Only non-archived active content
+        # survives, so archived/low-quality entries are never resurrected.
+        # Single-domain only — the cross-domain path has no window fallback.
+        if not entries and not period_was_empty and not is_cross_domain_digest:
+            logger.info(
+                "In-window entries for domain '%s' all dropped by archive/test "
+                "filters — falling back to full domain set",
+                domain,
+            )
+            entries = _filter_digest_entries(
+                _filter_drifted_entries(
+                    store.list_entries(domain=domain, limit=query_limit),
+                    domain,
+                )
+            )
+            period_was_empty = not entries
+    
+        # --- Language filter (issue #309 / #317) --------------------------------
+        # When a user requests a specific language (or a domain declares a
+        # default_language), drop entries in other languages so a digest/report is
+        # internally consistent (no zh/en interleave).  An explicit param wins;
+        # otherwise the domain default fills in; cross-domain never auto-picks one.
+        effective_language = _resolve_effective_language(
+            language, domain, cross_domain=is_cross_domain_digest
+        )
+        if effective_language:
+            filtered_entries, collapsed = _filter_entries_by_language_product_safe(
+                entries, effective_language
+            )
+            if collapsed:
+                # Issue #53: the resolved language collapsed the domain's primary
+                # corpus (stale seed/config), the safety net already fell back to
+                # the unfiltered input and logged — use it as-is.
+                entries = filtered_entries
+            else:
+                if (
+                    not filtered_entries
+                    and entries
+                    and not period_was_empty
+                    and not is_cross_domain_digest
+                ):
+                    # The period window held entries in OTHER languages while the
+                    # domain's default-language corpus is fully out-of-window (e.g. a
+                    # zh domain whose people.cn corpus is dated months ago + fresh en
+                    # in-window).  Relax the DATE window (keep the language filter) so
+                    # the digest is never an empty shell (backup-repo #28 evidence).
+                    logger.info(
+                        "No '%s'-language entries in the '%s' window for domain '%s' "
+                        "- relaxing the date window, keeping the language filter",
+                        effective_language,
+                        period,
+                        domain,
+                    )
+                    relaxed = store.list_entries(domain=domain, limit=query_limit)
+                    if relaxed:
+                        filtered_entries = _filter_entries_by_language(relaxed, effective_language)
+                entries = filtered_entries
+    
+        # --- Per-domain exclude_keywords filter (issue #319) ---------------------
+        # Cross-domain noise guard: drop entries whose title/summary/tags match a
+        # keyword on the entry's OWN domain's exclude_keywords blacklist BEFORE LLM
+        # synthesis.  Deterministic substring match, no LLM involvement.  No-op for
+        # domains with an empty list.
+        entries = _filter_entries_by_domain_exclusions(entries, domain)
+    
+        # --- Source-label enrichment (issue #325) --------------------------------
+        # Derive the specific source name for every entry (stale pre-#323 entries
+        # carry source_platform='rss') so ALL render surfaces — markdown entry
+        # table, magazine byline/clusters, json/agent formats — show the specific
+        # source name instead of the generic "(RSS)" label.  Per-entry own domain
+        # for cross-domain products.
+        entries = _label_entries(entries, domain)
+    
+        # --- Parse tags for each entry (they come as JSON strings from SQLite) ----
+        for entry in entries:
+            tags_raw = entry.get("tags", "")
+            if isinstance(tags_raw, str):
+                try:
+                    entry["tags"] = json.loads(tags_raw)
+                except (json.JSONDecodeError, TypeError):
+                    entry["tags"] = [tags_raw] if tags_raw else []
+            elif not isinstance(tags_raw, list):
+                entry["tags"] = []
+    
+        # --- Promotion trigger (T6): promote eligible 02-Draft entries ------------
+        # Best-effort per entry: a rejected/failed promotion never blocks the
+        # digest (rejections are expected — they stay in 02-Draft with a
+        # _failed/ marker).
+        _promote_eligible_drafts(
+            store, digest_domains if is_cross_domain_digest else [domain], caller="digest"
+        )
+    
+        # --- Content-preference tier filtering (B-001) ---------------------------
+        if content_preference != "both":
+            filtered_entries = _filter_entries_by_content_preference(entries, content_preference)
+            if len(filtered_entries) != len(entries):
+                logger.info(
+                    "Excluded %d entries from digest for domain '%s' due to content_preference='%s'",
+                    len(entries) - len(filtered_entries),
+                    domain,
+                    content_preference,
+                )
+            entries = filtered_entries
+    
+        # --- Stale filtering (F51) -----------------------------------------------
+        excluded_stale_count = 0
+        if not include_stale:
+            # Resolve domain-specific TTL and freshness threshold from the single
+            # source of truth (issue #366).
+            from autoinfo.config import resolve_domain_freshness  # noqa: PLC0415
+    
+            ttl_days, freshness_threshold = resolve_domain_freshness(domain)
+    
+            from autoinfo.kb import calculate_freshness_score  # noqa: PLC0415
+    
+            active_entries: list[dict[str, Any]] = []
+            for entry in entries:
+                entry_freshness = calculate_freshness_score(entry, ttl_days)
+                entry["freshness_score"] = round(entry_freshness, 4)
+                if entry_freshness < freshness_threshold:
+                    entry["is_stale"] = True
+                    excluded_stale_count += 1
+                else:
+                    entry["is_stale"] = False
+                    active_entries.append(entry)
+    
+            if excluded_stale_count > 0:
+                logger.info(
+                    "Excluded %d stale entries from digest for domain '%s'",
+                    excluded_stale_count,
+                    domain,
+                )
+            entries = active_entries
+    
+        # --- Stale-source guard (backup issue #52) --------------------------------
+        if not include_stale and excluded_stale_count > 0 and not entries:
+            stale_count = excluded_stale_count
+            stale_msg = (
+                f"All candidate entries for domain '{domain}' are stale "
+                f"(excluded {stale_count} entr{'y' if stale_count == 1 else 'ies'} "
+                f"older than the freshness threshold). "
+                f"Refusing to generate an empty-shell product. "
+                f"Re-run collection to refresh the source, or pass include_stale=true."
+            )
+            if delivery_gate_configs is not None:
+                return DeliveryOutput(
+                    output="",
+                    gate_results={},
+                    delivery_blocked=True,
+                    delivery_format=format,
+                    warnings=[f"STALE_SOURCE: {stale_msg}"],
+                )
+            raise StaleSourceError(stale_msg)
+    
+        # --- LLM synthesis -------------------------------------------------------
+        # Resolve the product template family up front (spec §2.4, todo 7) so the
+        # synthesis prompt can request the product-specific fields; the render
+        # site below reuses this resolution. Agent format is content-equivalent
+        # to markdown, so its family resolves against the markdown template file
+        # (todo 22) — otherwise premium-briefing/enterprise-briefing agent output
+        # would never request the per-product synthesis fields.
+        variant = FORMAT_TO_VARIANT.get(format, format)
+        family_variant = "md" if variant == "agent" else variant
+        digest_family = (
+            _resolve_digest_product_type(product_template, family_variant)
+            if product_template is not None
+            else "digest"
+        )
+        llm_synthesis: dict[str, Any] = {}
+        # Default the synthesis/context entry set to the full candidate list;
+        # premium/enterprise families replace it with a differentiated subset
+        # below (issue #145).  Initialised here so context_entries below never
+        # hits an unbound local when *entries* is empty.
+        synthesis_entries: list[dict[str, Any]] = entries
+        if entries:
+            # Issue #46: prune the LLM-synthesis candidate list the same way #42
+            # prunes References — low-value promo/obituary/celebrity entries must
+            # not reach the Executive Summary's leading enumeration.  Clean
+            # entries always stay; flagged entries are dropped for non-language
+            # domains with >= _REF_LOW_VALUE_MIN_REAL_ENTRIES clean candidates and
+            # demoted to the tail otherwise (language-learning keeps them as
+            # teaching material).  Deterministic, no LLM.  The full *entries* list
+            # still flows to References unchanged below.
+            synthesis_entries = _sorted_ref_entries(entries, domain=domain)
+            # Issue #145: premium/enterprise briefings source a DIFFERENTIATED
+            # entry subset (data layer) so their references diverge — a prompt
+            # directive alone cannot change a fixed reference set.  The subset
+            # feeds both the LLM synthesis and the reference derivation below.
+            synthesis_entries = _select_family_entry_subset(synthesis_entries, digest_family)
+            prompt = _build_digest_llm_prompt(synthesis_entries, product_family=digest_family)
+            if custom_instructions:
+                prompt += f"\n\nAdditional instructions: {custom_instructions}"
+            audience = _normalize_report_audience(target_audience)
+            audience_prompt = _REPORT_AUDIENCE_PROMPTS.get(audience, "")
+            if audience_prompt:
+                prompt += f"\n\n{audience_prompt}"
+>           llm_synthesis = _call_llm_for_digest(
+                prompt,
+                config=llm_config,
+                max_synthesis_attempts=max_synthesis_attempts,
+                retry_backoff_seconds=retry_backoff_seconds,
+            )
+E           TypeError: TestDigestDeliveryGates.test_gate_results_in_delivery_metadata.<locals>.<lambda>() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: TypeError
+------------------------------ Captured log call -------------------------------
+WARNING  autoinfo.output:__init__.py:1274 promote_eligible: could not list 02-Draft for 'test': '_MockStore' object has no attribute 'list_kb_tier'
+_ TestDigestEntryFiltersBoundary.test_digest_keeps_only_filtered_entries_in_prompt_and_body _
+
+self = <tests.output.test_entry_filters_boundary.TestDigestEntryFiltersBoundary object at 0x7f7e98807250>
+project = PosixPath('/tmp/pytest-of-renanzai/pytest-3/test_digest_keeps_only_filtere0')
+frozen_clock = None
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e98651160>
+
+    def test_digest_keeps_only_filtered_entries_in_prompt_and_body(
+        self, project: Path, frozen_clock: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Language (config ``default_language: en``) + exclude_keywords drop
+        exactly the zh and noise entries BEFORE synthesis and render."""
+        monkeypatch.chdir(project)
+        captured: dict[str, str] = {}
+    
+        def _capture(prompt: str, config: Any = None) -> dict[str, Any]:
+            captured["prompt"] = prompt
+            return _canned_digest_llm(prompt, config)
+    
+        with (
+            patch(
+                "autoinfo.output.KBStore",
+                return_value=_FixtureStore(_FIXTURE_ENTRIES),
+            ),
+            patch("autoinfo.output._call_llm_for_digest", side_effect=_capture),
+        ):
+>           body = _as_text(generate_digest(domain=DOMAIN, period="weekly", format="markdown"))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/mnt/d/贯维/AutoInfo/tests/output/test_entry_filters_boundary.py:342: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365120640'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: OpenAI ships a new frontier mod...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function TestDigestEntryFiltersBoundary.test_digest_keeps_only_filtered_entries_in_prompt_and_body.<locals>._capture at 0x7f7e6d8009e0>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: TestDigestEntryFiltersBoundary.test_digest_keeps_only_filtered_entries_in_prompt_and_body.<locals>._capture() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_ TestDigestEntryFiltersBoundary.test_explicit_language_param_wins_over_config_default _
+
+self = <tests.output.test_entry_filters_boundary.TestDigestEntryFiltersBoundary object at 0x7f7e98807390>
+project = PosixPath('/tmp/pytest-of-renanzai/pytest-3/test_explicit_language_param_w0')
+frozen_clock = None
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e86fd34d0>
+
+    def test_explicit_language_param_wins_over_config_default(
+        self, project: Path, frozen_clock: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An explicit ``language=`` overrides the config default (precedence)."""
+        monkeypatch.chdir(project)
+        # 3 zh entries (> collapse guard) so the safety net does NOT relax the
+        # filter; the explicit "zh" keeps them and drops the en ones.
+        zh_entries = [
+            {
+                **_FIXTURE_ENTRIES[0],
+                "entry_id": f"zh-{i}",
+                "language": "zh",
+                "title": f"中文条目 {i}",
+                "summary": f"中文摘要 {i}",
+                "relevance_score": 90.0 - i,
+            }
+            for i in range(3)
+        ]
+        entries = zh_entries + [_FIXTURE_ENTRIES[0]]
+        with (
+            patch("autoinfo.output.KBStore", return_value=_FixtureStore(entries)),
+            patch(
+                "autoinfo.output._call_llm_for_digest",
+                side_effect=_canned_digest_llm,
+            ),
+        ):
+            body = _as_text(
+>               generate_digest(domain=DOMAIN, period="weekly", format="markdown", language="zh")
+            )
+
+/mnt/d/贯维/AutoInfo/tests/output/test_entry_filters_boundary.py:378: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365120976'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: 中文条目 0\n  Summary: 中文摘要 0\n  Ta...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function _canned_digest_llm at 0x7f7e98657530>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: _canned_digest_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+____________ TestGoldenDigest.test_digest_byte_identical_to_golden _____________
+
+self = <tests.output.test_entry_filters_boundary.TestGoldenDigest object at 0x7f7e98694410>
+project = PosixPath('/tmp/pytest-of-renanzai/pytest-3/test_digest_byte_identical_to_0')
+frozen_clock = None
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e986532a0>
+
+    def test_digest_byte_identical_to_golden(
+        self, project: Path, frozen_clock: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        golden = _GOLDEN_PATH.read_text(encoding="utf-8")
+        monkeypatch.chdir(project)
+        with (
+            patch(
+                "autoinfo.output.KBStore",
+                return_value=_FixtureStore(_FIXTURE_ENTRIES),
+            ),
+            patch("autoinfo.output._call_llm_for_digest", side_effect=_canned_digest_llm),
+        ):
+>           body = generate_digest(domain=DOMAIN, period="weekly", format="markdown")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/mnt/d/贯维/AutoInfo/tests/output/test_entry_filters_boundary.py:719: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181376145728'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: OpenAI ships a new frontier mod...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function _canned_digest_llm at 0x7f7e98657530>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: _canned_digest_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_ TestSynthesisPromptLowValueFilter.test_synthesis_candidates_exclude_obituary _
+
+self = <tests.output.test_low_value_refs.TestSynthesisPromptLowValueFilter object at 0x7f7e98732c10>
+
+    def test_synthesis_candidates_exclude_obituary(self) -> None:
+        """>= MIN_REAL clean entries -> the obituary is dropped from the
+        synthesis candidates (not in the prompt at all).  The full entries
+        list still flows to the rendered body for traceability (issue #46:
+        only the synthesis candidates — and References via #42 — are pruned;
+        entries are never deleted).
+    
+        Uses ``tech-ai-developer``: the b2b demo domain's #56
+        ``exclude_keywords`` (``has died``/``passed away``/``obituary``)
+        removes the obituary BEFORE the low-value logic runs, which would
+        make this test pass for the wrong reason."""
+        entries = _clean_entries(_REF_LOW_VALUE_MIN_REAL_ENTRIES, domain="tech-ai-developer")
+        entries.append(_obit_entry("tech-ai-developer"))
+>       prompt, result = self._capture(entries, "tech-ai-developer")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_low_value_refs.py:339: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/output/test_low_value_refs.py:322: in _capture
+    result = generate_digest(domain=domain, period="weekly")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365123328'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: Real story 1: quarterly growth ...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function TestSynthesisPromptLowValueFilter._capture.<locals>._llm at 0x7f7e94334e00>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: TestSynthesisPromptLowValueFilter._capture.<locals>._llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_ TestSynthesisPromptLowValueFilter.test_synthesis_keeps_obituary_at_tail_when_few_entries _
+
+self = <tests.output.test_low_value_refs.TestSynthesisPromptLowValueFilter object at 0x7f7e98732d50>
+
+    def test_synthesis_keeps_obituary_at_tail_when_few_entries(self) -> None:
+        """< MIN_REAL clean entries -> the obituary survives in the
+        synthesis candidates ONLY at the tail (never in the leading
+        enumeration)."""
+        entries = _clean_entries(5, domain="tech-ai-developer")
+        entries.append(_obit_entry("tech-ai-developer"))
+>       prompt, _ = self._capture(entries, "tech-ai-developer")
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_low_value_refs.py:350: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/output/test_low_value_refs.py:322: in _capture
+    result = generate_digest(domain=domain, period="weekly")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365124672'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: Real story 1: quarterly growth ...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function TestSynthesisPromptLowValueFilter._capture.<locals>._llm at 0x7f7e943340f0>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: TestSynthesisPromptLowValueFilter._capture.<locals>._llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_ TestSynthesisPromptLowValueFilter.test_lang_learning_synthesis_demotes_obituary_to_tail _
+
+self = <tests.output.test_low_value_refs.TestSynthesisPromptLowValueFilter object at 0x7f7e9853e2c0>
+
+    def test_lang_learning_synthesis_demotes_obituary_to_tail(self) -> None:
+        """Language-learning keeps teaching material: the obituary stays in the
+        synthesis candidates but demoted below every clean entry."""
+        entries = _clean_entries(_REF_LOW_VALUE_MIN_REAL_ENTRIES, domain="english-learning")
+        entries.append(_obit_entry("english-learning"))
+>       prompt, result = self._capture(entries, "english-learning")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_low_value_refs.py:359: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/output/test_low_value_refs.py:322: in _capture
+    result = generate_digest(domain=domain, period="weekly")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365124336'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: Real story 1: quarterly growth ...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function TestSynthesisPromptLowValueFilter._capture.<locals>._llm at 0x7f7e9434b8a0>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: TestSynthesisPromptLowValueFilter._capture.<locals>._llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_ TestDigestProductFieldsFlow.test_digest_premium_briefing_surfaces_aligned_fields _
+
+self = <tests.output.test_product_synthesis.TestDigestProductFieldsFlow object at 0x7f7e984cbc50>
+
+    def test_digest_premium_briefing_surfaces_aligned_fields(self) -> None:
+        """Per-takeaway implication/risk/action render non-empty (index-aligned)."""
+>       rendered, prompt = self._render(product_template=_registry_template("premium-briefing"))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_product_synthesis.py:349: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/output/test_product_synthesis.py:338: in _render
+    result = generate_digest(
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181106151104'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: Improved IVF outcomes with time...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function TestDigestProductFieldsFlow._render.<locals>._fake_llm at 0x7f7e94749c70>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: TestDigestProductFieldsFlow._render.<locals>._fake_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_ TestDigestProductFieldsFlow.test_digest_enterprise_briefing_surfaces_key_metrics _
+
+self = <tests.output.test_product_synthesis.TestDigestProductFieldsFlow object at 0x7f7e984cbd90>
+
+    def test_digest_enterprise_briefing_surfaces_key_metrics(self) -> None:
+        """Enterprise render includes the Key Metrics table with real rows."""
+>       rendered, prompt = self._render(product_template=_registry_template("enterprise-briefing"))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_product_synthesis.py:364: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/output/test_product_synthesis.py:338: in _render
+    result = generate_digest(
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365127360'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: AI-driven embryo selection: a s...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function TestDigestProductFieldsFlow._render.<locals>._fake_llm at 0x7f7e9474a090>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: TestDigestProductFieldsFlow._render.<locals>._fake_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_ TestDigestProductFieldsFlow.test_digest_default_family_does_not_request_product_fields _
+
+self = <tests.output.test_product_synthesis.TestDigestProductFieldsFlow object at 0x7f7e9846be10>
+
+    def test_digest_default_family_does_not_request_product_fields(self) -> None:
+        """No product_template -> default digest prompt, no product fields."""
+>       rendered, prompt = self._render(product_template=None)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_product_synthesis.py:373: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/output/test_product_synthesis.py:338: in _render
+    result = generate_digest(
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365123328'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: Improved IVF outcomes with time...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function TestDigestProductFieldsFlow._render.<locals>._fake_llm at 0x7f7e9474b320>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: TestDigestProductFieldsFlow._render.<locals>._fake_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+___ TestDigestByteIdentical.test_digest_all_active_byte_identical_to_golden ____
+
+self = <tests.output.test_shared_story_set.TestDigestByteIdentical object at 0x7f7e983320d0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e944f0d70>
+
+    def test_digest_all_active_byte_identical_to_golden(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With ALL sources active, the digest render equals the committed
+        golden byte-for-byte (119-caller backward-compat gate)."""
+        _freeze_datetime(monkeypatch)
+        golden = open(_GOLDEN_PATH, encoding="utf-8").read()
+        entries = [_entry(i) for i in range(1, 6)]
+        with (
+            patch("autoinfo.output.KBStore", return_value=_store(entries)),
+            patch("autoinfo.output._call_llm_for_digest", side_effect=_canned_llm),
+            patch(
+                "autoinfo.output._get_domain_source_configs",
+                lambda domain: _active_source_configs(),
+            ),
+        ):
+>           result = generate_digest(domain="tech-ai-developer", period="weekly")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_shared_story_set.py:290: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365124000'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: AI funding round 1: model infer...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function _canned_llm at 0x7f7e981524b0>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: _canned_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_ TestDigestByteIdentical.test_digest_with_drifted_source_still_byte_identical_to_golden _
+
+self = <tests.output.test_shared_story_set.TestDigestByteIdentical object at 0x7f7e98332210>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e86ff5160>
+
+    def test_digest_with_drifted_source_still_byte_identical_to_golden(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A digest whose KB carries a drifted source (infoq-cn) renders
+        golden byte-identical on the all-active fixture — the drift filter
+        (todo 1) runs AFTER the shared helper, so the shared set is unchanged
+        and the digest's render is the byte-identity gate."""
+        _freeze_datetime(monkeypatch)
+        golden = open(_GOLDEN_PATH, encoding="utf-8").read()
+        entries = [_entry(i) for i in range(1, 6)] + [_entry(9, drifted=True)]
+        with (
+            patch("autoinfo.output.KBStore", return_value=_store(entries)),
+            patch("autoinfo.output._call_llm_for_digest", side_effect=_canned_llm),
+            patch(
+                "autoinfo.output._get_domain_source_configs",
+                lambda domain: _active_source_configs(),
+            ),
+        ):
+>           result = generate_digest(domain="tech-ai-developer", period="weekly")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_shared_story_set.py:312: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181137791632'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: AI funding round 1: model infer...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function _canned_llm at 0x7f7e981524b0>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: _canned_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_ TestDigestPresentationCoherence.test_source_host_overlap_between_digest_and_presentation _
+
+self = <tests.output.test_shared_story_set.TestDigestPresentationCoherence object at 0x7f7e98332350>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e86ff7850>
+
+    def test_source_host_overlap_between_digest_and_presentation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Digest and presentation consume the same week-windowed set, so the
+        two-source fixture's source-host overlap is ≥ 0.5 (measured on the
+        entry sets actually consumed by both renders — the fixture's entries
+        all contain the topic terms, making the topic filter a no-op)."""
+        _freeze_datetime(monkeypatch)
+        entries = [_entry(i) for i in range(1, 6)]
+        store = _store(entries)
+        digest_captured: dict[str, Any] = {}
+        presentation_captured: dict[str, Any] = {}
+    
+        def _capture_digest(prompt: str, config: Any = None) -> dict[str, Any]:
+            digest_captured["prompt"] = prompt
+            return _canned_llm(prompt, config)
+    
+        def _capture_presentation(prompt: str, slide_count: int = 10) -> dict[str, Any]:
+            presentation_captured["prompt"] = prompt
+            return _canned_presentation(prompt, slide_count)
+    
+        with (
+            patch("autoinfo.output.KBStore", return_value=store),
+            patch("autoinfo.output._call_llm_for_digest", side_effect=_capture_digest),
+            patch("autoinfo.output._call_llm_for_presentation", side_effect=_capture_presentation),
+            patch(
+                "autoinfo.output._get_domain_source_configs",
+                lambda domain: _active_source_configs(),
+            ),
+        ):
+>           generate_digest(domain="tech-ai-developer", period="weekly")
+
+tests/output/test_shared_story_set.py:354: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181137799024'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: AI funding round 1: model infer...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function TestDigestPresentationCoherence.test_source_host_overlap_between_digest_and_presentation.<locals>._capture_digest at 0x7f7e86e23e20>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: TestDigestPresentationCoherence.test_source_host_overlap_between_digest_and_presentation.<locals>._capture_digest() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+__________ TestDigestDriftFilter.test_digest_excludes_drifted_entries __________
+
+self = <tests.output.test_source_drift_filter.TestDigestDriftFilter object at 0x7f7e98332d50>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e98363a10>
+caplog = <_pytest.logging.LogCaptureFixture object at 0x7f7e98363cb0>
+
+    def test_digest_excludes_drifted_entries(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A drifted source (infoq-cn — host + platform absent from the
+        tech-ai-developer config) is excluded from the rendered digest, and the
+        exclusion is logged with the source name + count."""
+        _freeze_datetime(monkeypatch)
+        entries = [_entry(i) for i in range(1, 6)] + [_entry(9, drifted=True)]
+        with (
+            patch("autoinfo.output.KBStore", return_value=_store(entries)),
+            patch("autoinfo.output._call_llm_for_digest", side_effect=_canned_llm),
+            patch(
+                "autoinfo.output._get_domain_source_configs",
+                lambda domain: _active_source_configs(),
+            ),
+        ):
+            with caplog.at_level("INFO", logger="autoinfo.output"):
+>               result = generate_digest(domain="tech-ai-developer", period="weekly")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_source_drift_filter.py:299: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181137784912'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: AI funding round 1: model infer...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function _canned_llm at 0x7f7e9816cb40>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: _canned_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+------------------------------ Captured log call -------------------------------
+INFO     autoinfo.output:sources.py:121 Excluded 1 drifted entry from source 'infoq-cn' absent from domain 'tech-ai-developer' config (selection-time source-drift filter)
+____ TestDigestDriftFilter.test_digest_all_active_byte_identical_to_golden _____
+
+self = <tests.output.test_source_drift_filter.TestDigestDriftFilter object at 0x7f7e98332e90>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e98446cf0>
+
+    def test_digest_all_active_byte_identical_to_golden(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With ALL sources active, the digest render equals the committed
+        golden byte-for-byte (119-caller backward-compat gate)."""
+        _freeze_datetime(monkeypatch)
+        golden = open(_GOLDEN_PATH, encoding="utf-8").read()
+        entries = [_entry(i) for i in range(1, 6)]
+        with (
+            patch("autoinfo.output.KBStore", return_value=_store(entries)),
+            patch("autoinfo.output._call_llm_for_digest", side_effect=_canned_llm),
+            patch(
+                "autoinfo.output._get_domain_source_configs",
+                lambda domain: _active_source_configs(),
+            ),
+        ):
+>           result = generate_digest(domain="tech-ai-developer", period="weekly")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_source_drift_filter.py:327: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181106151440'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: AI funding round 1: model infer...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function _canned_llm at 0x7f7e9816cb40>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: _canned_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+________ TestDigestDriftFilter.test_digest_generic_platform_entry_kept _________
+
+self = <tests.output.test_source_drift_filter.TestDigestDriftFilter object at 0x7f7e982be520>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e984df620>
+
+    def test_digest_generic_platform_entry_kept(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A pre-#323 entry with generic ``source_platform='rss'`` whose host
+        matches a configured source is NOT dropped."""
+        _freeze_datetime(monkeypatch)
+        entries = [_entry(i) for i in range(1, 5)] + [_generic_platform_entry(1)]
+        with (
+            patch("autoinfo.output.KBStore", return_value=_store(entries)),
+            patch("autoinfo.output._call_llm_for_digest", side_effect=_canned_llm),
+            patch(
+                "autoinfo.output._get_domain_source_configs",
+                lambda domain: _active_source_configs(),
+            ),
+        ):
+>           result = generate_digest(domain="tech-ai-developer", period="weekly")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_source_drift_filter.py:344: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365122656'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: AI funding round 1: model infer...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function _canned_llm at 0x7f7e9816cb40>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: _canned_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+________ TestDigestDriftFilter.test_digest_fail_open_unreadable_config _________
+
+self = <tests.output.test_source_drift_filter.TestDigestDriftFilter object at 0x7f7e982be650>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e9855b2a0>
+
+    def test_digest_fail_open_unreadable_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """FAIL-OPEN: an unreadable config (→ ``[]`` from
+        ``_get_domain_source_configs``) excludes NOTHING — even a drifted
+        entry survives."""
+        _freeze_datetime(monkeypatch)
+        entries = [_entry(i) for i in range(1, 6)] + [_entry(9, drifted=True)]
+        with (
+            patch("autoinfo.output.KBStore", return_value=_store(entries)),
+            patch("autoinfo.output._call_llm_for_digest", side_effect=_canned_llm),
+            patch("autoinfo.output._get_domain_source_configs", lambda domain: []),
+        ):
+>           result = generate_digest(domain="tech-ai-developer", period="weekly")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/output/test_source_drift_filter.py:359: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/autoinfo/output/__init__.py:3156: in generate_digest
+    llm_synthesis = _call_llm_for_digest(
+/usr/lib/python3.14/unittest/mock.py:1176: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/unittest/mock.py:1180: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='_call_llm_for_digest' id='140181365127696'>
+args = ('Synthesize the following knowledge base entries into a digest.\n\nEntry 1:\n  Title: AI funding round 1: model infer...om the KB Entries list above — do not alter, re-slug, or invent the URL.\nReturn all fields in a single JSON object.',)
+kwargs = {'config': None, 'max_synthesis_attempts': 2, 'retry_backoff_seconds': 0.0}
+effect = <function _canned_llm at 0x7f7e9816cb40>
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+>               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: _canned_llm() got an unexpected keyword argument 'max_synthesis_attempts'
+
+/usr/lib/python3.14/unittest/mock.py:1247: TypeError
+_______________________ test_doc_inventory_check_passes ________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e98c4e6d0>
+capsys = <_pytest.capture.CaptureFixture object at 0x7f7e767925d0>
+
+    def test_doc_inventory_check_passes(
+        monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--check must exit 0 and AGENTS.md must be pointer-only.
+    
+        Covers the whole gate: the real ``--check`` subprocess stays green, a
+        pointer-only AGENTS.md is *skipped* (not failed) for every fact, and an
+        AGENTS.md that carries a wrong number still trips MISMATCH (regression gate).
+    
+        The pointer-only scenarios are exercised in-process (``run_check``) rather
+        than as extra collected test items: a new ``test_`` function would bump the
+        pytest-collected count, which the exact-count gate compares against README
+        (out of scope here — see issue #529).
+        """
+        assert SCRIPT.exists(), f"Missing: {SCRIPT}"
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "--check"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+>       assert proc.returncode == 0, (
+            f"doc_inventory.py --check failed (exit {proc.returncode})\n"
+            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        )
+E       AssertionError: doc_inventory.py --check failed (exit 1)
+E         stdout:
+E         doc_inventory --check
+E           MCP tool count: README.md=149, AGENTS.md=not carried (pointer-only) -> skip
+E           MCP categories: README.md=35, AGENTS.md=not carried (pointer-only) -> skip
+E           CLI command groups: README.md=31, AGENTS.md=not carried (pointer-only) -> skip
+E           Delivery channels: README.md=13, AGENTS.md=not carried (pointer-only) -> skip
+E           Validation scenarios: README.md=182, AGENTS.md=not carried (pointer-only) -> skip
+E           Demo domains: README.md=21, AGENTS.md=not carried (pointer-only) -> skip
+E           LLM-required tools: README.md=16, AGENTS.md=not carried (pointer-only) -> skip
+E           Test count: README.md=6603, AGENTS.md=not carried (pointer-only) -> skip
+E           SKILL.md MCP tool count: README.md=149, SKILL.md=149 -> match
+E           SKILL.md CLI command groups: README.md=31, SKILL.md=31 -> match
+E           SKILL.md Delivery channels: README.md=13, SKILL.md=13 -> match
+E           SKILL.md Validation scenarios: README.md=182, SKILL.md=182 -> match
+E           SKILL.md Demo domains: README.md=21, SKILL.md=21 -> match
+E           SKILL.md LLM-required tools: README.md=16, SKILL.md=16 -> match
+E           SKILL.md Test count: README.md=6603, SKILL.md=6603 -> match
+E           Validation scenarios on disk: 182 yaml files vs README.md=182 -> match
+E           Live MCP tools (_full_tool_list): 149
+E           README MCP table completeness: all 149 declared tools enumerated (156 entries) -> match
+E           README MCP category rows: 35 vs declared 35 -> match
+E           server.py docstring counts: 149 tools / 35 categories -> match
+E           Pytest collected: 6607 vs README.md=6603 -> MISMATCH
+E           Stray test_bug_* files in tests/: none -> ok
+E           Living doc docs/dev/validation-scenario-contract.md: counts match -> ok
+E           Living doc docs/dev/acceptance-framework.md: counts match -> ok
+E           Living doc docs/dev/director-user-guide.md: counts match -> ok
+E           Living doc docs/dev/mcp-usage-examples.md: counts match -> ok
+E           Living doc docs/dev/specs/expectations.md: counts match -> ok
+E           Living doc docs/dev/specs/end-user-matrix.yaml: counts match -> ok
+E           Living doc docs/skills/autoinfo-skill/SKILL.md: counts match -> ok
+E           Living doc .opencode/skills/validation-runner-skill/SKILL.md: counts match -> ok
+E           Living doc .opencode/skills/deep-modules-skill/SKILL.md: counts match -> ok
+E           docs/dev/doc-inventory.md: content differs from a fresh scan -> FAIL
+E         
+E         check FAILED (2 issue(s)):
+E           - pytest collected count drift: README.md=6603 vs actual 6607
+E           - docs/dev/doc-inventory.md is stale: not byte-identical to a fresh `scripts/doc_inventory.py` run (a doc was added, edited or removed without regenerating) — regenerate with python3 scripts/doc_inventory.py
+E         
+E         stderr:
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/mnt/d/贯维/AutoInfo/.venv/bin/python', '/mnt/d/贯维/AutoInfo/scripts/doc_inventory.py', '--check'...oc was added, edited or removed without regenerating) — regenerate with python3 scripts/doc_inventory.py\n', stderr='').returncode
+
+tests/validation/test_doc_inventory_check.py:51: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /mnt/d/贯维/AutoInfo/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/collectors/test_web_handler.py::TestWebHandlerErrors::test_extract_returns_none_for_empty_html
+  /mnt/d/贯维/AutoInfo/.venv/lib/python3.14/site-packages/tld/utils.py:209: DeprecationWarning: codecs.open() is deprecated. Use open() instead.
+    local_file = codecs_open(local_path, "r", encoding="utf8")
+
+tests/mcp/test_validation_tools.py::TestRunScenarioFakeDispatch::test_llm_assert_judge_error_fails
+  /usr/lib/python3.14/asyncio/base_events.py:2042: RuntimeWarning: coroutine 'TestRunScenarioFakeDispatch.test_llm_assert_judge_error_fails.<locals>.broken_judge' was never awaited
+    handle = self._ready.popleft()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/delivery/test_v1_5_delivery.py::TestProductTemplate::test_backward_compatible_digest
+FAILED tests/delivery/test_v1_5_delivery.py::TestDigestDeliveryGates::test_backward_compat_no_config_returns_str
+FAILED tests/delivery/test_v1_5_delivery.py::TestDigestDeliveryGates::test_raw_skips_all_delivery_gates
+FAILED tests/delivery/test_v1_5_delivery.py::TestDigestDeliveryGates::test_gate_results_in_delivery_metadata
+FAILED tests/output/test_entry_filters_boundary.py::TestDigestEntryFiltersBoundary::test_digest_keeps_only_filtered_entries_in_prompt_and_body
+FAILED tests/output/test_entry_filters_boundary.py::TestDigestEntryFiltersBoundary::test_explicit_language_param_wins_over_config_default
+FAILED tests/output/test_entry_filters_boundary.py::TestGoldenDigest::test_digest_byte_identical_to_golden
+FAILED tests/output/test_low_value_refs.py::TestSynthesisPromptLowValueFilter::test_synthesis_candidates_exclude_obituary
+FAILED tests/output/test_low_value_refs.py::TestSynthesisPromptLowValueFilter::test_synthesis_keeps_obituary_at_tail_when_few_entries
+FAILED tests/output/test_low_value_refs.py::TestSynthesisPromptLowValueFilter::test_lang_learning_synthesis_demotes_obituary_to_tail
+FAILED tests/output/test_product_synthesis.py::TestDigestProductFieldsFlow::test_digest_premium_briefing_surfaces_aligned_fields
+FAILED tests/output/test_product_synthesis.py::TestDigestProductFieldsFlow::test_digest_enterprise_briefing_surfaces_key_metrics
+FAILED tests/output/test_product_synthesis.py::TestDigestProductFieldsFlow::test_digest_default_family_does_not_request_product_fields
+FAILED tests/output/test_shared_story_set.py::TestDigestByteIdentical::test_digest_all_active_byte_identical_to_golden
+FAILED tests/output/test_shared_story_set.py::TestDigestByteIdentical::test_digest_with_drifted_source_still_byte_identical_to_golden
+FAILED tests/output/test_shared_story_set.py::TestDigestPresentationCoherence::test_source_host_overlap_between_digest_and_presentation
+FAILED tests/output/test_source_drift_filter.py::TestDigestDriftFilter::test_digest_excludes_drifted_entries
+FAILED tests/output/test_source_drift_filter.py::TestDigestDriftFilter::test_digest_all_active_byte_identical_to_golden
+FAILED tests/output/test_source_drift_filter.py::TestDigestDriftFilter::test_digest_generic_platform_entry_kept
+FAILED tests/output/test_source_drift_filter.py::TestDigestDriftFilter::test_digest_fail_open_unreadable_config
+FAILED tests/validation/test_doc_inventory_check.py::test_doc_inventory_check_passes
+21 failed, 6537 passed, 49 skipped, 3 warnings in 2381.83s (0:39:41)
+exit 1

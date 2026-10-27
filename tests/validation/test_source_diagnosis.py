@@ -18,6 +18,10 @@ SCRIPT = ROOT / "scripts" / "source_diagnosis.py"
 SPEC = ROOT / "docs" / "dev" / "specs" / "end-user-matrix.yaml"
 CONFIG_ROOT = ROOT / "src" / "autoinfo" / "data" / "domains"
 COLLECTIONS = ROOT / "collections"
+# The collection cache is runtime state (gitignored): CI checks out no
+# collections/, so the exact bucket counts cannot be reproduced there. The
+# structural assertions still run; only the bucket-exact ones skip.
+COLLECTIONS_PRESENT = COLLECTIONS.exists()
 
 _SPEC_IMPORT = importlib.util.spec_from_file_location("source_diagnosis", SCRIPT)
 assert _SPEC_IMPORT is not None and _SPEC_IMPORT.loader is not None
@@ -64,6 +68,10 @@ def test_row_parity_is_exactly_the_78_required_pairs(rows, required):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not COLLECTIONS_PRESENT,
+    reason="exact buckets need the runtime collection cache (gitignored)",
+)
 def test_bucket_counts_on_current_tree(rows):
     counts = sd.bucket_counts(rows)
     assert counts == {
@@ -173,11 +181,17 @@ def _published_rows() -> list[list[str]]:
 
 def test_published_doc_matches_classifier(rows):
     published = _published_rows()
-    expected = [[r["domain"], r["source"], r["bucket"], r["recommendation"]] for r in rows]
     assert len(published) == 78
+    if not COLLECTIONS_PRESENT:
+        pytest.skip("exact buckets need the runtime collection cache (gitignored)")
+    expected = [[r["domain"], r["source"], r["bucket"], r["recommendation"]] for r in rows]
     assert [[c[0], c[1], c[8], c[10]] for c in published] == expected
 
 
+@pytest.mark.skipif(
+    not COLLECTIONS_PRESENT,
+    reason="deferred rows need the runtime collection cache (gitignored)",
+)
 def test_every_deferred_row_states_a_stable_domain(rows):
     deferred = [r for r in rows if r["recommendation"] == "deferred"]
     assert deferred, "expected at least one deferred row on the current tree"

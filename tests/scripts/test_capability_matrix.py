@@ -328,3 +328,13 @@ def test_stale_sources_is_an_honest_block_not_a_failure() -> None:
     assert cm._is_stale_source_error(exc) is True
     assert "blocked-stale-sources" in cm.HONEST_BLOCKS
     assert cm._is_stale_source_error(RuntimeError("template exploded")) is False
+
+
+def test_repo_relative_keeps_published_paths_portable() -> None:
+    """Published artifact paths must not carry the local checkout prefix."""
+
+    inside = cm.ROOT / "outputs" / "capability-matrix" / "x.md"
+    assert cm.repo_relative(inside) == "outputs/capability-matrix/x.md"
+
+    outside = Path("/tmp/elsewhere/x.md")
+    assert cm.repo_relative(outside) == "/tmp/elsewhere/x.md"

@@ -460,6 +460,20 @@ def _load_l2_checker() -> Any | None:
     return module
 
 
+def repo_relative(path: Path) -> str:
+    """Render *path* relative to the repo root when it lives inside it.
+
+    Artifact paths are published into ``docs/`` (``matrix.json`` / ``matrix.md``),
+    and the drift guard bans absolute workspace paths in tracked docs, so the
+    recorded form must be portable. Paths outside the repo keep their absolute
+    form rather than being silently rewritten.
+    """
+    try:
+        return path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def check_l2(artifact_path: Path) -> dict[str, Any] | None:
     """Run the L2 structural checker; ``None`` means the checker is unavailable."""
     module = _load_l2_checker()
@@ -755,7 +769,7 @@ def generate_cell(
             "blocked-no-l2-checker",
             _detail_parts(
                 [
-                    f"artifact={artifact}; bytes={size}",
+                    f"artifact={repo_relative(artifact)}; bytes={size}",
                     "format_structure module unavailable",
                     detail,
                 ]
@@ -773,7 +787,7 @@ def generate_cell(
     l2_detail = "l2=pass" if l2_passed else f"l2=fail({', '.join(failing) or 'unknown'})"
     row.update(
         {
-            "artifact": str(artifact),
+            "artifact": repo_relative(artifact),
             "reached": verdict.reached,
             "l1": verdict.l1,
             "l2": verdict.l2,
@@ -802,11 +816,14 @@ def reevaluate_cell(row: dict[str, Any], *, keyed: str) -> dict[str, Any]:
         return updated
 
     artifact = Path(artifact_value)
+    if not artifact.is_absolute():
+        artifact = ROOT / artifact
+    updated["artifact"] = repo_relative(artifact)
     exists = artifact.is_file()
     size = artifact.stat().st_size if exists else 0
 
     l1_pass = exists and size > 0
-    l1_detail = f"assert_only; artifact={artifact}; bytes={size}"
+    l1_detail = f"assert_only; artifact={repo_relative(artifact)}; bytes={size}"
     if l1_pass and updated.get("format") in TEXT_FORMATS:
         from autoinfo.output import is_no_data_product
 
@@ -1034,6 +1051,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     raw_argv = argv if argv is not None else sys.argv[1:]
     command = shlex.join([sys.executable, str(Path(__file__).resolve()), *raw_argv])
+    # The command and spec are republished into docs/, where absolute workspace
+    # paths are banned; strip the checkout prefix so the record stays portable.
+    command = command.replace(str(ROOT.resolve()) + "/", "").replace(str(ROOT) + "/", "")
 
     spec_path = Path(args.spec)
     try:
@@ -1151,7 +1171,7 @@ def main(argv: list[str] | None = None) -> int:
     meta = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "command": command,
-        "spec": str(spec_path),
+        "spec": repo_relative(spec_path),
         "domains": domains,
         "keyed": keyed,
         "only": only,

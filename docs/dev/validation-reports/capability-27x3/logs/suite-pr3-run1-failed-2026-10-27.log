@@ -1,3 +1,5 @@
+# Paths in this capture are repo-relative. Absolute machine paths were
+# stripped when it was published; nothing else was changed.
 $ .venv/bin/python -m pytest -q --timeout=600
 # branch: feat/capability-matrix-27x3 at d824016c
 # captured: 2026-10-27T18:44:52+08:00
@@ -651,7 +653,7 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e751f9780>
 >       result = generate_digest(domain="test", period="daily", format="markdown")
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-/mnt/d/贯维/AutoInfo/tests/delivery/test_v1_5_delivery.py:448: 
+tests/delivery/test_v1_5_delivery.py:448: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
 domain = 'test', period = 'daily', format = 'markdown', llm_config = None
@@ -1126,7 +1128,7 @@ language = '', ref_limit = None
             )
 E           TypeError: TestDigestDeliveryGates.test_backward_compat_no_config_returns_str.<locals>.<lambda>() got an unexpected keyword argument 'max_synthesis_attempts'
 
-/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: TypeError
+src/autoinfo/output/__init__.py:3156: TypeError
 ------------------------------ Captured log call -------------------------------
 WARNING  autoinfo.output:__init__.py:1274 promote_eligible: could not list 02-Draft for 'test': '_MockStore' object has no attribute 'list_kb_tier'
 __________ TestDigestDeliveryGates.test_raw_skips_all_delivery_gates ___________
@@ -1173,7 +1175,7 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e751f9470>
             delivery_gate_configs=configs,
         )
 
-/mnt/d/贯维/AutoInfo/tests/delivery/test_v1_5_delivery.py:535: 
+tests/delivery/test_v1_5_delivery.py:535: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
 domain = 'test', period = 'daily', format = 'markdown', llm_config = None
@@ -1648,7 +1650,7 @@ user_id = '', max_items = 0, domains = None, language = '', ref_limit = None
             )
 E           TypeError: TestDigestDeliveryGates.test_raw_skips_all_delivery_gates.<locals>.<lambda>() got an unexpected keyword argument 'max_synthesis_attempts'
 
-/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: TypeError
+src/autoinfo/output/__init__.py:3156: TypeError
 ------------------------------ Captured log call -------------------------------
 WARNING  autoinfo.output:__init__.py:1274 promote_eligible: could not list 02-Draft for 'test': '_MockStore' object has no attribute 'list_kb_tier'
 ________ TestDigestDeliveryGates.test_gate_results_in_delivery_metadata ________
@@ -1693,7 +1695,7 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e77b51ef0>
             delivery_gate_configs=configs,
         )
 
-/mnt/d/贯维/AutoInfo/tests/delivery/test_v1_5_delivery.py:577: 
+tests/delivery/test_v1_5_delivery.py:577: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
 domain = 'test', period = 'daily', format = 'markdown', llm_config = None
@@ -2168,7 +2170,7 @@ user_id = '', max_items = 0, domains = None, language = '', ref_limit = None
             )
 E           TypeError: TestDigestDeliveryGates.test_gate_results_in_delivery_metadata.<locals>.<lambda>() got an unexpected keyword argument 'max_synthesis_attempts'
 
-/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: TypeError
+src/autoinfo/output/__init__.py:3156: TypeError
 ------------------------------ Captured log call -------------------------------
 WARNING  autoinfo.output:__init__.py:1274 promote_eligible: could not list 02-Draft for 'test': '_MockStore' object has no attribute 'list_kb_tier'
 _ TestDigestEntryFiltersBoundary.test_digest_keeps_only_filtered_entries_in_prompt_and_body _
@@ -2200,9 +2202,9 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e98651160>
 >           body = _as_text(generate_digest(domain=DOMAIN, period="weekly", format="markdown"))
                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-/mnt/d/贯维/AutoInfo/tests/output/test_entry_filters_boundary.py:342: 
+tests/output/test_entry_filters_boundary.py:342: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: in generate_digest
+src/autoinfo/output/__init__.py:3156: in generate_digest
     llm_synthesis = _call_llm_for_digest(
 /usr/lib/python3.14/unittest/mock.py:1176: in __call__
     return self._mock_call(*args, **kwargs)
@@ -2272,9 +2274,9 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e86fd34d0>
 >               generate_digest(domain=DOMAIN, period="weekly", format="markdown", language="zh")
             )
 
-/mnt/d/贯维/AutoInfo/tests/output/test_entry_filters_boundary.py:378: 
+tests/output/test_entry_filters_boundary.py:378: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: in generate_digest
+src/autoinfo/output/__init__.py:3156: in generate_digest
     llm_synthesis = _call_llm_for_digest(
 /usr/lib/python3.14/unittest/mock.py:1176: in __call__
     return self._mock_call(*args, **kwargs)
@@ -2329,9 +2331,9 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7e986532a0>
 >           body = generate_digest(domain=DOMAIN, period="weekly", format="markdown")
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-/mnt/d/贯维/AutoInfo/tests/output/test_entry_filters_boundary.py:719: 
+tests/output/test_entry_filters_boundary.py:719: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/mnt/d/贯维/AutoInfo/src/autoinfo/output/__init__.py:3156: in generate_digest
+src/autoinfo/output/__init__.py:3156: in generate_digest
     llm_synthesis = _call_llm_for_digest(
 /usr/lib/python3.14/unittest/mock.py:1176: in __call__
     return self._mock_call(*args, **kwargs)
@@ -3159,16 +3161,16 @@ E
 E         stderr:
 E         
 E       assert 1 == 0
-E        +  where 1 = CompletedProcess(args=['/mnt/d/贯维/AutoInfo/.venv/bin/python', '/mnt/d/贯维/AutoInfo/scripts/doc_inventory.py', '--check'...oc was added, edited or removed without regenerating) — regenerate with python3 scripts/doc_inventory.py\n', stderr='').returncode
+E        +  where 1 = CompletedProcess(args=['.venv/bin/python', 'scripts/doc_inventory.py', '--check'...oc was added, edited or removed without regenerating) — regenerate with python3 scripts/doc_inventory.py\n', stderr='').returncode
 
 tests/validation/test_doc_inventory_check.py:51: AssertionError
 =============================== warnings summary ===============================
 .venv/lib/python3.14/site-packages/fastapi/testclient.py:1
-  /mnt/d/贯维/AutoInfo/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  .venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
     from starlette.testclient import TestClient as TestClient  # noqa
 
 tests/collectors/test_web_handler.py::TestWebHandlerErrors::test_extract_returns_none_for_empty_html
-  /mnt/d/贯维/AutoInfo/.venv/lib/python3.14/site-packages/tld/utils.py:209: DeprecationWarning: codecs.open() is deprecated. Use open() instead.
+  .venv/lib/python3.14/site-packages/tld/utils.py:209: DeprecationWarning: codecs.open() is deprecated. Use open() instead.
     local_file = codecs_open(local_path, "r", encoding="utf8")
 
 tests/mcp/test_validation_tools.py::TestRunScenarioFakeDispatch::test_llm_assert_judge_error_fails

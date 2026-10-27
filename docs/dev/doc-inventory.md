@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 114 |
-| Total lines | 36830 |
-| Active files | 85 |
+| Total files | 122 |
+| Total lines | 37340 |
+| Active files | 93 |
 | Archived files | 29 |
 | Category — archive | 29 files / 8944 lines |
 | Category — known-limitations | 2 files / 350 lines |
@@ -23,8 +23,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — skills | 3 files / 785 lines |
 | Category — adr | 13 files / 775 lines |
 | Category — specs | 12 files / 9767 lines |
-| Category — validation-reports | 15 files / 3788 lines |
-| Category — docs/dev | 31 files / 11041 lines |
+| Category — validation-reports | 22 files / 4122 lines |
+| Category — docs/dev | 32 files / 11217 lines |
 | Category — docs/root | 5 files / 983 lines |
 
 ## Inventory
@@ -99,6 +99,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/plans/agent-oriented-gap-register.md` | 608 | docs/dev | active | plan |
 | `dev/required-api-keys.md` | 146 | docs/dev | active | — |
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
+| `dev/source-diagnosis.md` | 176 | docs/dev | active | — |
 | `dev/specs/data-models.md` | 779 | specs | active | — |
 | `dev/specs/delivery.md` | 1268 | specs | active | — |
 | `dev/specs/end-user-matrix.yaml` | 1926 | specs | active | — |
@@ -116,6 +117,13 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 96 | validation-reports | active | — |
 | `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 565 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/README.md` | 52 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/README.md` | 14 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/blockers-2026-10-27.md` | 39 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/collect-delta-2026-10-27.md` | 46 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/kb-purge-2026-10-27.md` | 58 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/runs/README.md` | 24 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/source-diagnosis.md` | 101 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-22-37.md` | 77 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-3.md` | 51 | validation-reports | active | — |

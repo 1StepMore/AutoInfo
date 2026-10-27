@@ -13,6 +13,12 @@ Usage::
 
     python scripts/cleanup_empty_kb_entries.py [--dry-run] [KNOWLEDGE_ROOT]
     python scripts/cleanup_empty_kb_entries.py --apply [KNOWLEDGE_ROOT]
+    python scripts/cleanup_empty_kb_entries.py --prune-missing [--apply] [KNOWLEDGE_ROOT]
+
+``--prune-missing`` removes ``entries`` rows whose ``file_path`` no longer
+exists. A row whose file is gone is index metadata, not a KB file, so pruning
+it is not a demotion — the 03-Wiki append-only guardrail protects files.
+``--dry-run`` (the default) reports per-domain counts without deleting.
 """
 
 from __future__ import annotations
@@ -24,7 +30,7 @@ from typing import Iterator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from autoinfo.kb import MIN_KB_CONTENT_CHARS  # noqa: E402
+from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore  # noqa: E402
 
 _EMPTY_TIERS = ("01-Raw", "02-Draft")
 _WIKI_MARKER = "03-Wiki"
@@ -74,6 +80,60 @@ def scan_empty_entries(knowledge_root: Path) -> list[Path]:
     return sorted(empty)
 
 
+_KB_TIERS = frozenset({"01-Raw", "02-Draft", "03-Wiki"})
+
+
+def _is_kb_file(file_path: str, knowledge_root: Path) -> bool:
+    """True when *file_path* sits at ``<root>/<domain>/<tier>/...``."""
+    try:
+        rel = Path(file_path).resolve().relative_to(Path(knowledge_root).resolve())
+    except ValueError:
+        return False
+    return len(rel.parts) >= 3 and rel.parts[1] in _KB_TIERS
+
+
+def prune_missing_index_rows(
+    knowledge_root: Path, *, apply: bool
+) -> tuple[dict[str, list[int]], int]:
+    """Delete ``entries`` rows that do not point at a live KB file.
+
+    Two kinds qualify. A row whose file is gone is simply stale. A row whose
+    file sits outside the four tiers (``_failed/`` quarantine, ``_archive/``)
+    is miscounted as a KB entry: keeping it makes a blocked item look like a
+    promotable Draft. That row loses its index entry only — the file stays.
+
+    Returns ``({domain: [missing, outside_tier]}, total)``.
+    """
+    store = KBStore(base_path=Path(knowledge_root))
+    with store.index._connect() as conn:
+        rows = conn.execute("SELECT entry_id, domain, file_path FROM entries").fetchall()
+
+    missing: list[tuple[str, str]] = []
+    outside: list[tuple[str, str]] = []
+    for row in rows:
+        entry_id, domain, file_path = row["entry_id"], row["domain"] or "", row["file_path"] or ""
+        if not (file_path and Path(file_path).is_file()):
+            missing.append((entry_id, domain))
+        elif not _is_kb_file(file_path, knowledge_root):
+            outside.append((entry_id, domain))
+
+    per_domain: dict[str, list[int]] = {}
+    for _, domain in missing + outside:
+        per_domain.setdefault(domain, [0, 0])
+    for _, domain in missing:
+        per_domain[domain][0] += 1
+    for _, domain in outside:
+        per_domain[domain][1] += 1
+
+    if apply:
+        for entry_id, _ in missing:
+            store.delete_entry(entry_id)
+        for entry_id, _ in outside:
+            store.index.delete_index_row(entry_id)
+
+    return per_domain, len(missing) + len(outside)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -99,9 +159,22 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="delete flagged entries",
     )
+    parser.add_argument(
+        "--prune-missing",
+        action="store_true",
+        help="prune index rows whose file no longer exists (dry-run unless --apply)",
+    )
     args = parser.parse_args(argv)
 
     root = Path(args.knowledge_root)
+    if args.prune_missing:
+        per_domain, total = prune_missing_index_rows(root, apply=args.apply)
+        for domain, (stale, untiered) in sorted(per_domain.items()):
+            total = stale + untiered
+            print(f"{domain or '(none)'}: {total} (stale {stale}, outside-tier {untiered})")
+        verb = "pruned" if args.apply else "flagged"
+        print(f"{total} dangling index rows {verb}")
+        return 0
     scanned = sum(1 for _ in _iter_entries(root))
     empty = scan_empty_entries(root)
 

@@ -1,0 +1,22 @@
+$ .venv/bin/python -m autoinfo.cli collect --domain ai-commercial --limit 20
+  ✓ techcrunch: 20 new / 20 found (3.2s)
+RSS fetch failed for https://news.crunchbase.com/feed/: Client error '403 Forbidden' for url 'https://news.crunchbase.com/feed/'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403
+  ✗ Crunchbase: 0 new / 0 found (2.2s)
+RSS fetch failed for https://lmarena.ai/feed/: [Errno 101] Network is unreachable
+  ✗ LMSYS: 0 new / 0 found (30.1s)
+  ✓ 36kr: 18 new / 20 found (1.1s)
+  ✓ producthunt: 20 new / 20 found (1.5s)
+Collection col-20261027T072520-5430ee44 for domain 'ai-commercial'
+
+  ✓ techcrunch: 20 new / 20 found (3.2s)
+  ✗ Crunchbase: 0 new / 0 found (2.2s)
+      ↳ RSS fetch failed for https://news.crunchbase.com/feed/: Client error '403 Forbidden' for url 'https://news.crunchbase.com/feed/'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403
+  ✗ LMSYS: 0 new / 0 found (30.1s)
+      ↳ RSS fetch failed for https://lmarena.ai/feed/: [Errno 101] Network is unreachable
+  ✓ 36kr: 18 new / 20 found (1.1s)
+  ✓ producthunt: 20 new / 20 found (1.5s)
+
+Total: 58 new items from 60 found in 41.6s
+exit 0

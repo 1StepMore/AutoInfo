@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.20.0](https://github.com/1StepMore/AutoInfo/compare/v1.19.0...v1.20.0) (2026-10-27)
+
+
+### Features
+
+* **validation:** verify 81 product-format cells with an evidence pack ([#642](https://github.com/1StepMore/AutoInfo/issues/642)) ([324a9ec](https://github.com/1StepMore/AutoInfo/commit/324a9ec618035f2268b16eb22f9726cf0b990366))
+
 ## [1.19.0](https://github.com/1StepMore/AutoInfo/compare/v1.18.1...v1.19.0) (2026-10-27)
 
 

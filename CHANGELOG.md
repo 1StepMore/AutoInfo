@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.18.1](https://github.com/1StepMore/AutoInfo/compare/v1.18.0...v1.18.1) (2026-10-27)
+
+
+### Miscellaneous Chores
+
+* **coverage:** make the coverage evidence baseline reproducible ([#638](https://github.com/1StepMore/AutoInfo/issues/638)) ([4a10284](https://github.com/1StepMore/AutoInfo/commit/4a10284b5e62d7c778639d7e912377881fe436c2))
+
 ## [1.18.0](https://github.com/1StepMore/AutoInfo/compare/v1.17.53...v1.18.0) (2026-10-26)
 
 

@@ -292,6 +292,100 @@ def test_parse_persisted_path():
     assert cm.parse_persisted_path("outputs/medical-research/README.md") is None
 
 
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        (
+            "outputs/ai-demo/digest-audio-20260916.mp3",
+            ("ai-demo", "digest", "audio"),
+        ),
+        (
+            "outputs/ai-demo/digest-audiobook-20260916.zip",
+            ("ai-demo", "digest", "audiobook"),
+        ),
+        (
+            "outputs/ai-demo/digest-epub-20260916.epub",
+            ("ai-demo", "digest", "epub"),
+        ),
+        (
+            "outputs/ai-demo/report-agent-20260916.json",
+            ("ai-demo", "report", "agent"),
+        ),
+        (
+            "outputs/ai-demo/report-audiobook-20260916.zip",
+            ("ai-demo", "report", "audiobook"),
+        ),
+        (
+            "outputs/ai-demo/report-epub-20260916.epub",
+            ("ai-demo", "report", "epub"),
+        ),
+        (
+            "outputs/ai-demo/report-html-20260916.html",
+            ("ai-demo", "report", "html"),
+        ),
+        (
+            "outputs/ai-demo/report-json-20260916.json",
+            ("ai-demo", "report", "json"),
+        ),
+        (
+            "outputs/ai-demo/report-markdown-20260916.md",
+            ("ai-demo", "report", "markdown"),
+        ),
+        (
+            "outputs/ai-demo/report-video-20260916.mp4",
+            ("ai-demo", "report", "video"),
+        ),
+        (
+            "outputs/medical-research/digest-audio-20260916.mp3",
+            ("medical-research", "digest", "audio"),
+        ),
+        (
+            "outputs/medical-research/digest-audiobook-20260916.zip",
+            ("medical-research", "digest", "audiobook"),
+        ),
+        (
+            "outputs/medical-research/digest-epub-20260916.epub",
+            ("medical-research", "digest", "epub"),
+        ),
+        (
+            "outputs/medical-research/report-agent-20260916.json",
+            ("medical-research", "report", "agent"),
+        ),
+        (
+            "outputs/medical-research/report-audiobook-20260916.zip",
+            ("medical-research", "report", "audiobook"),
+        ),
+        (
+            "outputs/medical-research/report-epub-20260916.epub",
+            ("medical-research", "report", "epub"),
+        ),
+        (
+            "outputs/medical-research/report-html-20260916.html",
+            ("medical-research", "report", "html"),
+        ),
+        (
+            "outputs/medical-research/report-json-20260916.json",
+            ("medical-research", "report", "json"),
+        ),
+        (
+            "outputs/medical-research/report-markdown-20260916.md",
+            ("medical-research", "report", "markdown"),
+        ),
+        (
+            "outputs/medical-research/report-video-20260916.mp4",
+            ("medical-research", "report", "video"),
+        ),
+    ],
+)
+def test_parse_persisted_path_accepts_date_only_stamp(path: str, expected: tuple) -> None:
+    """Date-only artifacts are real outputs, not malformed names.
+
+    These 20 paths were measured on the tree: the scanner reported 52
+    produced cells before the fix and 66 after (14 new distinct cells).
+    """
+    assert cm.parse_persisted_path(path) == expected
+
+
 def _write_manifest(path: Path, entries: list[dict]) -> None:
     path.write_text(
         json.dumps({"files": entries, "rejected": []}),

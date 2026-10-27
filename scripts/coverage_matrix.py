@@ -120,11 +120,15 @@ FORMAT_EXT = {
 # Persisted artifact filename: <product>-<format>-<YYYYmmdd-HHMMSS>.<ext>.
 # Product names may contain dashes (magazine-digest, premium-briefing, ...),
 # so the format token is anchored to the known format set.
-# Stamp variants: standard %Y%m%d-%H%M%S (persist path) and the
-# regenerate_paygrade.py literal "YYYYmmdd-paygrade" (issue #182 sweep).
+# Stamp variants accepted:
+#   * %Y%m%d-%H%M%S — the MCP persist path;
+#   * %Y%m%d-paygrade — the regenerate_paygrade.py literal (issue #182 sweep);
+#   * bare %Y%m%d — emitted by scripts/validation_delivery.py and older MCP
+#     runs. A date-only stamp is a real artifact, not a malformed name:
+#     rejecting it silently hid 20 real outputs from the coverage matrix.
 _PERSISTED_RE = re.compile(
     r"^(?P<product>.+?)-(?P<format>markdown|html|json|agent|audio|video|epub|audiobook)"
-    r"-\d{8}(?:-\d{6}|-paygrade)(?P<ext>\.md|\.json|\.html|\.mp3|\.mp4|\.epub|\.zip)$"
+    r"-\d{8}(?:-\d{6}|-paygrade)?(?P<ext>\.md|\.json|\.html|\.mp3|\.mp4|\.epub|\.zip)$"
 )
 
 Cell = tuple[str, str, str]  # (domain, product, format)

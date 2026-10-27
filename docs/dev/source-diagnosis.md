@@ -9,6 +9,29 @@ Regenerate:
 .venv/bin/python scripts/source_diagnosis.py --output docs/dev/validation-reports/capability-27x3/
 ```
 
+## Superseded command
+
+The delivery package (`pkg-AutoInfo/README.md`) instructs:
+
+```bash
+.venv/bin/python -m autoinfo.cli gap --domain <域> --json
+```
+
+That CLI group does not exist — `No such command 'gap'`. It is superseded by
+`scripts/source_diagnosis.py`, which covers the same 78 required pairs without a
+new CLI or MCP surface:
+
+```bash
+.venv/bin/python scripts/source_diagnosis.py \
+    --output docs/dev/validation-reports/capability-27x3/
+grep ',medical-research,' \
+    docs/dev/validation-reports/capability-27x3/source-diagnosis.csv
+```
+
+A new CLI group was rejected: it would change the 31-group count asserted by
+`scripts/doc_inventory.py`, and this classifier is a diagnosis tool for the
+validation pack, not a product capability.
+
 ## Bucket summary
 
 | bucket | rows | meaning |

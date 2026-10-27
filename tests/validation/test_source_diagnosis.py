@@ -156,3 +156,30 @@ def test_render_markdown_carries_plan_columns(rows):
     ):
         assert column in header
     assert text.count("\n| ") >= len(rows)
+
+
+DOC = ROOT / "docs" / "dev" / "source-diagnosis.md"
+
+
+def _published_rows() -> list[list[str]]:
+    section = DOC.read_text().split("## Full table", 1)[1]
+    parsed: list[list[str]] = []
+    for line in section.splitlines():
+        if not line.startswith("| ") or line.startswith("| domain "):
+            continue
+        parsed.append([cell.strip() for cell in line.strip().strip("|").split(" | ")])
+    return parsed
+
+
+def test_published_doc_matches_classifier(rows):
+    published = _published_rows()
+    expected = [[r["domain"], r["source"], r["bucket"], r["recommendation"]] for r in rows]
+    assert len(published) == 78
+    assert [[c[0], c[1], c[8], c[10]] for c in published] == expected
+
+
+def test_every_deferred_row_states_a_stable_domain(rows):
+    deferred = [r for r in rows if r["recommendation"] == "deferred"]
+    assert deferred, "expected at least one deferred row on the current tree"
+    for row in deferred:
+        assert int(row["domain_stable_sources"]) >= 2

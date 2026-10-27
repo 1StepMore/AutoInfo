@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.19.0](https://github.com/1StepMore/AutoInfo/compare/v1.18.1...v1.19.0) (2026-10-27)
+
+
+### Features
+
+* **coverage:** diagnose sources per row and align the KB index with the tree ([#640](https://github.com/1StepMore/AutoInfo/issues/640)) ([2d040ba](https://github.com/1StepMore/AutoInfo/commit/2d040bacf8b3ed02b316d6cf9bcccb82cbb7cf3e))
+
 ## [1.18.1](https://github.com/1StepMore/AutoInfo/compare/v1.18.0...v1.18.1) (2026-10-27)
 
 

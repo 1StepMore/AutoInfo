@@ -125,7 +125,7 @@ steps:
       # Canned digest synthesis carries ALL THREE D1 sections so the digest path
       # never falls through to _deterministic_synthesis_fallback (which would
       # rebuild the content from the entries and defeat the fixture assertions).
-      def canned_digest(prompt, config=None):
+      def canned_digest(prompt, config=None, **_kwargs):
           return {
               "executive_summary": (
                   "This week\u2019s developments center on falling model "

@@ -2713,7 +2713,6 @@ def generate_digest(
     language: str = "",
     ref_limit: int | None = None,
     *,
-    disable_llm: bool = False,
     max_synthesis_attempts: int = 2,
     retry_backoff_seconds: float = 0.0,
 ) -> str | DeliveryOutput:
@@ -3132,7 +3131,7 @@ def generate_digest(
     # below (issue #145).  Initialised here so context_entries below never
     # hits an unbound local when *entries* is empty.
     synthesis_entries: list[dict[str, Any]] = entries
-    if entries and not disable_llm:
+    if entries:
         # Issue #46: prune the LLM-synthesis candidate list the same way #42
         # prunes References — low-value promo/obituary/celebrity entries must
         # not reach the Executive Summary's leading enumeration.  Clean
@@ -3446,7 +3445,6 @@ def generate_report(
     language: str = "",
     ref_limit: int | None = None,
     *,
-    disable_llm: bool = False,
     max_synthesis_attempts: int = _RETRY_MAX_ATTEMPTS,
     retry_backoff_seconds: float = _RETRY_BACKOFF_SECONDS,
 ) -> str | DeliveryOutput:
@@ -3808,16 +3806,13 @@ def generate_report(
 
     # -- Thematic grouping via LLM ----------------------------------------
     _reset_grouping_degraded()
-    if disable_llm:
-        groupings: list[Any] = []
-    else:
-        extractor = LLMExtractor()
-        groupings = _group_by_theme(
-            extractor,
-            entries,
-            domain=domain,
-            domains=report_domains if is_cross_domain else None,
-        )
+    extractor = LLMExtractor()
+    groupings = _group_by_theme(
+        extractor,
+        entries,
+        domain=domain,
+        domains=report_domains if is_cross_domain else None,
+    )
 
     # -- Inject report-type prompt into custom instructions ------------------
     effective_instructions = custom_instructions
@@ -3842,20 +3837,16 @@ def generate_report(
         if product_template is not None
         else ("column" if report_type == "column" else "report")
     )
-    summary_result = (
-        {}
-        if disable_llm
-        else _generate_executive_summary(
-            extractor,
-            entries,
-            groupings,
-            effective_instructions,
-            target_audience=target_audience,
-            domains=report_domains if is_cross_domain else None,
-            product_family=report_family,
-            max_synthesis_attempts=max_synthesis_attempts,
-            retry_backoff_seconds=retry_backoff_seconds,
-        )
+    summary_result = _generate_executive_summary(
+        extractor,
+        entries,
+        groupings,
+        effective_instructions,
+        target_audience=target_audience,
+        domains=report_domains if is_cross_domain else None,
+        product_family=report_family,
+        max_synthesis_attempts=max_synthesis_attempts,
+        retry_backoff_seconds=retry_backoff_seconds,
     )
     # The synthesis returns a dict of ``{executive_summary, key_findings,
     # recommendations}`` (plus the §2.4 product fields for product template

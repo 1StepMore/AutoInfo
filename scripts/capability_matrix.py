@@ -84,6 +84,8 @@ HONEST_BLOCKS = frozenset(
         "blocked-no-tts-engine",
         "blocked-no-topic",
         "blocked-no-l2-checker",
+        "blocked-no-browser",
+        "blocked-stale-sources",
     }
 )
 
@@ -157,7 +159,6 @@ class RouteContext:
     product: str
     topic: str = ""
     template: Any = None
-    disable_llm: bool = False
     max_synthesis_attempts: int | None = None
     retry_backoff_seconds: float | None = None
 
@@ -199,8 +200,6 @@ def _digest_route(needs_template: bool) -> Route:
         }
         if needs_template:
             kwargs["product_template"] = _require_template(ctx)
-        if ctx.disable_llm:
-            kwargs["disable_llm"] = True
         if ctx.max_synthesis_attempts is not None:
             kwargs["max_synthesis_attempts"] = ctx.max_synthesis_attempts
         if ctx.retry_backoff_seconds is not None:
@@ -221,8 +220,6 @@ def _report_route(needs_template: bool) -> Route:
         }
         if needs_template:
             kwargs["product_template"] = _require_template(ctx)
-        if ctx.disable_llm:
-            kwargs["disable_llm"] = True
         if ctx.max_synthesis_attempts is not None:
             kwargs["max_synthesis_attempts"] = ctx.max_synthesis_attempts
         if ctx.retry_backoff_seconds is not None:
@@ -379,6 +376,39 @@ def _is_auth_error(exc: BaseException) -> bool:
         pass
     text = str(exc).lower()
     return "401" in text or "unauthorized" in text or "authentication" in text
+
+
+def _is_missing_browser_error(exc: BaseException) -> bool:
+    """True when the video renderer failed because no browser is installed.
+
+    HyperFrames renders through a headless Chrome; on a host without one the
+    failure is an absent environment prerequisite, exactly like a missing TTS
+    engine, not a product defect.  Keep the raw error in the row detail — the
+    classification only decides whether the row counts as an honest block.
+    """
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "chrome cannot launch",
+            "could not find chrome",
+            "no executable browser",
+            "browser was not found",
+        )
+    )
+
+
+def _is_stale_source_error(exc: BaseException) -> bool:
+    """True when the generator refused because every candidate is stale.
+
+    This is the freshness gate doing its job (#525's sibling): the product
+    refuses to emit an empty shell rather than shipping old content.  The KB
+    stays stale because processing new raw items is itself blocked, so the row
+    is an honest block, and the cause chain belongs in the evidence pack.
+    """
+    if type(exc).__name__ == "StaleSourceError":
+        return True
+    return "are stale" in str(exc).lower()
 
 
 def _is_transient_error(exc: BaseException) -> bool:
@@ -644,7 +674,6 @@ def generate_cell(
         product=combo.product,
         topic=topic,
         template=template,
-        disable_llm=no_llm,
         max_synthesis_attempts=max_synthesis_attempts,
         retry_backoff_seconds=retry_backoff_seconds,
     )
@@ -654,6 +683,10 @@ def generate_cell(
     except Exception as exc:  # noqa: BLE001 - classified below, never swallowed
         if _is_tts_error(exc, combo.format):
             reason = "blocked-no-tts-engine"
+        elif _is_missing_browser_error(exc):
+            reason = "blocked-no-browser"
+        elif _is_stale_source_error(exc):
+            reason = "blocked-stale-sources"
         elif _is_auth_error(exc):
             reason = "blocked-no-llm-key"
         else:

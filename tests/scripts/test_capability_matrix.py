@@ -282,7 +282,6 @@ def test_no_key_non_gated_cell_collapses_retry_budget(
         llm_available=False,
     )
 
-    assert seen[0].disable_llm is True
     assert seen[0].max_synthesis_attempts == 1
     assert seen[0].retry_backoff_seconds == 0.0
 
@@ -306,6 +305,26 @@ def test_explicit_llm_flags_override_no_key_defaults(
         llm_backoff=2.0,
     )
 
-    assert seen[0].disable_llm is True
     assert seen[0].max_synthesis_attempts == 5
     assert seen[0].retry_backoff_seconds == 2.0
+
+
+def test_missing_browser_is_an_honest_block_not_a_failure() -> None:
+    exc = RuntimeError("HyperFrames render failed: Chrome cannot launch in this sandbox")
+
+    assert cm._is_missing_browser_error(exc) is True
+    assert "blocked-no-browser" in cm.HONEST_BLOCKS
+    assert cm._is_missing_browser_error(RuntimeError("template render exploded")) is False
+
+
+def test_stale_sources_is_an_honest_block_not_a_failure() -> None:
+    """The digest freshness gate refusing stale entries is correct behaviour."""
+
+    class StaleSourceError(RuntimeError):
+        pass
+
+    exc = StaleSourceError("All candidate entries for domain 'x' are stale")
+
+    assert cm._is_stale_source_error(exc) is True
+    assert "blocked-stale-sources" in cm.HONEST_BLOCKS
+    assert cm._is_stale_source_error(RuntimeError("template exploded")) is False

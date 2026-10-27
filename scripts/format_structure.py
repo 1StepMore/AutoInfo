@@ -178,15 +178,17 @@ def check_audio(path: Path) -> dict[str, dict[str, Any]]:
     checks["size"] = _check(
         size > MIN_AV_SIZE, f"size={size} bytes (need > {MIN_AV_SIZE})"
     )
+    has_id3 = False
     try:
         with path.open("rb") as handle:
             magic = handle.read(3)
     except OSError as exc:
         checks["magic"] = _check(False, str(exc))
     else:
+        has_id3 = magic.startswith(b"ID3")
         is_frame_sync = len(magic) >= 2 and magic[0] == 0xFF and magic[1] & 0xE0 == 0xE0
         checks["magic"] = _check(
-            magic.startswith(b"ID3") or is_frame_sync,
+            has_id3 or is_frame_sync,
             f"first bytes={magic.hex()} (need ID3 or MPEG frame sync)",
         )
 
@@ -198,7 +200,7 @@ def check_audio(path: Path) -> dict[str, dict[str, Any]]:
         except (OSError, ValueError) as exc:
             checks["parse"] = _check(False, f"mutagen rejected the file: {exc}")
         else:
-            checks.update(_audio_checks(audio, require_id3=path.suffix.lower() == ".mp3"))
+            checks.update(_audio_checks(audio, require_id3=has_id3))
 
     probe, error = _run_ffprobe(path)
     if probe is None:

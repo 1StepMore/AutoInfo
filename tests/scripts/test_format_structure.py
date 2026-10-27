@@ -220,6 +220,28 @@ def test_negative_agent_without_type(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert "@type" in _details(result)
 
 
+def test_framesync_mp3_without_id3_is_accepted(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The plan accepts an MPEG frame sync in place of an ID3 header (bullet 7).
+
+    The audio pipeline's own output starts with a frame sync when it has no
+    metadata to write, so requiring an ID3 tag unconditionally would fail the
+    real artifact while the format itself is perfectly valid.
+    """
+    if fs.mutagen is None:
+        pytest.skip("mutagen not installed")
+    if shutil.which("ffprobe") is None:
+        pytest.skip("ffprobe not installed")
+    path = tmp_path / "framesync.mp3"
+    path.write_bytes(_mp3_seconds(6.0))
+    exit_code, result = _run_json(capsys, path)
+    assert exit_code == 0, _details(result)
+    assert result["passed"] is True
+    assert result["checks"]["magic"]["passed"] is True
+    assert "id3_tag" not in result["checks"]
+
+
 def test_negative_audio_under_one_second(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

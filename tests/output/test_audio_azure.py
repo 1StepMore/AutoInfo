@@ -14,6 +14,8 @@ from autoinfo.output import _render_audio
 from autoinfo.output import audio as audio_module
 from autoinfo.output.audio import (
     AZURE_TTS_OUTPUT_FORMAT,
+    AZURE_TTS_SSML_NS,
+    AZURE_TTS_USER_AGENT,
     DEFAULT_AZURE_TTS_VOICE,
     _render_audio_azure,
 )
@@ -48,10 +50,14 @@ class TestRenderAudioAzureDirect:
         assert headers["Ocp-Apim-Subscription-Key"] == "azure-test-key"
         assert headers["Content-Type"] == "application/ssml+xml"
         assert headers["X-Microsoft-OutputFormat"] == AZURE_TTS_OUTPUT_FORMAT
+        assert headers["User-Agent"] == AZURE_TTS_USER_AGENT
+        assert len(headers["User-Agent"]) < 255
         assert call.kwargs["timeout"] == 120.0
 
         ssml = call.kwargs["content"].decode("utf-8")
-        assert ssml.startswith("<speak version='1.0' xml:lang='zh-CN'>")
+        assert ssml.startswith(
+            f"<speak version='1.0' xmlns='{AZURE_TTS_SSML_NS}' xml:lang='zh-CN'>"
+        )
         assert f"<voice name='{DEFAULT_AZURE_TTS_VOICE}'>Hello Azure</voice>" in ssml
         assert ssml.endswith("</speak>")
 

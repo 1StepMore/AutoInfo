@@ -45,6 +45,10 @@ DEFAULT_LOCAL_TTS_VOICE = "en-US-JennyNeural"
 # Default Azure Speech voice and output format (issue #647).
 DEFAULT_AZURE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
 AZURE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3"
+# Required by the Azure Speech REST contract: User-Agent (< 255 chars) and
+# the SSML 1.0 namespace on <speak>.
+AZURE_TTS_USER_AGENT = "AutoInfo-TTS/1.0"
+AZURE_TTS_SSML_NS = "http://www.w3.org/2001/10/synthesis"
 
 
 def _xml_escape(text: str) -> str:
@@ -412,8 +416,8 @@ def _resolve_azure_settings(
                     voice = getattr(tts, "azure_voice", None)
                 if not region:
                     region = getattr(tts, "azure_region", "") or ""
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - config is optional; env is the fallback
+            logger.debug("Azure TTS config lookup failed, using env/defaults: %s", exc)
     if not region:
         region = os.environ.get("AZURE_SPEECH_REGION", "")
     return (voice or DEFAULT_AZURE_TTS_VOICE), (region or "").strip()
@@ -455,7 +459,7 @@ def _render_audio_azure(
 
     lang = _infer_ssml_lang(effective_voice)
     ssml = (
-        f"<speak version='1.0' xml:lang='{lang}'>"
+        f"<speak version='1.0' xmlns='{AZURE_TTS_SSML_NS}' xml:lang='{lang}'>"
         f"<voice name='{effective_voice}'>{_xml_escape(text)}</voice>"
         "</speak>"
     )
@@ -465,6 +469,7 @@ def _render_audio_azure(
         "Ocp-Apim-Subscription-Key": api_key,
         "Content-Type": "application/ssml+xml",
         "X-Microsoft-OutputFormat": AZURE_TTS_OUTPUT_FORMAT,
+        "User-Agent": AZURE_TTS_USER_AGENT,
     }
 
     try:

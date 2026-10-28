@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.0](https://github.com/1StepMore/AutoInfo/compare/v1.20.0...v1.21.0) (2026-10-28)
+
+
+### Features
+
+* **tts:** add Azure Speech engine ([#647](https://github.com/1StepMore/AutoInfo/issues/647)) ([#648](https://github.com/1StepMore/AutoInfo/issues/648)) ([e29b1d3](https://github.com/1StepMore/AutoInfo/commit/e29b1d3ba8dc8d1d49bc391b57deff2eace01c34))
+
 ## [1.20.0](https://github.com/1StepMore/AutoInfo/compare/v1.19.0...v1.20.0) (2026-10-27)
 
 

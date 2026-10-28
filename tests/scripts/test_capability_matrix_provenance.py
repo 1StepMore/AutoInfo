@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import capability_matrix as cm  # noqa: E402
 
 import autoinfo.output as output  # noqa: E402
+from tests._freshness import fresh_iso  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -161,7 +162,7 @@ class TestMatrixRowRecordsProvenance:
             "provenance": "synthesis_empty",
         }
         meta = {
-            "generated_at": "2026-10-28T00:00:00Z",
+            "generated_at": "test-run",
             "domains": ["d"],
             "spec": "s",
             "keyed": "keyed",
@@ -190,13 +191,12 @@ class TestRealGeneratorsRecordFallback:
             "tags": "[]",
             "tier": "01-Raw",
             "language": "en",
-            "collected_at": "2026-10-27T00:00:00+00:00",
+            "collected_at": fresh_iso(1),
         }
     ]
 
     def test_tutorial_kb_fallback_marks_provenance(self) -> None:
         from autoinfo.output import generate_tutorial
-        from tests._freshness import fresh_iso
 
         entries = [dict(self._ENTRIES[0], collected_at=fresh_iso(1))]
         with (
@@ -212,7 +212,6 @@ class TestRealGeneratorsRecordFallback:
 
     def test_tutorial_with_llm_output_stays_clean(self) -> None:
         from autoinfo.output import generate_tutorial
-        from tests._freshness import fresh_iso
 
         entries = [dict(self._ENTRIES[0], collected_at=fresh_iso(1))]
         llm_payload = {

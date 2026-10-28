@@ -42,6 +42,23 @@ DEFAULT_TTS_VOICE = "alloy"
 # Default local TTS engine voice (edge-tts).
 DEFAULT_LOCAL_TTS_VOICE = "en-US-JennyNeural"
 
+# Default Azure Speech voice and output format (issue #647).
+DEFAULT_AZURE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
+AZURE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3"
+
+
+def _xml_escape(text: str) -> str:
+    """Escape XML special characters for SSML text content."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _infer_ssml_lang(voice: str) -> str:
+    """Infer the SSML ``xml:lang`` from a voice name (e.g. ``zh-CN-XiaoxiaoNeural`` → ``zh-CN``)."""
+    parts = voice.split("-")
+    if len(parts) >= 2 and parts[0] and parts[1]:
+        return f"{parts[0]}-{parts[1]}"
+    return "zh-CN"
+
 
 def _strip_markdown(text: str) -> str:
     """Convert Markdown text to plain text suitable for TTS.
@@ -82,6 +99,8 @@ def _render_audio(
     timeout: float = 120.0,
     engine: str | None = None,
     local_voice: str = DEFAULT_LOCAL_TTS_VOICE,
+    azure_voice: str | None = None,
+    azure_region: str | None = None,
 ) -> bytes:
     """Render *text* as MP3 audio using the configured TTS engine.
 
@@ -99,13 +118,21 @@ def _render_audio(
         HTTP request timeout in seconds (default 120).
     engine:
         TTS engine: ``"local"`` (edge-tts, default), ``"openai"``,
-        or ``"whisper"`` (OpenAI Whisper model via TTS API).
+        ``"whisper"`` (OpenAI Whisper model via TTS API), or ``"azure"``
+        (Azure Speech REST/SSML).
         When *None*, reads from the ``tts.engine`` config key, falling
         back to ``"local"``.
     local_voice:
         Voice name for the local engine (edge-tts).  Defaults to
         ``"en-US-JennyNeural"``.  Ignored for ``engine="openai"``
         and ``engine="whisper"``.
+    azure_voice:
+        Voice name for the Azure engine.  Defaults to
+        ``"zh-CN-XiaoxiaoNeural"`` (or ``tts.azure_voice`` from config).
+    azure_region:
+        Azure Speech region (``tts.azure_region``, else
+        ``AZURE_SPEECH_REGION``).  The key always comes from
+        ``AZURE_SPEECH_KEY``.
 
     Returns
     -------
@@ -139,7 +166,7 @@ def _render_audio(
     resolved_engine = engine
     if resolved_engine is None:
         resolved_engine = _get_tts_engine_from_config()
-    if resolved_engine not in ("openai", "local", "whisper"):
+    if resolved_engine not in ("openai", "local", "whisper", "azure"):
         logger.warning(
             "Unknown TTS engine '%s' — falling back to 'openai'.",
             resolved_engine,
@@ -164,6 +191,18 @@ def _render_audio(
             # misleading "OpenAI TTS network error" after 150s+).  Re-raise
             # so callers can retry or surface the real error.
             raise
+
+    # --- Azure engine (Azure Speech REST, SSML) ---
+    if resolved_engine == "azure":
+        # Explicit engine: never silently fall back to OpenAI (mirrors
+        # "local" above) — a missing credential must surface as an
+        # actionable RuntimeError, not a misleading network failure.
+        return _render_audio_azure(
+            text,
+            voice=azure_voice,
+            timeout=timeout,
+            region=azure_region,
+        )
 
     # --- Whisper engine (OpenAI Whisper model via TTS API) ---
     if resolved_engine == "whisper":
@@ -357,6 +396,107 @@ def _render_audio_whisper(
         return _render_audio_openai(text, voice=voice, timeout=timeout, model="tts-1")
 
 
+def _resolve_azure_settings(
+    voice: str | None,
+    region: str | None,
+) -> tuple[str, str]:
+    """Resolve the Azure voice and region from arguments, config, then env."""
+    if voice is None or not region:
+        from autoinfo.output import get_config_path, load_config  # noqa: PLC0415
+
+        try:
+            config_path = get_config_path()
+            if config_path and config_path.is_file():
+                tts = load_config(config_path).tts
+                if voice is None:
+                    voice = getattr(tts, "azure_voice", None)
+                if not region:
+                    region = getattr(tts, "azure_region", "") or ""
+        except Exception:
+            pass
+    if not region:
+        region = os.environ.get("AZURE_SPEECH_REGION", "")
+    return (voice or DEFAULT_AZURE_TTS_VOICE), (region or "").strip()
+
+
+def _render_audio_azure(
+    text: str,
+    voice: str | None = None,
+    timeout: float = 120.0,
+    region: str | None = None,
+) -> bytes:
+    """Render *text* as MP3 audio using the Azure Speech REST API (SSML).
+
+    Credentials come from the environment only: ``AZURE_SPEECH_KEY`` is
+    required and ``AZURE_SPEECH_REGION`` is the fallback when no region is
+    supplied via argument or ``tts.azure_region`` config.
+
+    Raises
+    ------
+    RuntimeError
+        If a credential is missing, the API returns a non-200 status, or
+        the network request fails.
+    """
+    api_key = os.environ.get("AZURE_SPEECH_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "AZURE_SPEECH_KEY is not set.  Export the Azure Speech "
+            "subscription key (e.g. `export AZURE_SPEECH_KEY=...`) to use "
+            "the Azure TTS engine."
+        )
+
+    effective_voice, effective_region = _resolve_azure_settings(voice, region)
+    if not effective_region:
+        raise RuntimeError(
+            "AZURE_SPEECH_REGION is not set.  Export the Azure Speech "
+            "region (e.g. `export AZURE_SPEECH_REGION=eastasia`) or set "
+            "`tts.azure_region` in config.yaml."
+        )
+
+    lang = _infer_ssml_lang(effective_voice)
+    ssml = (
+        f"<speak version='1.0' xml:lang='{lang}'>"
+        f"<voice name='{effective_voice}'>{_xml_escape(text)}</voice>"
+        "</speak>"
+    )
+
+    url = f"https://{effective_region}.tts.speech.microsoft.com/cognitiveservices/v1"
+    headers = {
+        "Ocp-Apim-Subscription-Key": api_key,
+        "Content-Type": "application/ssml+xml",
+        "X-Microsoft-OutputFormat": AZURE_TTS_OUTPUT_FORMAT,
+    }
+
+    try:
+        response = httpx.post(
+            url,
+            content=ssml.encode("utf-8"),
+            headers=headers,
+            timeout=timeout,
+        )
+    except httpx.RequestError as exc:
+        logger.error("Azure TTS network error: %s", exc)
+        raise RuntimeError(f"Azure TTS network error: {exc}") from exc
+
+    if response.status_code != 200:
+        detail = (response.text or "")[:200]
+        logger.error("Azure TTS API error: %s %s", response.status_code, detail)
+        raise RuntimeError(f"Azure TTS API error (HTTP {response.status_code}): {detail}")
+
+    mp3_bytes = response.content
+    if not mp3_bytes:
+        raise RuntimeError("Azure TTS API returned empty audio data")
+
+    logger.info(
+        "Generated audio (azure): %d chars text → %d bytes MP3 (voice=%s, region=%s)",
+        len(text),
+        len(mp3_bytes),
+        effective_voice,
+        effective_region,
+    )
+    return mp3_bytes
+
+
 def _run_coro_in_new_thread(coro: Any) -> Any:
     """Run *coro* in a fresh thread with its own event loop.
 
@@ -446,3 +586,8 @@ def _render_audio_edge_tts(
         voice,
     )
     return cast(bytes, mp3_bytes)
+
+
+# Public entry point (the module's own alias; the package hub keeps
+# exporting ``_render_audio`` for backward compatibility).
+render_audio = _render_audio

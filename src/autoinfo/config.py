@@ -606,15 +606,26 @@ class TTSConfig:
         TTS engine to use. ``"local"`` (default, edge-tts, free and
         works where api.openai.com is unreachable — #210),
         ``"openai"`` for OpenAI TTS API,
-        ``"whisper"`` for OpenAI Whisper model via TTS API.
+        ``"whisper"`` for OpenAI Whisper model via TTS API,
+        ``"azure"`` for Azure Speech Service (SSML over REST).
     local_voice:
         Voice for the local engine (edge-tts).  See
         https://github.com/rany2/edge-tts#voices-list
         for available voices.  Defaults to ``"en-US-JennyNeural"``.
+    azure_voice:
+        Voice for the Azure engine.  Defaults to
+        ``"zh-CN-XiaoxiaoNeural"``; the SSML language is inferred from
+        the voice prefix (e.g. ``zh-CN``).
+    azure_region:
+        Azure Speech region, e.g. ``"eastasia"``.  Defaults to the
+        ``AZURE_SPEECH_REGION`` environment variable.  The subscription
+        key is always read from ``AZURE_SPEECH_KEY`` (never stored here).
     """
 
     engine: str = "local"
     local_voice: str = "en-US-JennyNeural"
+    azure_voice: str = "zh-CN-XiaoxiaoNeural"
+    azure_region: str = field(default_factory=lambda: os.environ.get("AZURE_SPEECH_REGION", ""))
 
 
 @dataclass

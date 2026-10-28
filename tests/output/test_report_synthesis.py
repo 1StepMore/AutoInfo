@@ -30,9 +30,7 @@ _FABRICATED_404_URL = (
     "after-launching-a-new-1-1b-fund/"
 )
 # The real KB/source URL the report should have cited (HTTP 200).
-_REAL_KB_URL = (
-    "https://techcrunch.com/2026/08/31/launching-new-1-1b-fund/"
-)
+_REAL_KB_URL = "https://techcrunch.com/2026/08/31/launching-new-1-1b-fund/"
 
 
 class TestReportUrlWhitelistSanitizer:
@@ -51,9 +49,7 @@ class TestReportUrlWhitelistSanitizer:
 
     def test_strips_fabricated_citation_whole(self) -> None:
         text = "- Growth-stage push (Source: " + _FABRICATED_404_URL + ")"
-        assert _sanitize_report_urls(text, self._WHITELIST) == (
-            "- Growth-stage push "
-        )
+        assert _sanitize_report_urls(text, self._WHITELIST) == ("- Growth-stage push ")
 
     def test_preserves_real_kb_urls(self) -> None:
         text = "The round is live. (Source: " + _REAL_KB_URL + ")"
@@ -62,10 +58,7 @@ class TestReportUrlWhitelistSanitizer:
     def test_allows_same_article_variants_per_c5(self) -> None:
         # A trailing-slash / full-form variant that only differs AFTER the KB
         # URL's path boundary is the same article (C5-aligned) and survives.
-        full = (
-            "https://techcrunch.com/2026/08/31/launching-new-1-1b-fund/"
-            "?utm_source=autoinfo"
-        )
+        full = "https://techcrunch.com/2026/08/31/launching-new-1-1b-fund/?utm_source=autoinfo"
         text = "(Source: " + full + ")"
         assert _REAL_KB_URL in _sanitize_report_urls(text, self._WHITELIST)
 
@@ -101,7 +94,52 @@ class TestReportSynthesisPromptConstraint:
 
     def test_digest_prompt_carries_verbatim_constraint(self) -> None:
         prompt = _build_digest_llm_prompt(
-            [{"title": "x", "summary": "y", "source_url": _REAL_KB_URL,
-              "tags": []}]
+            [{"title": "x", "summary": "y", "source_url": _REAL_KB_URL, "tags": []}]
         )
         assert URL_VERBATIM_CONSTRAINT in prompt
+
+
+class TestCitationResidueCleanup:
+    """Issue #644: stripping an unverifiable citation must not leave debris.
+
+    Removing ``(Source: <unverifiable>)`` used to leave the surrounding
+    commas and spaces behind, so a sentence read ``"all feature , , ."``.
+    The residue cleanup is confined to what the removal produced: a
+    legitimate comma list elsewhere in the same text is untouched.
+    """
+
+    _WHITELIST = {_REAL_KB_URL}
+
+    def test_chained_citations_leave_a_single_sentence_end(self) -> None:
+        text = (
+            "the communication of add-on interventions all feature "
+            f"(Source: {_FABRICATED_404_URL}), "
+            f"(Source: {_FABRICATED_404_URL}), "
+            f"(Source: {_FABRICATED_404_URL})."
+        )
+        cleaned = _sanitize_report_urls(text, self._WHITELIST)
+        assert " , " not in cleaned
+        assert ", ," not in cleaned
+        assert cleaned.endswith("all feature .") or cleaned.endswith("all feature.")
+
+    def test_citation_between_words_leaves_one_space(self) -> None:
+        text = (
+            "prenatal second-hand smoke exposure "
+            f"(Source: {_FABRICATED_404_URL}) and increased mortality"
+        )
+        cleaned = _sanitize_report_urls(text, self._WHITELIST)
+        assert "exposure  and" not in cleaned
+        assert "exposure and increased mortality" in cleaned
+
+    def test_comma_list_elsewhere_is_not_touched(self) -> None:
+        text = (
+            "Findings cover apples, oranges, pears, and plums. "
+            f"One claim (Source: {_FABRICATED_404_URL}) was dropped."
+        )
+        cleaned = _sanitize_report_urls(text, self._WHITELIST)
+        assert "apples, oranges, pears, and plums" in cleaned
+        assert "(Source:" not in cleaned
+
+    def test_no_removal_means_no_residue_pass(self) -> None:
+        text = "The round is live  and well. (Source: " + _REAL_KB_URL + ")"
+        assert _sanitize_report_urls(text, self._WHITELIST) == text

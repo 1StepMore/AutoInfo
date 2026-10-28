@@ -132,6 +132,9 @@ def generate_presentation(
     target_audience = (target_audience or "").strip() or "executive"
 
     # --- Resolve delivery-gate config (issue #298: default-on in production) --
+    import autoinfo.output as _hub  # noqa: PLC0415
+
+    _hub.reset_llm_provenance()
     delivery_gate_configs = _resolve_delivery_gate_configs(domain, delivery_gate_configs)
 
     # -- Load KB entries related to topic --------------------------------
@@ -293,6 +296,9 @@ def generate_presentation(
         # never fabricated.
         slides = _fallback_slides_from_entries(topic_entries, slide_count)
         if slides:
+            import autoinfo.output as _hub  # noqa: PLC0415
+
+            _hub.mark_kb_fallback("presentation_slides_derived")
             llm_result = dict(llm_result)
             llm_result["slides"] = slides
             context["slides"] = slides

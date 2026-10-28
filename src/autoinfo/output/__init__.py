@@ -2914,6 +2914,8 @@ def generate_digest(
                     )
                 return blocked_message
 
+    reset_llm_provenance()
+
     # --- Compute date range --------------------------------------------------
     period_label = PERIOD_LABELS.get(period, period.capitalize())
 
@@ -3171,6 +3173,7 @@ def generate_digest(
         and llm_synthesis.get("key_findings")
         and llm_synthesis.get("recommendations")
     ):
+        mark_kb_fallback("digest_synthesis_empty")
         llm_synthesis = _deterministic_synthesis_fallback(entries)
 
     # -- Body-citation URL whitelist sanitizer (issue #207) -----------------
@@ -3256,11 +3259,11 @@ def generate_digest(
     # entries (same fallback the standalone generate_presentation uses).
     if digest_family == "presentation":
         synth_slides = llm_synthesis.get("slides") if isinstance(llm_synthesis, dict) else None
-        slides = (
-            synth_slides
-            if isinstance(synth_slides, list) and synth_slides
-            else _fallback_slides_from_entries(context_entries, _PRESENTATION_SLIDE_COUNT)
-        )
+        if isinstance(synth_slides, list) and synth_slides:
+            slides = synth_slides
+        else:
+            mark_kb_fallback("digest_presentation_slides_derived")
+            slides = _fallback_slides_from_entries(context_entries, _PRESENTATION_SLIDE_COUNT)
         context["slides"] = slides
         context["topic"] = (
             str(llm_synthesis.get("topic") or period_label).strip()
@@ -3604,6 +3607,7 @@ def generate_report(
     # -- Load KB entries --------------------------------------------------
     from autoinfo.llm import LLMExtractor  # noqa: PLC0415
 
+    reset_llm_provenance()
     kb_store = KBStore()
     _select_story_was_empty = False
     if is_cross_domain:
@@ -3906,6 +3910,7 @@ def generate_report(
     # Derive those sections deterministically from the KB entries actually
     # used in the report — real domain content, never fabricated.
     if not executive_summary or not key_findings or not recommendations:
+        mark_kb_fallback("report_synthesis_empty")
         logger.info(
             "LLM synthesis empty/partial for report (domain=%s, "
             "exec_summary=%d chars, key_findings=%d, recommendations=%d) — "
@@ -4382,6 +4387,35 @@ _GROUPING_DEGRADATION_MARKER: Final[str] = "> *This edition groups developments 
 # before a grouping run so a previous product's degradation cannot leak into
 # the next one.
 _grouping_degraded: bool = False
+
+
+# Issue #646: when every LLM call fails the generators still ship a complete
+# KB-derived product.  That is correct behaviour, but it is not LLM-generated,
+# and reporting L3 for it hides a total model failure as a better result.
+# A module attribute (not a return value) because the seams fire inside worker
+# threads and helper modules, mirroring ``_grouping_degraded``.
+_kb_fallback_reasons: set[str] = set()
+
+
+def reset_llm_provenance() -> None:
+    """Clear the recorded KB-derived fallbacks before a product generation."""
+    _kb_fallback_reasons.clear()
+
+
+def mark_kb_fallback(reason: str) -> None:
+    """Record that a KB-derived fallback replaced LLM output."""
+    _kb_fallback_reasons.add(reason)
+
+
+def llm_provenance() -> dict[str, Any]:
+    """Return the provenance of the most recent product generation.
+
+    ``llm_generated`` is False as soon as any KB-derived fallback fired, which
+    is the signal "this artifact is structurally valid but was not produced by
+    the model".
+    """
+    reasons = sorted(_kb_fallback_reasons)
+    return {"llm_generated": not reasons, "kb_fallback_reasons": reasons}
 
 
 # Issue #167: source-type group headings must state WHERE content came from,

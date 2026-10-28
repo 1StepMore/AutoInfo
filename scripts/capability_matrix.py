@@ -299,15 +299,24 @@ def compute_layers(
     l2_passed: bool,
     artifact_bytes: int,
     l1_block: str = "blocked-empty-artifact",
+    llm_generated: bool = True,
 ) -> LayerVerdict:
-    """Compute cumulative L1/L2/L3; a later layer can never outrun an earlier one."""
+    """Compute cumulative L1/L2/L3; a later layer can never outrun an earlier one.
+
+    ``llm_generated=False`` marks an artifact the KB-derived fallback produced
+    after the model failed (issue #646).  Such an artifact is structurally
+    valid — L2 — but ``L3`` means "verified end to end", so reporting it there
+    would hide a total model failure as a better result.  It reports
+    ``L2-degraded`` instead, which is a failure for the run, not an honest
+    block.
+    """
     l1 = bool(l1_pass) and artifact_bytes > 0
     l2 = l1 and bool(l2_passed)
-    l3 = l2 and artifact_bytes > 0
+    l3 = l2 and artifact_bytes > 0 and llm_generated
     if l3:
         reached = "L3"
     elif l2:
-        reached = "L2"
+        reached = "L2" if llm_generated else "L2-degraded"
     elif l1:
         reached = "L1"
     else:
@@ -604,6 +613,8 @@ def _base_row(combo: Combination, domain: str, keyed: str) -> dict[str, Any]:
         "l3": False,
         "detail": "",
         "duration_s": 0.0,
+        "llm_generated": True,
+        "provenance": "",
     }
 
 
@@ -691,6 +702,9 @@ def generate_cell(
         max_synthesis_attempts=max_synthesis_attempts,
         retry_backoff_seconds=retry_backoff_seconds,
     )
+    import autoinfo.output as output_hub
+
+    output_hub.reset_llm_provenance()
     try:
         call = route(ctx)
         result, attempts = _invoke(call)
@@ -715,7 +729,19 @@ def generate_cell(
         )
 
     attempts_detail = f"attempts={attempts}"
-    detail = _detail_parts([RETRY_POLICY, attempts_detail, _d13_note(combo)])
+    provenance = output_hub.llm_provenance()
+    detail = _detail_parts(
+        [
+            RETRY_POLICY,
+            attempts_detail,
+            _d13_note(combo),
+            (
+                ""
+                if provenance["llm_generated"]
+                else "kb_fallback=" + ",".join(provenance["kb_fallback_reasons"])
+            ),
+        ]
+    )
 
     try:
         content = _unwrap(result)
@@ -783,7 +809,12 @@ def generate_cell(
         for name, outcome in (l2_result.get("checks") or {}).items()
         if isinstance(outcome, dict) and not outcome.get("passed")
     ]
-    verdict = compute_layers(l1_pass=True, l2_passed=l2_passed, artifact_bytes=size)
+    verdict = compute_layers(
+        l1_pass=True,
+        l2_passed=l2_passed,
+        artifact_bytes=size,
+        llm_generated=bool(provenance["llm_generated"]),
+    )
     l2_detail = "l2=pass" if l2_passed else f"l2=fail({', '.join(failing) or 'unknown'})"
     row.update(
         {
@@ -792,6 +823,8 @@ def generate_cell(
             "l1": verdict.l1,
             "l2": verdict.l2,
             "l3": verdict.l3,
+            "llm_generated": bool(provenance["llm_generated"]),
+            "provenance": ",".join(provenance["kb_fallback_reasons"]),
             "detail": _detail_parts([f"bytes={size}", l2_detail, detail]),
             "duration_s": round(time.monotonic() - started, 3),
         }
@@ -863,7 +896,13 @@ def reevaluate_cell(row: dict[str, Any], *, keyed: str) -> dict[str, Any]:
         return updated
 
     l2_passed = bool(l2_result.get("passed"))
-    verdict = compute_layers(l1_pass=l1_pass, l2_passed=l2_passed, artifact_bytes=size)
+    llm_generated = bool(updated.get("llm_generated", True))
+    verdict = compute_layers(
+        l1_pass=l1_pass,
+        l2_passed=l2_passed,
+        artifact_bytes=size,
+        llm_generated=llm_generated,
+    )
     failing = [
         name
         for name, outcome in (l2_result.get("checks") or {}).items()
@@ -919,6 +958,19 @@ def _md_cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def _llm_cell(row: dict[str, Any]) -> str:
+    """Render the LLM-provenance column (issue #646).
+
+    ``llm`` is the honest signal: a cell whose artifact was assembled from the
+    knowledge base after the model failed is marked ``kb-derived`` (with the
+    reason) even though its structure passed L2.
+    """
+    if row.get("llm_generated", True):
+        return "llm"
+    reason = str(row.get("provenance") or "").strip()
+    return f"kb-derived ({reason})" if reason else "kb-derived"
+
+
 def render_markdown(meta: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     keyed = sum(1 for row in rows if row.get("keyed") == "keyed")
     unkeyed = sum(1 for row in rows if row.get("keyed") == "unkeyed")
@@ -935,10 +987,14 @@ def render_markdown(meta: dict[str, Any], rows: list[dict[str, Any]]) -> str:
         "",
         "Layers are cumulative and monotone: L2 implies L1, L3 implies L2.",
         "A cell never reports L3 when L1 or L2 failed.",
+        (
+            "L3 means the model actually generated the artifact: a KB-derived "
+            "fallback (LLM failure) reports L2-degraded and counts as a failure."
+        ),
         "",
-        "| Domain | Cell | Gated | Keyed | Reached | L1 | L2 | L3 "
+        "| Domain | Cell | Gated | Keyed | Reached | L1 | L2 | L3 | LLM "
         "| Duration (s) | Artifact | Detail |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in sorted(rows, key=_row_key):
         lines.append(
@@ -953,6 +1009,7 @@ def render_markdown(meta: dict[str, Any], rows: list[dict[str, Any]]) -> str:
                     "pass" if row.get("l1") else "fail",
                     "pass" if row.get("l2") else "fail",
                     "pass" if row.get("l3") else "fail",
+                    _md_cell(_llm_cell(row)),
                     _md_cell(row.get("duration_s", "")),
                     _md_cell(row.get("artifact", "")),
                     _md_cell(row.get("detail", "")),
@@ -1001,8 +1058,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--checkpoint",
         default=None,
         help=(
-            "resume file (default: <out>/matrix.json); rows with a "
-            "non-pending verdict are skipped"
+            "resume file (default: <out>/matrix.json); rows with a non-pending verdict are skipped"
         ),
     )
     parser.add_argument("--spec", default=str(DEFAULT_SPEC), help="end-user-matrix spec path")

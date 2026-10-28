@@ -111,6 +111,10 @@ def generate_tutorial(
             f"Must be one of: {', '.join(sorted(_VALID_AUDIENCES))}"
         )
 
+    import autoinfo.output as _hub  # noqa: PLC0415
+
+    _hub.reset_llm_provenance()
+
     # --- Resolve delivery-gate config (issue #298: default-on in production) --
     delivery_gate_configs = _resolve_delivery_gate_configs(domain, delivery_gate_configs)
 
@@ -276,6 +280,9 @@ def generate_tutorial(
         # e.g. 26 empty tutorial-agent artifacts in the 2026-08-11 fill
         # run).
         if not _tutorial_has_content(llm_result):
+            import autoinfo.output as _hub  # noqa: PLC0415
+
+            _hub.mark_kb_fallback("tutorial_llm_unusable")
             logger.warning(
                 "Tutorial LLM output unusable for domain '%s' (missing "
                 "objectives/content); falling back to KB-derived tutorial",

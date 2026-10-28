@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.1](https://github.com/1StepMore/AutoInfo/compare/v1.21.0...v1.21.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **matrix:** stop reporting L3 for KB-derived fallback products ([#646](https://github.com/1StepMore/AutoInfo/issues/646)) ([#651](https://github.com/1StepMore/AutoInfo/issues/651)) ([141dfe6](https://github.com/1StepMore/AutoInfo/commit/141dfe64f5cb75a2a8eb78485943a4d049977a28))
+
 ## [1.21.0](https://github.com/1StepMore/AutoInfo/compare/v1.20.0...v1.21.0) (2026-10-28)
 
 

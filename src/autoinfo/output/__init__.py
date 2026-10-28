@@ -634,12 +634,14 @@ _HTML_ELEMENT_NAMES: Final = frozenset(
 _SKELETON_TOKEN_RE = re.compile(r"<([a-z][a-z0-9 _\-]+)>", re.IGNORECASE)
 
 
-def _is_html_tag_token(name: str) -> bool:
-    return name.strip().lower() in _HTML_ELEMENT_NAMES
+def _is_html_document(text: str) -> bool:
+    """True when *text* is a rendered HTML document, not markdown prose."""
+    lowered = text[:2000].lower()
+    return "<!doctype html" in lowered or "<html" in lowered
 
 
 def _strip_skeleton_token(match: re.Match[str]) -> str:
-    return match.group(0) if _is_html_tag_token(match.group(1)) else ""
+    return match.group(0) if match.group(1).strip().lower() in _HTML_ELEMENT_NAMES else ""
 
 
 def _clean_skeleton_placeholders(text: str) -> str:
@@ -654,10 +656,14 @@ def _clean_skeleton_placeholders(text: str) -> str:
     become empty after stripping are removed.  Table rows that become
     all-pipes are removed.
     """
+    # Only an HTML document has real tags to protect.  In markdown prose a
+    # bare ``<source>``/``<metric>`` is the LLM echoing a prompt placeholder,
+    # and some names (``source``, ``summary``) are both.
+    strip = _strip_skeleton_token if _is_html_document(text) else (lambda _m: "")
     lines = text.split("\n")
     cleaned: list[str] = []
     for line in lines:
-        new_line = _SKELETON_TOKEN_RE.sub(_strip_skeleton_token, line)
+        new_line = _SKELETON_TOKEN_RE.sub(strip, line)
         # Collapse runs of whitespace left by removal
         new_line = re.sub(r"  +", " ", new_line).strip()
         # Remove empty table rows (e.g. "| | | |" → empty)

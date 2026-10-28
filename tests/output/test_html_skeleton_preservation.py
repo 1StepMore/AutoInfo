@@ -72,11 +72,20 @@ class TestSkeletonCleanerPreservesHtml:
 
     def test_strips_placeholders_from_html_body(self) -> None:
         cleaned = _clean_skeleton_placeholders(
-            "<h2>Key metric</h2>\n<p><metric></p>\n<h2>Next</h2>"
+            "<!DOCTYPE html>\n<html><body>\n<h2>Key metric</h2>\n"
+            "<p><metric></p>\n<h2>Next</h2>\n</body></html>"
         )
         assert "<metric>" not in cleaned
         assert "<h2>" in cleaned
         assert "Key metric" in cleaned
+
+    def test_markdown_prose_still_strips_tags_that_are_also_html_names(self) -> None:
+        # In markdown, <source>/<summary> are prompt placeholders, not tags —
+        # issue #314's skeleton scenario depends on this.
+        cleaned = _clean_skeleton_placeholders("- <metric> | <value> | <source>")
+        assert "<metric>" not in cleaned
+        assert "<source>" not in cleaned
+        assert "<value>" not in cleaned
 
 
 def _registry_template(name: str) -> ProductTemplate:

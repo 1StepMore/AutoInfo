@@ -157,7 +157,7 @@
 
 **🟡 `doc_inventory.py --check`——全仓最强的防漂移仪器，接线最弱。** 7 项检查覆盖：7 类漂移敏感事实（工具数/CLI 组数/场景数/demo 域数等）跨 9 份 LIVING_DOCS 与 README 对齐、server.py 实际工具列表 vs README **双向完备**、pytest 收集数一致、无游离 `test_bug_*`、inventory 本身逐字节一致。这类"从代码派生"的检查正是 AC8 判据 2 钦定的机制——但它在 `make doc-check` 里，**不在 CI**。
 
-**🟡 guard.yml Drift Guard——CI 里唯一的文档强制，且结构上是块名单。** 它只能挡"历史上出现过、被拉黑"的字符串（'114+ tools'、'139 tools'、'44 scenarios' 等 12 个）。从代码派生的漂移它管不到。实测残留证据：`docs/dev/specs/user-lifecycle-definition.md:51,219` 与 `:248` 仍写 "147 tools"/"147/147"（真实 149）；`docs/dev/acceptance-framework.md:181,463` 同样写 "147/147"——**验收框架自己的判据表与它 §0.2 的 "149 tools" 自相矛盾**。更讽刺的是 guard.yml 自己第 77 行注释里的 "(current: 47)" 也已漂移（现 182）。这正是 10-29 报告 P4 指出的"keystone 滞后"一类问题的继续发生：块名单是打地鼠，派生检查才是网。
+**🟡 guard.yml Drift Guard——CI 里唯一的文档强制，且结构上是块名单。** 它只能挡"历史上出现过、被拉黑"的字符串（三例：114+ 工具数、139 工具数、44 场景数等 12 个旧计数，均为英文字面拉黑）。从代码派生的漂移它管不到。实测残留证据：`docs/dev/specs/user-lifecycle-definition.md:51,219` 与 `:248` 仍写 "147 tools"/"147/147"（真实 149）；`docs/dev/acceptance-framework.md:181,463` 同样写 "147/147"——**验收框架自己的判据表与它 §0.2 的 "149 tools" 自相矛盾**。更讽刺的是 guard.yml 自己第 77 行注释里的 "(current: 47)" 也已漂移（现 182）。这正是 10-29 报告 P4 指出的"keystone 滞后"一类问题的继续发生：块名单是打地鼠，派生检查才是网。
 
 **🟡 其余派生检查同样未进 CI**：`surface_parity.py --check`（REST 全路由对账，canonical 8 端点必须场景级覆盖——设计很好）；`coverage_matrix.py --check-enduser-doc`（99 项矩阵逐字节比对）；`coverage_matrix.py` 按版本重生成靠 AC4 判据 4 的 prose 职责（"stale matrix = RISK"——谁来判 RISK？还是 agent 记得跑）。
 
@@ -238,7 +238,7 @@ CI 的**缺口清单**（全部是"仪器存在、接线缺失"）：无 format 
 | CI 场景强制 | `.github/workflows/ci.yml:298`（scenario_portability_gate，真实 dispatch） |
 | 场景规模与语义 | 182 = 86+96；16 env-gated / 165 keyless / 4 llm_assert；unconfigured 语义 `src/autoinfo/mcp/validation.py:1874` |
 | doc_inventory 未进 CI | workflows grep doc_inventory = 0；`Makefile:65`（doc-check 三连） |
-| guard.yml 块名单 + 自身注释漂移 | `.github/workflows/guard.yml:39-40,76-77`（"44 scenarios (current: 47)"，实际 182） |
+| guard.yml 块名单 + 自身注释漂移 | `.github/workflows/guard.yml:39-40,76-77`（"44 场景 (current: 47)"，实际 182） |
 | "147" 残留 | `docs/dev/specs/user-lifecycle-definition.md:51,219,248`；`docs/dev/acceptance-framework.md:181,463` |
 | ax_metrics 无接线 | workflows/Makefile grep ax_metrics = 0；docstring "targets that CI enforces"（`scripts/ax_metrics.py` 头部） |
 | frequency_gate docstring 失实 | `src/autoinfo/delivery/frequency_gate.py` 模块 docstring；`grep frequency_gate src/autoinfo/mcp/tools/scheduling.py` = 0；唯一调用 `cli/cron.py:1100-1102` |

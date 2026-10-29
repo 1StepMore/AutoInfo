@@ -28,7 +28,7 @@
 
 | 步骤 | 内容 | 产出 |
 |---|---|---|
-| 0.0 | ~~建 venv~~ → **更正（2026-10-30，Director 指正）**：项目已有 venv，在 WSL 侧（`.venv/bin/python`，Python 3.14.4，主力 agent 环境）；Windows 侧不另建。基线统一经 `wsl -e bash -c "cd /mnt/d/贯维/AutoInfo && .venv/bin/python …"` 执行——且 CI 本就是 Linux，WSL 基线比 Windows 原生更接近 CI 环境 | 复用现有环境 |
+| 0.0 | ~~建 venv~~ → **更正（2026-10-30，Director 指正）**：项目已有 venv，在 WSL 侧（`.venv/bin/python`，Python 3.14.4，主力 agent 环境）；Windows 侧不另建。基线统一经 WSL 在仓库根目录调 `.venv/bin/python` 执行——且 CI 本就是 Linux，WSL 基线比 Windows 原生更接近 CI 环境 | 复用现有环境 |
 | 0.1 | 本地跑五件仪器并记录红绿：`doc_inventory.py --check`、`surface_parity.py --check`、`coverage_matrix.py --check-enduser-doc`、`ax_metrics.py`、L0 `quality_gate.py`（对 outputs/ 有产物的域） | 基线记录（见下方执行记录） |
 | 0.2 | 对红灯项逐个定性：真漂移 → 进 Wave 1 修复清单；仪器自身问题 → 进该仪器的处置项 | Wave 1 增补项 |
 

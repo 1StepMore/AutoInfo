@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.6](https://github.com/1StepMore/AutoInfo/compare/v1.21.5...v1.21.6) (2026-10-29)
+
+
+### Bug Fixes
+
+* **agent-infra:** align agent-facing gate claims with actual wiring; wire derived checks into CI ([#659](https://github.com/1StepMore/AutoInfo/issues/659)) ([41b42dd](https://github.com/1StepMore/AutoInfo/commit/41b42dd6b003833a4c9a35e9befb0a3e639c1afb))
+
 ## [1.21.5](https://github.com/1StepMore/AutoInfo/compare/v1.21.4...v1.21.5) (2026-10-29)
 
 

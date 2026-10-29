@@ -18,7 +18,40 @@
 
 ---
 
+## Reconciliation — This Catalog vs. `pkg-AutoInfo` Production Evidence
+
+> **Why this section exists.** Two documents now describe "gaps" in AutoInfo. They are **not arithmetically comparable** — they measure different axes at different times. Neither is wrong. This section states what each one is for, so a status emoji is never mistaken for current production truth.
+
+**Two matrices, two axes.**
+
+| Document | Matrix | Axis | What it answers | Derived from |
+|---|---|---|---|---|
+| **This catalog** (`docs/dev/cross-dimensional-catalog.md`) | **126 cells** = 7 pipeline stages (A1-A7) × 18 user-lifecycle stages (B1/B2/B3) | Pipeline stage × user lifecycle stage | **Design completeness** — is each capability designed / spec'd / delivered for each user type across the lifecycle? | Review of specs and code; statuses are judgments, not measurements |
+| **`pkg-AutoInfo/`** (delivery package, generated 2026-10-26; **not tracked in this repo** — reproduce with the command in the last column) | **832 cells** = 13 domains × 8 products × 8 formats, plus 78 domain×source pairs with zero raw data and 39 KB tiers (13 domains × Raw/Draft/Wiki) all missing | Domain × product × format (plus source and KB-tier axes) | **Production capability** — can we actually emit product P in format F for domain D today, from real run evidence? | `scripts/coverage_matrix.py --evidence outputs` over real `outputs/` |
+
+**The 126-cell statuses may be stale.** They were last substantively reviewed **2026-08-12 / 2026-09-13** and have **not been re-derived** since the October evidence runs — #638 (81-cell evidence packs), #640 (per-row source diagnosis), #642 (KB index alignment). Treat 🟢 / 🟡 / 🔴 / 🟠 here as a **design-review snapshot**, not live production status.
+
+**Production truth currently lives in `pkg-AutoInfo/`.** At its 2026-10-26 generation: **832** matrix cells (of which 29 have real products, **322 are empty gaps**, 481 not applicable), **78** domain×source pairs with zero raw data, and **39** KB tiers missing. These are a **snapshot of that generation date** and will move as batches land — re-run `scripts/coverage_matrix.py --evidence outputs` before quoting them.
+
+> **Reproducibility caveat.** `docs/dev/coverage-baseline.md` records that the 29/322/0/481 row was produced on a different machine state and is **not reproducible from this tree**; the same tree now yields different produced/gap splits depending on evidence dir and LLM-availability flags (see that page for every published figure with the command that produced it). Cite the *axis and the command*, not the bare numbers, and always re-measure before treating any of them as a target.
+
+**Which to consult when:**
+
+| Question | Consult |
+|---|---|
+| "What is AutoInfo supposed to be? Which capabilities are designed for which user type, at which lifecycle stage?" | **This catalog** — §1-§3 and the CD-NNN records |
+| "Which spec owns capability X? What is the fix for gap CD-NNN?" | **This catalog** — §3 Gap-to-Doc Mapping, §4 Priority Fix Matrix |
+| "Can we actually produce product X in format Y for domain Z today?" | **`pkg-AutoInfo/gap_cells.csv`** (832-cell matrix, 322 empty gaps) — regenerate via the command above if the untracked copy is absent |
+| "Which domains have no raw data yet?" | **`pkg-AutoInfo/source_gaps.csv`** (78 domain×source pairs) + the `source_diagnosis.md` it prescribes; also `docs/dev/coverage-baseline.md` for reproducible measurement commands |
+| "Which KB tiers are still empty?" | **`pkg-AutoInfo/kb_tier_gaps.csv`** (39 tiers) |
+
+**Reading rules.** A 🟢 here means "delivered in design review", not "verified by a 2026-10 run". A gap cell in `pkg-AutoInfo/` means "no product file existed at generation time", not "the capability is undesigned". Do not sum the 42 CD-NNN gaps and the 322 empty cells — they count different things on different axes.
+
+---
+
 ## Table of Contents
+
+> **Start here for currency:** [Reconciliation — This Catalog vs. `pkg-AutoInfo` Production Evidence](#reconciliation--this-catalog-vs-pkg-autoinfo-production-evidence)
 
 1. [The Matrix — Dimension A × Dimension B](#section-1-the-matrix--dimension-a--dimension-b)
 2. [Dimension Catalog by Type](#section-2-dimension-catalog-by-type)
@@ -1031,4 +1064,4 @@ Post-concierge-wave count refresh (source of truth: on-disk reality, re-derived 
 
 ---
 
-*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (15 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap + feasibility verdicts (absorbed from enduser-coverage-matrix, `docs/dev/enduser-coverage-matrix.md`). Last updated 2026-09-13 (counts: 159 scenarios, 149 MCP tools / 35 categories, CLI 31 groups, readonly-mode 4 tools, 01-QA-GATES, free-tier + mvp CLI, REST surface parity). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*
+*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (15 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap + feasibility verdicts (absorbed from enduser-coverage-matrix, `docs/dev/enduser-coverage-matrix.md`). Last updated 2026-09-13 (counts: 182 scenarios, 149 MCP tools / 35 categories, CLI 31 groups, readonly-mode 4 tools, 01-QA-GATES, free-tier + mvp CLI, REST surface parity). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*

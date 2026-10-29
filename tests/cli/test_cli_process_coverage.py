@@ -106,6 +106,8 @@ class TestProcessFlagForwarding:
             "check_factual": True,
             "check_translation": True,
             "resume_from": "auto",
+            "since_days": 0,
+            "newest_first": False,
         }
 
 

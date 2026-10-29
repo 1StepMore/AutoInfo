@@ -103,3 +103,26 @@ jobs:
       # was not re-rendered, turn this red.
       - name: Nightly ledger is in sync
         run: python scripts/nightly_ledger.py --check
+
+  # Derived doc/surface parity (agent-infra remediation plan 2026-10-30,
+  # Wave 2.1): the three derive-from-code instruments the banned-string scan
+  # structurally cannot replace — the scan only blocks previously-known stale
+  # strings, while these checks compute the expected values from the live
+  # code. All three are keyless and need no runtime artifacts (verified
+  # against a fresh checkout), so they gate every PR.
+  derived-facts:
+    name: Derived doc/surface parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: pip install -e ".[dev]"
+      - name: Documentation fact parity (doc_inventory --check)
+        run: python scripts/doc_inventory.py --check
+      - name: REST surface parity (surface_parity --check)
+        run: python scripts/surface_parity.py --check
+      - name: End-user coverage matrix parity (coverage_matrix --check-enduser-doc)
+        run: python scripts/coverage_matrix.py --check-enduser-doc docs/dev/enduser-coverage-matrix.md

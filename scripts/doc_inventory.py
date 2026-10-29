@@ -248,7 +248,8 @@ LIVING_DOCS: list[str] = [
     "docs/dev/mcp-usage-examples.md",
     "docs/dev/specs/expectations.md",
     "docs/dev/specs/end-user-matrix.yaml",
-    "docs/skills/autoinfo-skill/SKILL.md",
+    "docs/dev/specs/user-lifecycle-definition.md",
+    ".opencode/skills/autoinfo-skill/SKILL.md",
     ".opencode/skills/validation-runner-skill/SKILL.md",
     ".opencode/skills/deep-modules-skill/SKILL.md",
 ]

@@ -64,7 +64,7 @@ First commands:
 autoinfo --help                              # or: python -m autoinfo.cli --help
 autoinfo init --demo medical-research        # scaffold a demo domain
 autoinfo collect --domain medical-research   # fetch items (live per-source progress lines)
-autoinfo process --domain medical-research   # LLM extraction + quality gates
+autoinfo process --domain medical-research   # LLM extraction + quality gates (G4/G5 opt-in — see gate-table note)
 ```
 
 ## Project Structure
@@ -94,11 +94,8 @@ AutoInfo/
 │   │   ├── cross-dimensional-catalog.md # Cross-dimensional catalog — keystone product matrix (A1-A7 × B1/B2/B3, supersedes archived gap docs)
 │   │   ├── archive/                  # Archived/historical docs
 │   │   ├── director-user-guide.md    # Human-Agent interaction lifecycle
-│   └── skills/                     # AutoInfo operator skills (for agent-users of AutoInfo)
-│       ├── autoinfo-skill/SKILL.md # Operating AutoInfo via MCP tools
-│       └── translator-qa-skill/    # Translation QA workflow
 ├── .opencode/
-│   └── skills/                     # Coding agent skills (for developing AutoInfo)
+│   └── skills/                     # Agent skills — deep-modules/doc-manager/maintainer-workflow/validation-runner (developing AutoInfo) + autoinfo-skill/translator-qa-skill (operator skills for agent-users of AutoInfo; moved from docs/skills/ 2026-10-30)
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 31 CLI command groups
@@ -161,7 +158,7 @@ one class plus one registration, never a dispatch-chain edit.
 Phase 2 — Process:   autoinfo process --domain medical [--model deepseek-chat]
   → Reads cached raw items
   → LLM extraction (configurable model per task)
-  → Quality gates (G1-G5)
+  → Quality gates (G0/G1/G2/G3/G7 by default; G4/G5 opt-in flags)
   → Creates 01-Raw KB entries
 ```
 
@@ -181,6 +178,8 @@ Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) a
 | D1: Product completeness | 🔴 Hard | 🔴 P0 | Blocks delivery |
 | D2: Format integrity | 🔴 Hard | 🔴 P0 | Blocks delivery |
 | D3: Freshness | 🟡 Soft | 🟡 P1 | Configurable threshold |
+
+> **Default activation** — the table states what a gate does *when it runs*; this states *when it runs*: G0/G1/G2/G3/G7 run by default at process time. **G4/G5 are opt-in flags** (CLI `--check-factual` / `--check-translation`; MCP `check_factual` / `check_translation`, default `false`) — G4 additionally runs unconditionally in the Draft→Wiki CurationGate (`promotion.py`). **D1-D3 run only where `delivery_gates` is configured** — the shipped default config and every demo domain config set none, so delivery gates are off by default (the default-on decision is tracked as decision point A in `docs/dev/plans/agent-infra-remediation-2026-10-30.md`).
 
 ### Product QC — 3-Layer Model (issue #194)
 

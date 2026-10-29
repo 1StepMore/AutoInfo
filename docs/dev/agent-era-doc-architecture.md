@@ -53,7 +53,7 @@ An agent-driven project has two distinct agents and two distinct human readers:
 | Reader | What they need | Canonical homes |
 |--------|---------------|-----------------|
 | **Coding Agent** (builds/maintains the code) | Rules, constraints, architecture decisions, conventions, "gotchas", build/test commands | Root `AGENTS.md` (or `CLAUDE.md`), nested `AGENTS.md` per subproject, `docs/adr/`, skills, generated inventory |
-| **Direct User Agent** (operates the product via MCP tools / API) | Tool catalog, invocation patterns, error semantics, examples | Operator skills (`docs/skills/`), tool docs, usage examples, machine-readable index (`llms.txt`) |
+| **Direct User Agent** (operates the product via MCP tools / API) | Tool catalog, invocation patterns, error semantics, examples | Operator skills (`.opencode/skills/`: autoinfo-skill, translator-qa-skill), tool docs, usage examples, machine-readable index (`llms.txt`) |
 | **Human maintainer** (director) | Status, decisions, roadmap, "why" | `README.md`, ADRs, CHANGELOG, governance docs |
 | **Human end user** (consumer of the product) | Feature overview, quickstart, license | `README.md`, product docs |
 
@@ -241,8 +241,10 @@ This playbook is derived from — and validated by — the **AutoInfo** project
   delivery, operations).
 - `docs/archive/` — aggressive archiving of one-offs (migration guides, per-run
   acceptance reports, superseded master plans).
-- Operator skills (`docs/skills/`) vs developer skills (`.opencode/skills/`) split.
-- `docs/skills/autoinfo-skill/` — an operator skill whose counts are verified by the
+- Operator skills and developer skills coexist under `.opencode/skills/`
+  (the former `docs/skills/` operator split was retired 2026-10-30 — a path no
+  agent loader could discover).
+- `.opencode/skills/autoinfo-skill/` — an operator skill whose counts are verified by the
   same consistency checker as README/AGENTS (skill sync, §4).
 
 Use AutoInfo as the worked example: its structure *is* this playbook applied. Its

@@ -32,6 +32,7 @@
 - [ ] main 干净、0 open issues(或全部有 owner 与计划)
 - [ ] AGENTS.md 三层 QC 协议(L0 gate → L1 battery → 外部 review)现行有效
 - [ ] 单次生产纪律 + 修复闭环(issue → 修 → 重生成 → 全 QC)文档化
+- [ ] 验证循环闭环(plan decision B1, 2026-10-30):最近循环的 suite run 已持久化到 `validation-runs/`(nightly 自动或手动),`validation-loop-log.md` 已随循环更新
 
 ---
 

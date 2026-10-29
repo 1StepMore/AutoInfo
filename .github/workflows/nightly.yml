@@ -47,6 +47,28 @@ jobs:
           pytest -m "not real_api" -q --junitxml=nightly-junit.xml 2>&1 | tee nightly-pytest.log
         # --timeout (180s) from pyproject applies; no xdist here by design.
 
+      # AX verification gate (agent-infra remediation plan 2026-10-30, Wave
+      # 2.3): M-04 (doc freshness via doc_inventory --check) and M-05 (token
+      # baseline, keyless — the baseline is a committed file) gate here on
+      # every nightly. Run-sourced metrics (M-01/02/03/06) report UNMEASURED
+      # on this fresh checkout by design — UNMEASURED never fails the gate;
+      # they activate automatically once nightly validation runs are
+      # persisted (plan decision point B1).
+      - name: AX metrics gate (M-04/M-05)
+        run: python scripts/ax_metrics.py
+
+      # Persisted validation-suite run (agent-infra remediation plan
+      # 2026-10-30, decision B1): same engine entry as the MCP
+      # run_all_validation_scenarios tool; persists the aggregate suite run +
+      # sessions report + category-pyramid ledger — the run records ax_metrics
+      # M-01/02/03/06 and the regression flywheel consume. Env/domain-gated
+      # scenarios report `unconfigured` on this fresh checkout (honest, never
+      # fake-passed). Scenario failures are printed, not fatal: PR CI already
+      # gates the keyless subset (scenario_portability_gate); this step's
+      # deliverable is the persisted evidence.
+      - name: Persist validation suite run (decision B1)
+        run: python scripts/nightly_validation_run.py
+
       - name: Upload triage artifact on failure
         if: failure()
         uses: actions/upload-artifact@v7

@@ -13,19 +13,18 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 128 |
-| Total lines | 39417 |
-| Active files | 96 |
+| Total files | 127 |
+| Total lines | 39078 |
+| Active files | 95 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
-| Category — skills | 3 files / 785 lines |
 | Category — adr | 13 files / 775 lines |
-| Category — specs | 12 files / 9840 lines |
+| Category — specs | 12 files / 9859 lines |
 | Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 29 files / 10686 lines |
-| Category — docs/root | 7 files / 1309 lines |
+| Category — docs/dev | 30 files / 10861 lines |
+| Category — docs/root | 8 files / 1561 lines |
 
 ## Inventory
 
@@ -44,6 +43,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0011-quality-gate-attempt-semantics.md` | 72 | adr | active | adr |
 | `adr/README.md` | 57 | adr | active | adr-index |
 | `adr/TEMPLATE.md` | 32 | adr | active | adr |
+| `agent-infrastructure-audit-2026-10-30.md` | 251 | docs/root | active | — |
 | `archive/AutoInfo-development-brief-v2.md` | 226 | archive | archived | — |
 | `archive/AutoInfo-development-brief-v3.md` | 247 | archive | archived | — |
 | `archive/AutoInfo开发简报.md` | 104 | archive | archived | — |
@@ -76,11 +76,11 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `archive/readme-known-limitations-chronicle.md` | 7 | archive | archived | — |
 | `archive/remaining-source-gap-verdicts.md` | 116 | archive | archived | verdicts |
 | `archive/reports/global-content-paid-research-report-trae.md` | 973 | archive | archived | — |
-| `demo-release-standard.md` | 42 | docs/root | active | — |
+| `demo-release-standard.md` | 43 | docs/root | active | — |
 | `dev/AutoInfo-development-brief-v4.md` | 310 | docs/dev | active | — |
 | `dev/acceptance-framework.md` | 508 | docs/dev | active | — |
-| `dev/agent-era-doc-architecture-autoinfo.md` | 94 | docs/dev | active | reference |
-| `dev/agent-era-doc-architecture.md` | 280 | docs/dev | active | instruction |
+| `dev/agent-era-doc-architecture-autoinfo.md` | 95 | docs/dev | active | reference |
+| `dev/agent-era-doc-architecture.md` | 282 | docs/dev | active | instruction |
 | `dev/autoinfo-business-validation-20260902.md` | 293 | docs/dev | active | — |
 | `dev/autoinfo-corrections-20260904.md` | 439 | docs/dev | active | — |
 | `dev/autoinfo-dev-roadmap-20260902.md` | 135 | docs/dev | active | — |
@@ -96,6 +96,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/plans/2026-08-30-AutoInfo-GraphEngineering落地实施方案-修正版.md` | 153 | docs/dev | active | — |
 | `dev/plans/NIGHTLY.md` | 210 | docs/dev | active | — |
 | `dev/plans/README.md` | 65 | docs/dev | active | plan-index |
+| `dev/plans/agent-infra-remediation-2026-10-30.md` | 172 | docs/dev | active | — |
 | `dev/plans/agent-oriented-gap-register.md` | 608 | docs/dev | active | plan |
 | `dev/required-api-keys.md` | 158 | docs/dev | active | — |
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
@@ -110,7 +111,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/operations.md` | 972 | specs | active | — |
 | `dev/specs/ops-runbook.md` | 1040 | specs | active | — |
 | `dev/specs/pipeline.md` | 637 | specs | active | — |
-| `dev/specs/quality-gates.md` | 191 | specs | active | — |
+| `dev/specs/quality-gates.md` | 210 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
 | `dev/testing-layers.md` | 261 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
@@ -156,6 +157,3 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `schemas/knowledge-digest-v1.json` | 154 | schemas | active | — |
 | `schemas/knowledge-presentation-v1.json` | 72 | schemas | active | — |
 | `schemas/knowledge-tutorial-v1.json` | 99 | schemas | active | — |
-| `skills/autoinfo-skill/SKILL.md` | 295 | skills | active | — |
-| `skills/autoinfo-skill/onboarding-walkthrough.md` | 121 | skills | active | — |
-| `skills/translator-qa-skill/SKILL.md` | 369 | skills | active | — |

@@ -26,6 +26,11 @@ keeps a subprocess from being killed mid-item.  A domain that no longer fits is
 reported as ``skipped_budget`` instead of being started anyway.
 ``--max-seconds 0`` disables the budget for manual / backlog runs.
 
+#596 also left processing oldest-first, so a nightly run with a budget only
+ever reached stale entries.  ``--since-days N`` restricts the backlog (and the
+subprocess) to items collected within the last N days, and ``--newest-first``
+processes the newest cached items first; both default to off.
+
 Exit codes:
     0  all selected domains processed successfully, or nothing was due
     1  at least one selected domain failed
@@ -45,7 +50,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -68,6 +73,8 @@ class ProcessRequest:
     repo: Path
     timeout_s: int
     batch_size: int = 0
+    since_days: int = 0
+    newest_first: bool = False
 
 
 Runner = Callable[[ProcessRequest], tuple[int, float]]
@@ -82,15 +89,22 @@ def domain_names(domains_dir: Path) -> list[str]:
     )
 
 
-def count_cached_items(collections: Path, domain: str) -> int:
+def count_cached_items(collections: Path, domain: str, since_days: int = 0) -> int:
     """Count usable cached item JSON files for one domain.
 
     Mirrors the loader's conventions: ``_runs.json`` and paths under a
     directory whose name starts with ``_`` are bookkeeping, not items.
+    With *since_days* > 0, files under a date-named directory older than that
+    window are skipped; non-date directories never filter a file out.  Only
+    path/name parsing is done — cache files are never read.
     """
     root = collections / domain
     if not root.is_dir():
         return 0
+
+    cutoff: date | None = None
+    if since_days > 0:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=since_days)).date()
 
     count = 0
     for path in root.rglob("*.json"):
@@ -99,6 +113,13 @@ def count_cached_items(collections: Path, domain: str) -> int:
             continue
         if any(part.startswith("_") for part in rel_parts[:-1]):
             continue
+        if cutoff is not None:
+            try:
+                parent_date = date.fromisoformat(path.parent.name)
+            except ValueError:
+                parent_date = None
+            if parent_date is not None and parent_date < cutoff:
+                continue
         count += 1
     return count
 
@@ -170,6 +191,10 @@ def _run_process(request: ProcessRequest) -> tuple[int, float]:
     ]
     if request.batch_size > 0:
         cmd += ["--batch-size", str(request.batch_size)]
+    if request.since_days > 0:
+        cmd += ["--since-days", str(request.since_days)]
+    if request.newest_first:
+        cmd += ["--newest-first"]
     started = time.monotonic()
     try:
         completed = subprocess.run(
@@ -278,6 +303,17 @@ def main(
         default=DEFAULT_TIMEOUT,
         help=f"Per-domain process timeout cap in seconds (default: {DEFAULT_TIMEOUT}).",
     )
+    ap.add_argument(
+        "--since-days",
+        type=int,
+        default=0,
+        help="Only process items collected within the last N days (0 = no window).",
+    )
+    ap.add_argument(
+        "--newest-first",
+        action="store_true",
+        help="Process the newest cached items first instead of oldest-first.",
+    )
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--json-out", default="")
     ap.add_argument("--md-out", default="")
@@ -324,7 +360,7 @@ def main(
 
     rows: list[dict[str, object]] = []
     for domain in configured:
-        cached = count_cached_items(collections, domain)
+        cached = count_cached_items(collections, domain, since_days=args.since_days)
         if cached == 0:
             continue
         processed = read_processed_count(db_path, domain)
@@ -340,6 +376,8 @@ def main(
                 "batch_size": 0,
                 "exit_code": 0,
                 "duration_s": 0.0,
+                "since_days": args.since_days,
+                "newest_first": args.newest_first,
             }
         )
 
@@ -385,7 +423,16 @@ def main(
             projected_used += allowance
         else:
             timeout = max(1, int(min(args.timeout, allowance))) if budget_enabled else args.timeout
-            exit_code, duration_s = run(ProcessRequest(str(row["domain"]), repo, timeout, batch))
+            exit_code, duration_s = run(
+                ProcessRequest(
+                    str(row["domain"]),
+                    repo,
+                    timeout,
+                    batch,
+                    args.since_days,
+                    args.newest_first,
+                )
+            )
             row.update(
                 action="run",
                 budget_s=float(timeout),

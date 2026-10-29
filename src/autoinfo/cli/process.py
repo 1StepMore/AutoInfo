@@ -58,6 +58,16 @@ def process(
         ),
     ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    since_days: int = typer.Option(
+        0,
+        "--since-days",
+        help="Only process items collected within the last N days (0 = no window).",
+    ),
+    newest_first: bool = typer.Option(
+        False,
+        "--newest-first",
+        help="Process the newest cached items first instead of oldest-first.",
+    ),
 ) -> None:
     """Process collected items (LLM extraction, quality gates G1-G5, KB storage)."""
     try:
@@ -69,6 +79,8 @@ def process(
             check_factual=check_factual,
             check_translation=check_translation,
             resume_from=resume_from,
+            since_days=since_days,
+            newest_first=newest_first,
         )
     except FileNotFoundError as exc:
         fail_if_global("NotFound", str(exc))

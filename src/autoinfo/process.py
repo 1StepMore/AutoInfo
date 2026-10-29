@@ -23,7 +23,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -380,7 +380,37 @@ class ProcessResult:
 # ---------------------------------------------------------------------------
 
 
-def load_cached_items(domain: str, base_path: str | Path = "collections") -> list[Item]:
+def _resolve_cache_timestamp(item: Item, date_dir: Path) -> datetime | None:
+    """Resolve when *item* was collected, for freshness filtering and ordering."""
+    try:
+        parsed = datetime.fromisoformat(item.collected_at)
+    except (TypeError, ValueError):
+        parsed = None
+    if parsed is not None:
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+    # Fallback: items live under ``<source>/<date>/``, so an empty or
+    # unparseable ``collected_at`` still has a usable collection day.
+    try:
+        day = date.fromisoformat(date_dir.name)
+    except ValueError:
+        return None
+    return datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+
+
+def _newest_first_key(entry: tuple[datetime | None, Item]) -> tuple[bool, float, str]:
+    """Sort newest-first, undated items last, ties broken by item id."""
+    ts, item = entry
+    return (ts is None, -ts.timestamp() if ts is not None else 0.0, item.id)
+
+
+def load_cached_items(
+    domain: str,
+    base_path: str | Path = "collections",
+    *,
+    since_days: int = 0,
+    newest_first: bool = False,
+) -> list[Item]:
     """Read cached items from ``collections/<domain>/<source>/<date>/<id>.json``.
 
     Parameters
@@ -390,6 +420,14 @@ def load_cached_items(domain: str, base_path: str | Path = "collections") -> lis
     base_path : str | Path, optional
         Root path for the collections directory (defaults to ``"collections"``).
         Useful for testing with temporary directories.
+    since_days : int, optional
+        When > 0, keep only items collected within the last *since_days* days
+        (relative to now, UTC).  Items whose collection time cannot be
+        determined are kept.  Defaults to 0 (no window).
+    newest_first : bool, optional
+        When ``True``, return items sorted by collection time descending
+        (undated items last, ties by item id).  Defaults to ``False``, which
+        preserves the cache's directory walk order.
 
     Returns
     -------
@@ -397,11 +435,15 @@ def load_cached_items(domain: str, base_path: str | Path = "collections") -> lis
         Deserialized items (empty list when no cache directory exists).
     """
     items: list[Item] = []
+    stamped: list[tuple[datetime | None, Item]] = []
     base_dir = Path(base_path) / domain
 
     if not base_dir.is_dir():
         logger.info("No cached items found for domain '%s'", domain)
         return items
+
+    need_timestamps = since_days > 0 or newest_first
+    cutoff = datetime.now(timezone.utc) - timedelta(days=since_days) if since_days > 0 else None
 
     for source_dir in sorted(base_dir.iterdir()):
         if not source_dir.is_dir() or source_dir.name.startswith("_"):
@@ -420,9 +462,34 @@ def load_cached_items(domain: str, base_path: str | Path = "collections") -> lis
                             type(data).__name__,
                         )
                         continue
-                    items.append(Item.from_dict(data))
+                    item = Item.from_dict(data)
                 except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                     logger.warning("Skipping malformed cache file %s: %s", json_file, exc)
+                    continue
+
+                if not need_timestamps:
+                    items.append(item)
+                    continue
+
+                ts = _resolve_cache_timestamp(item, date_dir)
+                if cutoff is not None:
+                    if ts is None:
+                        # Never silently drop content whose collection date is
+                        # unknown — keep it and just note it for debugging.
+                        logger.debug(
+                            "Keeping undated cache item %s (no parseable timestamp)", json_file
+                        )
+                    elif ts < cutoff:
+                        continue
+                stamped.append((ts, item))
+
+    if not need_timestamps:
+        logger.info("Loaded %d cached items for domain '%s'", len(items), domain)
+        return items
+
+    if newest_first:
+        stamped.sort(key=_newest_first_key)
+    items = [item for _, item in stamped]
 
     logger.info("Loaded %d cached items for domain '%s'", len(items), domain)
     return items
@@ -861,6 +928,8 @@ def run_processing(
     check_translation: bool = False,
     auto_promote: bool = False,
     resume_from: str | None = None,
+    since_days: int = 0,
+    newest_first: bool = False,
 ) -> ProcessResult:
     """Main processing pipeline.
 
@@ -922,6 +991,13 @@ def run_processing(
         even when *batch_size* is 0.  ``"start"`` clears the cursor and
         reprocesses from the beginning.  ``None`` (default) keeps the legacy
         behaviour (cursor consulted only when *batch_size* > 0).
+    since_days : int, optional
+        When > 0, only items collected within the last *since_days* days are
+        loaded and processed; items whose collection time cannot be determined
+        are kept.  Defaults to 0 (no window).
+    newest_first : bool, optional
+        When ``True``, cached items are ordered newest-first instead of the
+        default oldest-first cache walk order.  Defaults to ``False``.
 
     Returns
     -------
@@ -937,7 +1013,7 @@ def run_processing(
         config = load_config(config_path)
 
     # -- Load cached items --------------------------------------------------
-    cached_items = load_cached_items(domain)
+    cached_items = load_cached_items(domain, since_days=since_days, newest_first=newest_first)
     total_items = len(cached_items)
 
     # -- Determine which items to process (batch vs full) --------------------

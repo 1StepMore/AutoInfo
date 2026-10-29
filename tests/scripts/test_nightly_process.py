@@ -622,3 +622,86 @@ def test_cursor_read_processed_count_prefers_ledger(tmp_path: Path) -> None:
     assert np.read_processed_count(db_path, "alpha") == 7
     # Unknown domains fall back to 0 (original "unavailable => 0" contract).
     assert np.read_processed_count(db_path, "beta") == 0
+
+
+# ===================================================================
+# AutoInfo#596 root cause 3 — freshness window + newest-first
+# ===================================================================
+
+
+def _seed_dated_cache(
+    tmp_path: Path, date_name: str, ids: list[str], domain: str = "alpha"
+) -> None:
+    """Seed ``collections/<domain>/source/<date_name>/<id>.json`` cache files."""
+    cache_dir = tmp_path / "collections" / domain / "source" / date_name
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    for item_id in ids:
+        (cache_dir / f"{item_id}.json").write_text(json.dumps({"id": item_id}), encoding="utf-8")
+
+
+def test_since_days_and_newest_first_reach_request(tmp_path: Path) -> None:
+    from tests._freshness import fresh_date
+
+    _seed_domain(tmp_path)
+    _seed_dated_cache(tmp_path, fresh_date(1), [f"new-{i:03d}" for i in range(10)])
+    calls: list[np.ProcessRequest] = []
+
+    def runner(request: np.ProcessRequest) -> tuple[int, float]:
+        calls.append(request)
+        return 0, 1.0
+
+    rc = np.main(
+        _args(
+            tmp_path,
+            "--min-backlog",
+            "10",
+            "--since-days",
+            "7",
+            "--newest-first",
+            "--json-out",
+            str(tmp_path / "report.json"),
+        ),
+        runner=runner,
+        clock=_FakeClock(),
+    )
+
+    assert rc == 0
+    assert calls == [np.ProcessRequest("alpha", tmp_path, 2400, 10, 7, True)]
+    row = _read_report(tmp_path)["domains"][0]
+    assert row["since_days"] == 7
+    assert row["newest_first"] is True
+
+
+def test_run_process_forwards_window_flags(tmp_path: Path) -> None:
+    recorded: list[list[str]] = []
+
+    class _Completed:
+        returncode = 0
+
+    def fake_run(cmd: list[str], **kwargs: object) -> _Completed:
+        recorded.append(cmd)
+        return _Completed()
+
+    original = np.subprocess.run
+    np.subprocess.run = fake_run  # type: ignore[assignment]
+    try:
+        np._run_process(np.ProcessRequest("alpha", tmp_path, 30, 0, 7, True))
+        np._run_process(np.ProcessRequest("alpha", tmp_path, 30, 0))
+    finally:
+        np.subprocess.run = original  # type: ignore[assignment]
+
+    assert recorded[0][-3:] == ["--since-days", "7", "--newest-first"]
+    assert "--since-days" not in recorded[1]
+    assert "--newest-first" not in recorded[1]
+
+
+def test_count_cached_items_applies_window_to_date_dirs(tmp_path: Path) -> None:
+    from tests._freshness import fresh_date
+
+    _seed_dated_cache(tmp_path, "2020-01-01", ["old-a", "old-b"])
+    _seed_dated_cache(tmp_path, fresh_date(1), ["new-a", "new-b", "new-c"])
+    _seed_dated_cache(tmp_path, "not-a-date", ["misc-a"])
+    collections = tmp_path / "collections"
+
+    assert np.count_cached_items(collections, "alpha") == 6
+    assert np.count_cached_items(collections, "alpha", since_days=7) == 4

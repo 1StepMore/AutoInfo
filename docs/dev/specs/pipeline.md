@@ -396,6 +396,59 @@ Every LLM call route through `llm.call_with_fallback` (llm.py) and inherits the 
 
 ---
 
+### 3.6 Processing Cursor: Monotonic Item-Id Ledger (issue #637, v1.21.3)
+
+The resume cursor lives in `autoinfo.db` (`_get_progress_db_path()`, the same SQLite file that backs the KB index), and `_init_progress_table` creates two tables with distinct jobs:
+
+| Table | Columns | Role |
+|-------|---------|------|
+| `processing_items` | `domain`, `item_id`, `processed_at`; PRIMARY KEY `(domain, item_id)` | **Authoritative** item-id ledger |
+| `processing_progress` | `domain`, `last_processed_index`, `total_items` | **Legacy** position cursor, retained as a public contract |
+
+**Why the cursor is monotone** — the cursor anchor is the stable `Item.id`, not a position plus a snapshot count. `_read_processed_ids(domain)` returns the ledger's id set and the pending list is computed as `[it for it in cached_items if it.id not in processed_ids]`; an id is pending exactly once until it is marked, so a nightly collection that grows (or shrinks) the cache no longer resets the cursor to zero and re-processes the whole backlog — the failure mode that position-based tracking had before #637 (parent issue #596 / BACKLOG B7).
+
+**Per-item durability** — `_mark_processed` runs as soon as each item's processing settles (`INSERT OR IGNORE`, so re-marking is idempotent) with an ISO-8601 UTC `processed_at`. Items whose log status is `"error"` are deliberately **not** marked, so a failed item is retried on the next run instead of being silently sunk. A run killed by an external timeout therefore keeps every item it already finished.
+
+**`resume_from` and `batch_size`** — `run_processing(..., batch_size=0, resume_from=None)` derives two booleans: `persist_cursor = batch_size > 0 or resume_from in ("auto", "start")` and `use_cursor = batch_size > 0 or resume_from == "auto"`. The modes are:
+
+- `resume_from=None` (default) — legacy behaviour: the cursor is consulted only when `batch_size > 0`.
+- `resume_from="auto"` — consult the ledger and process the pending remainder even when `batch_size` is 0 (this is what `scripts/nightly_process.py` always passes).
+- `resume_from="start"` — `_reset_progress(domain)` deletes the `processing_progress` row **and** every `processing_items` row for the domain, then reprocesses from the beginning.
+
+When the cursor is in use, `effective_batch = batch_size if batch_size > 0 else len(pending)`, and `remaining_count` / `is_complete` are computed from the pending set rather than from the cache total.
+
+**One-shot migration** — a pre-#637 domain has a legacy position cursor but an empty ledger. When `_read_processed_ids` returns nothing and `last_processed_index > 0`, the first `legacy_index` cached items are seeded into the ledger via `_mark_processed` ("the first N items in cache order were processed"), after which the domain continues on the id path. At the end of any run with `persist_cursor`, `_write_progress(domain, new_index, total_items)` still updates the legacy row so `get_processing_progress()` keeps returning `{total_items, processed_count, remaining_count, is_complete}` unchanged.
+
+### 3.7 Time Window & Ordering: `--since-days` / `--newest-first` (issue #655, v1.21.4)
+
+`load_cached_items(domain, base_path="collections", *, since_days=0, newest_first=False)` gained both parameters, and both are **no-ops at their defaults** so existing callers keep the cache's directory-walk order. The loader only resolves timestamps when `since_days > 0 or newest_first` (`need_timestamps`), so an unparameterised call does no extra work.
+
+**Timestamp resolution** — `_resolve_cache_timestamp(item, date_dir)` parses `item.collected_at` with `datetime.fromisoformat` (a naive value is assumed UTC), and falls back to the parent cache directory name via `date.fromisoformat(date_dir.name)` at midnight UTC — items live under `collections/<domain>/<source>/<date>/`. If neither works the item's time is `None`.
+
+**Window** — `since_days > 0` computes `cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)` and drops items with a resolved timestamp older than the cutoff. Items whose time **cannot be determined are kept**, never silently dropped (only a debug log line is written). `since_days=0` applies no window.
+
+**Ordering** — `newest_first=True` sorts with `_newest_first_key = (ts is None, -ts.timestamp() if ts is not None else 0.0, item.id)`: newest first, undated items last, ties broken by item id. `newest_first=False` preserves the sorted directory walk, i.e. the prior oldest-first behaviour.
+
+**Threading** — `run_processing(..., since_days=0, newest_first=False)` forwards both straight to `load_cached_items`, and the CLI exposes them as `--since-days N` (default 0) and `--newest-first` (default off). `scripts/nightly_process.py` forwards both to the `autoinfo process` subprocess and additionally passes `since_days` to `count_cached_items`, which narrows the backlog count **by path parsing only** — a date-named parent directory older than the cutoff is skipped and a non-date directory never filters a file out; cache files are never opened.
+
+### 3.8 Nightly Process Stage: Hard Budget & Fair-Share Batching (issue #635, v1.18.0)
+
+The nightly batch used to run `collect` → `nightly_gap.py`; `scripts/nightly_process.py` inserts the LLM-bound process stage between them but only for domains that actually have a backlog: `backlog = count_cached_items(...) - read_processed_count(...)`, and a domain is due only when `backlog >= --min-backlog`. `read_processed_count` prefers `SELECT COUNT(*) FROM processing_items` (the #637 ledger, unaffected by cache-total changes) and falls back to `last_processed_index` from `processing_progress` for pre-#637 projects.
+
+**Hard run budget** — `--max-seconds` (default 2400) is a hard wall-clock budget for the whole run, so the lane returns inside the systemd window instead of eating the next stage's time; `--max-seconds 0` disables it for manual/backlog runs. `--timeout` (default 7200) caps a single domain, `--seconds-per-item` (default 40, measured on the 2026-10-21 backlog) converts an allowance into an item count, and `--batch-size 0` means "derive it from the budget".
+
+**Fair share across due domains** — for each due domain, with `remaining_due = due_count - assigned + 1`:
+
+- `consumed` is elapsed wall time on a real run, or the sum of projected allowances on `--dry-run` (a dry run cannot observe durations);
+- `remaining = max_seconds - consumed`; if `remaining <= 0` the domain is marked `skipped_budget` and never started;
+- otherwise `allowance = remaining / remaining_due`. If `allowance < seconds_per_item` and more than one domain is still due, the domain is deferred as `skipped_budget` (a smaller due set may still fit); when it is the last due domain it gets the whole `remaining` instead, and is skipped only if even that is below `seconds_per_item`.
+
+**Derived batch and subprocess** — `_derive_batch_size` returns `max(1, min(backlog, int(allowance // seconds_per_item)))`, or 0 ("all") when the budget is disabled. The per-domain subprocess timeout is `max(1, int(min(--timeout, allowance)))`, and the invocation is `autoinfo process --domain <d> --resume-from auto`, appending `--batch-size`, `--since-days` and `--newest-first` only when set. A subprocess killed by the timeout returns exit code 124; `--dry-run` reports `would_run` with the projected `budget_s` and `batch_size` instead of executing.
+
+**Reporting** — per-domain rows carry `cached_items`, `processed_count`, `backlog`, `action`, `budget_s`, `batch_size`, `exit_code` and `duration_s`; the summary counts `selected`, `executed`, `failed`, `skipped` and `skipped_budget`, and sets `budget_exhausted` when the budget is enabled and at least one domain was skipped for budget. Output is machine-readable JSON (`--json-out`) plus a Markdown table (`--md-out`, also printed), and exit codes are 0 (all selected domains succeeded or nothing was due), 1 (at least one failure), 2 (usage/environment error).
+
+---
+
 ## 4. Custom Extraction & Q&A (§12.5, 12.8)
 
 ### 4.1 Custom Extraction

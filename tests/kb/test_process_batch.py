@@ -542,6 +542,8 @@ class TestBatchCli:
             check_factual=False,
             check_translation=False,
             resume_from=None,
+            since_days=0,
+            newest_first=False,
         )
 
     def test_batch_progress_shown_in_human_output(self, cli_runner) -> None:

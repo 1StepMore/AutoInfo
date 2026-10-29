@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.5](https://github.com/1StepMore/AutoInfo/compare/v1.21.4...v1.21.5) (2026-10-29)
+
+
+### Bug Fixes
+
+* **docs:** correct documentation drift found by the 2026-10-29 audit ([#657](https://github.com/1StepMore/AutoInfo/issues/657)) ([96f7fef](https://github.com/1StepMore/AutoInfo/commit/96f7fefe1c20c6c2fe1268ef0cd582dda81fd34a))
+
 ## [1.21.4](https://github.com/1StepMore/AutoInfo/compare/v1.21.3...v1.21.4) (2026-10-29)
 
 

@@ -41,7 +41,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
 | Output generation | ✅ Digest (Markdown/HTML/JSON/Agent/Audio/EPUB/Audiobook), report (Markdown/JSON/HTML/Audio/Agent/Video/EPUB/Audiobook), tutorial (Markdown), presentation (Markdown), export (Markdown/JSON/SQLite/PDF/RSS/CSV/GraphML/Agent/Bundle/Sitemap/EPUB; MOBI 🟡 requires calibre, not CI-covered) (Jinja2 + LLM, Reveal.js CDN, ebooklib EPUB3 + calibre MOBI); 8 product templates incl. premium-briefing/enterprise-briefing/magazine-digest (editorial intro + personality feature story, #313) + per-product LLM synthesis |
 | Agent-native JSON output | ✅ `format="agent"` returns JSON-LD (`@type: KnowledgeDigest`) for LLM re-consumption |
-| Audio output | ✅ TTS-rendered digest/report as MP3 (OpenAI TTS) via `format='audio'`; `format='audiobook'` = chaptered MP3 + ZIP (ID3v2.3 CHAP/CTOC via mutagen) |
+| Audio output | ✅ TTS-rendered digest/report as MP3 via `format='audio'`; four engines selected by `tts.engine`: `local` (edge-tts, default, no API key needed), `openai`, `whisper`, `azure` (Azure Speech; credentials from `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION`). `format='audiobook'` = chaptered MP3 + ZIP (ID3v2.3 CHAP/CTOC via mutagen) |
 | Video output | ✅ HyperFrames HTML+GSAP→MP4 (`report format="video"`): TTS narration + themed scene compositions, 36+8 themes, 6 layouts with adjacent-scene diversity; MCP `generate_report`/`generate_cross_domain_report` expose `video` |
 | Translation | ✅ LLM-based source→target |
 | Knowledge graph | ✅ Entity extraction + relation discovery |
@@ -285,7 +285,7 @@ Sources (RSS/API/Web)
 | Storage | SQLite + FTS5 (keyword search) + sqlite-vec (vector embeddings) |
 | KB files | Markdown + python-frontmatter, git-versioned |
 | Collection | httpx, feedparser (RSS), trafilatura + lxml + beautifulsoup4 (web), Playwright (browser, optional), PyMuPDF (PDF, optional) |
-| Output & templates | Jinja2, weasyprint (PDF, optional), edge-tts (TTS audio, optional), Reveal.js (presentations, CDN) |
+| Output & templates | Jinja2, weasyprint (PDF, optional), edge-tts (TTS audio, optional — `local` engine, default), Azure Speech (TTS audio, optional — `azure` engine, `tts.engine: azure`), Reveal.js (presentations, CDN) |
 | Web UI | Bootstrap 5 (built-in dashboard) |
 | Billing | Stripe |
 | Scheduling | croniter + crond |
@@ -310,7 +310,7 @@ autoinfo init --name <project>      # Initialize project
 autoinfo init --demo <domain>       # Initialize with demo domain
 autoinfo doctor                      # System health check
 autoinfo collect --domain <d> ...   # Collect from sources
-autoinfo process --domain <d> ...   # LLM extraction + storage
+autoinfo process --domain <d> ...   # LLM extraction + storage (--since-days N / --newest-first)
 autoinfo status                      # Collection stats
 autoinfo summaries list|flag|show   # Browse summaries
 autoinfo sources add|list|remove|test  # Source management

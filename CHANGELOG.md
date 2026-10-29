@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.2](https://github.com/1StepMore/AutoInfo/compare/v1.21.1...v1.21.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **output:** keep HTML structure and tidy citation residue ([#644](https://github.com/1StepMore/AutoInfo/issues/644), [#645](https://github.com/1StepMore/AutoInfo/issues/645)) ([#650](https://github.com/1StepMore/AutoInfo/issues/650)) ([420445d](https://github.com/1StepMore/AutoInfo/commit/420445d4c3d9b2a4d55e7dad4f28bc637c9dedc1))
+
 ## [1.21.1](https://github.com/1StepMore/AutoInfo/compare/v1.21.0...v1.21.1) (2026-10-28)
 
 

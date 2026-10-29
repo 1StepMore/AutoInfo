@@ -162,6 +162,7 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 | Collection progress | — | `get_collection_progress` | — | MCP-only | **CLI job state: MCP-only** (see asymmetry note) |
 | Collection status | `status` | `get_collection_status` | — | ✓ CLI+MCP | |
 | Process collection | `process` | `process_collection` | — | ✓ CLI+MCP | Noop asymmetry → [mcp-usage-examples.md:298](mcp-usage-examples.md#cli-mcp-noop-asymmetry-process_collection) |
+| Process freshness window | `process --since-days N` / `--newest-first` | — | — | **CLI-only** | #655. `--since-days` keeps only items collected within the last N days (0 = no window); `--newest-first` walks the cache newest-first instead of the default oldest-first. The window resolves an item's time from `collected_at`, then the `<date>` cache directory, and keeps items whose time cannot be determined rather than dropping them. Both default to no-op. Also threaded through `scripts/nightly_process.py`. No MCP equivalent — `process_collection` deliberately keeps the full-cache walk. |
 | Processing progress | — | `get_processing_progress` | — | MCP-only | **CLI job state: MCP-only** |
 | Batch run | — | `batch_run` | — | MCP-only | |
 | Clean cache | `clean` | `clean_cache` | — | ✓ CLI+MCP | CLI also has `--everything`/`--dry-run` |

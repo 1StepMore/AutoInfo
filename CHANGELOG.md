@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.4](https://github.com/1StepMore/AutoInfo/compare/v1.21.3...v1.21.4) (2026-10-29)
+
+
+### Bug Fixes
+
+* **process:** add --since-days / --newest-first so a budgeted run reaches new items ([#596](https://github.com/1StepMore/AutoInfo/issues/596)) ([#655](https://github.com/1StepMore/AutoInfo/issues/655)) ([46eaef2](https://github.com/1StepMore/AutoInfo/commit/46eaef29f2bd8f317f4a3e0ac3c225ee81cc57ce))
+
 ## [1.21.3](https://github.com/1StepMore/AutoInfo/compare/v1.21.2...v1.21.3) (2026-10-29)
 
 

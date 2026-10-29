@@ -612,21 +612,58 @@ from autoinfo.output.entries import _warn_cjk_leak as _warn_cjk_leak  # noqa: E4
 # synthesis dict — a body that is empty/garbled but whose synthesis dict is
 # non-empty must fail D1.
 
-_SKELETON_TOKEN_RE = re.compile(r"<[a-z][a-z0-9 _\-]+>", re.IGNORECASE)
+# HTML element names are a closed set while LLM placeholders are open-ended,
+# so preserving the former cannot regress on a new placeholder name.
+# Issue #645: without this guard the cleaner ate <head>/<title>/<h1> from
+# rendered HTML, failing the L2 structural check for every :html product.
+_HTML_ELEMENT_NAMES: Final = frozenset(
+    """
+    html head title meta link style script body base
+    header nav main article aside footer section div span
+    h1 h2 h3 h4 h5 h6 p br hr pre code kbd samp var
+    a em strong b i u s small mark sub sup q cite dfn abbr time
+    ul ol li dl dt dd figure figcaption blockquote
+    table caption thead tbody tfoot tr th td colgroup col
+    img picture source video audio track iframe embed canvas svg
+    path circle rect line polyline polygon g def use symbol
+    form label input button select option optgroup textarea fieldset legend
+    details summary dialog template slot address
+    """.split()
+)
+
+_SKELETON_TOKEN_RE = re.compile(r"<([a-z][a-z0-9 _\-]+)>", re.IGNORECASE)
+
+
+def _is_html_document(text: str) -> bool:
+    """True when *text* is a rendered HTML document, not markdown prose."""
+    lowered = text[:2000].lower()
+    return "<!doctype html" in lowered or "<html" in lowered
+
+
+def _strip_skeleton_token(match: re.Match[str]) -> str:
+    return match.group(0) if match.group(1).strip().lower() in _HTML_ELEMENT_NAMES else ""
 
 
 def _clean_skeleton_placeholders(text: str) -> str:
     """Strip LLM skeleton placeholders (``<finding 1>``, ``<metric>``, etc.)
     that the model echoed verbatim from the prompt template.
 
+    Real HTML tags are preserved (issue #645) — the cleaner runs over
+    rendered HTML documents, where ``<head>``/``<title>``/``<h2>`` are
+    document structure, not placeholders.
+
     Returns the cleaned text with placeholder tokens removed.  Lines that
     become empty after stripping are removed.  Table rows that become
     all-pipes are removed.
     """
+    # Only an HTML document has real tags to protect.  In markdown prose a
+    # bare ``<source>``/``<metric>`` is the LLM echoing a prompt placeholder,
+    # and some names (``source``, ``summary``) are both.
+    strip = _strip_skeleton_token if _is_html_document(text) else (lambda _m: "")
     lines = text.split("\n")
     cleaned: list[str] = []
     for line in lines:
-        new_line = _SKELETON_TOKEN_RE.sub("", line)
+        new_line = _SKELETON_TOKEN_RE.sub(strip, line)
         # Collapse runs of whitespace left by removal
         new_line = re.sub(r"  +", " ", new_line).strip()
         # Remove empty table rows (e.g. "| | | |" → empty)
@@ -760,10 +797,10 @@ def _strip_unverifiable_presentation_sources(text: str, allowed_urls: set[str]) 
         citation = text[m.start() : j]
         urls = _PRESENTATION_CITATION_URL_RE.findall(citation)
         keep = bool(urls) and all(_source_url_verifiable(u, allowed_urls) for u in urls)
-        out.append(citation if keep else "")
+        out.append(citation if keep else _CITATION_RESIDUE_MARK)
         pos = j
     out.append(text[pos:])
-    return "".join(out)
+    return _clean_citation_residue("".join(out))
 
 
 def _sanitize_presentation_sources(text: str, allowed_urls: set[str] | None = None) -> str:
@@ -780,10 +817,10 @@ def _sanitize_presentation_sources(text: str, allowed_urls: set[str] | None = No
     but fabricated placeholder never ships (backup issue #101).  Never
     applied to JSON/agent payloads.
     """
-    text = _FABRICATED_SOURCE_RE.sub("", text)
+    text = _FABRICATED_SOURCE_RE.sub(_CITATION_RESIDUE_MARK, text)
     if allowed_urls:
         text = _strip_unverifiable_presentation_sources(text, allowed_urls)
-    return text
+    return _clean_citation_residue(text)
 
 
 # Issue #207 (backup): report/digest body citations.  A body citation is
@@ -796,6 +833,31 @@ def _sanitize_presentation_sources(text: str, allowed_urls: set[str] | None = No
 _REPORT_SOURCE_START_RE = re.compile(r"\(Source[s]?:", re.IGNORECASE)
 _REPORT_CITE_URL_RE = re.compile(r"https?://[^)\s]+", re.IGNORECASE)
 _REPORT_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
+
+# Issue #644: dropping a citation used to leave its surrounding separators
+# behind ("all feature , , ." / "exposure  and").  The junction where a
+# citation was removed is marked with a sentinel so cleanup stays scoped to
+# that spot — a legitimate comma list elsewhere in the same text is never
+# touched.
+_CITATION_RESIDUE_MARK = "\x00"
+
+
+def _clean_citation_residue(text: str) -> str:
+    """Tidy the separators left behind by removed citations."""
+    out = text
+    previous = None
+    while previous != out:
+        previous = out
+        out = re.sub(
+            rf"(?:{_CITATION_RESIDUE_MARK}[ \t]*,?[ \t]*){{2,}}",
+            _CITATION_RESIDUE_MARK,
+            out,
+        )
+    out = re.sub(rf"[ \t]*{_CITATION_RESIDUE_MARK}[ \t]*,", ",", out)
+    out = re.sub(rf"[ \t]*{_CITATION_RESIDUE_MARK}[ \t]*(?=[.,;:!?])", "", out)
+    out = re.sub(rf"(?m)^[ \t]*{_CITATION_RESIDUE_MARK}[ \t]*", "", out)
+    out = re.sub(rf"[ \t]*{_CITATION_RESIDUE_MARK}[ \t]*", " ", out)
+    return out.replace(_CITATION_RESIDUE_MARK, " ")
 
 
 def _sanitize_report_urls(text: str, allowed_urls: set[str]) -> str:
@@ -835,10 +897,10 @@ def _sanitize_report_urls(text: str, allowed_urls: set[str]) -> str:
         citation = text[m.start() : j]
         urls = _REPORT_CITE_URL_RE.findall(citation)
         keep = bool(urls) and all(_source_url_verifiable(u, allowed_urls) for u in urls)
-        out.append(citation if keep else "")
+        out.append(citation if keep else _CITATION_RESIDUE_MARK)
         pos = j
     out.append(text[pos:])
-    text = "".join(out)
+    text = _clean_citation_residue("".join(out))
 
     def _replace(match: re.Match[str]) -> str:
         url = match.group(2).rstrip(".,;:!?)]").rstrip("/")

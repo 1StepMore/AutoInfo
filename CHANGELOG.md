@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.3](https://github.com/1StepMore/AutoInfo/compare/v1.21.2...v1.21.3) (2026-10-29)
+
+
+### Bug Fixes
+
+* **process:** 处理游标改为按 item id 单调推进，item 数变化不再归零 (AutoInfo[#596](https://github.com/1StepMore/AutoInfo/issues/596)) ([#637](https://github.com/1StepMore/AutoInfo/issues/637)) ([c28c0c3](https://github.com/1StepMore/AutoInfo/commit/c28c0c3bd12e69eac34e8977726451a528df327f))
+
 ## [1.21.2](https://github.com/1StepMore/AutoInfo/compare/v1.21.1...v1.21.2) (2026-10-29)
 
 

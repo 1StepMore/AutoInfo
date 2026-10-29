@@ -104,7 +104,14 @@ def count_cached_items(collections: Path, domain: str) -> int:
 
 
 def read_processed_count(db_path: Path, domain: str) -> int:
-    """Read ``last_processed_index`` for a domain; 0 when unavailable."""
+    """Read the processed-item count for a domain; 0 when unavailable.
+
+    Prefers the item-id ledger (``processing_items``, AutoInfo#596): its row
+    count is the number of distinct ids the processing cursor has consumed,
+    unaffected by the cache total changing between runs.  Falls back to the
+    legacy ``last_processed_index`` column when that table or domain has no
+    ledger rows (pre-#596 projects / domains not yet migrated).
+    """
     if not db_path.is_file():
         return 0
 
@@ -112,6 +119,15 @@ def read_processed_count(db_path: Path, domain: str) -> int:
     try:
         uri = db_path.resolve().as_uri() + "?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=5)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM processing_items WHERE domain = ?",
+                (domain,),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        if row and row[0]:
+            return max(0, int(row[0]))
         row = conn.execute(
             "SELECT last_processed_index FROM processing_progress WHERE domain = ?",
             (domain,),

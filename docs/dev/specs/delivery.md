@@ -12,13 +12,13 @@
 
 | Product | MCP Tool | Description | Template Engine | Output Formats | Delivery Gates |
 |---------|----------|-------------|----------------|----------------|---------------|
-| **Digest** | `generate_digest()` | Curated summary of recent items per topic | Jinja2 | Markdown, HTML, Plain Text, **Audio (TTS MP3)** | D1, D3 |
-| **Report** | `generate_report()` | Structured deep-dive on a topic with analysis | Jinja2 + LLM | Markdown, JSON, PDF, HTML, **Audio (TTS MP3)** | D1, D2, D3 |
-| **Premium Briefing** | `generate_report(product="premium-briefing")` | Premium differentiated report product: per-item **implications / risks / action_required** analysis layered on the base synthesis (G15-gated tiered product) | Jinja2 + LLM | Markdown, HTML, JSON, PDF, Audio, Agent | D1, D2, D3 |
-| **Enterprise Briefing** | `generate_report(product="enterprise-briefing")` | Enterprise differentiated report product: adds per-item **key_metrics** (metric/value/source) on top of the premium analysis fields; renders a deterministic selection-scope label (`> **Scope**: 精选 N 条详述 · selected N of M items detailed below.`) so the Executive Summary coverage claim always matches the detailed Key Findings count (#314) | Jinja2 + LLM | Markdown, HTML, JSON, PDF, Audio, Agent | D1, D2, D3 |
+| **Digest** | `generate_digest()` | Curated summary of recent items per topic | Jinja2 | Markdown, HTML, JSON, Agent, **Audio (TTS MP3)**, EPUB, Audiobook | D1, D3 |
+| **Report** | `generate_report()` | Structured deep-dive on a topic with analysis | Jinja2 + LLM | Markdown, JSON, HTML, **Audio (TTS MP3)**, Agent, Video, EPUB, Audiobook | D1, D2, D3 |
+| **Premium Briefing** | `generate_report(product="premium-briefing")` | Premium differentiated report product: per-item **implications / risks / action_required** analysis layered on the base synthesis (G15-gated tiered product) | Jinja2 + LLM | Markdown, HTML, JSON, Audio, Agent | D1, D2, D3 |
+| **Enterprise Briefing** | `generate_report(product="enterprise-briefing")` | Enterprise differentiated report product: adds per-item **key_metrics** (metric/value/source) on top of the premium analysis fields; renders a deterministic selection-scope label (`> **Scope**: 精选 N 条详述 · selected N of M items detailed below.`) so the Executive Summary coverage claim always matches the detailed Key Findings count (#314) | Jinja2 + LLM | Markdown, HTML, JSON, Audio, Agent | D1, D2, D3 |
 | **Magazine Digest** | `generate_digest(product="magazine-digest")` | Per-title clustered digest (D11) — routed through the **digest** generation path (`generate_digest`), not the report path. Editorial intro ("## Editor's Note") + personality feature story ("## The Feature") sections render when the LLM synthesis carries `editorial_intro` / `feature_story` (issue #313) | Jinja2 + LLM | Markdown, HTML, JSON, Agent | D1, D2, D3 |
-| **Tutorial** | `generate_tutorial()` | Step-by-step learning content built from KB | Jinja2 + LLM | Markdown, HTML | D1, D2 |
-| **Presentation** | `generate_presentation()` | Slide deck generated from KB entries | Jinja2 + Reveal.js CDN | HTML | D1, D2 |
+| **Tutorial** | `generate_tutorial()` | Step-by-step learning content built from KB | Jinja2 + LLM | Markdown, Agent | D1, D2 |
+| **Presentation** | `generate_presentation()` | Slide deck generated from KB entries | Jinja2 + Reveal.js CDN | HTML, Markdown, mkslides, Agent | D1, D2 |
 | **Agent-Native JSON** | `generate_digest(format="agent")` | Structured JSON-LD optimized for LLM re-consumption | LLM renderer | JSON-LD (`@type: "KnowledgeDigest"`) | D1, D2 |
 | **KB Export** | `export_kb()` | Bulk export of KB entries | Export renderer | Markdown, JSON, SQLite, PDF, CSV, GraphML, **Bundle (ZIP)** | D1, D2 |
 | **RAW Feed** | `list_products()` / `get_product()` (type=`raw`) | Raw KB items delivered as API feed, webhook stream, or bulk export. `Product.variants` distinguishes the three modes: `["api_feed", "webhook", "bulk_export"]` (E11). | N/A (direct KB read) | API JSON, webhook payload, export bundle | D1, D3 |
@@ -158,6 +158,26 @@ The Agent-Native JSON format is a structured JSON-LD schema designed for LLM re-
 | `generate_tutorial(domain, topic, template, format, template_vars)` | Same pattern | Rendered tutorial |
 | `generate_presentation(domain, topic, template, template_vars)` | Same pattern | HTML presentation |
 | `localize_content(content, source_language, target_language)` | content + language params | Translated content |
+
+### 1.7 TTS Engine Selection (audio / audiobook formats)
+
+Audio rendering is engine-pluggable. `render_audio` (`src/autoinfo/output/audio.py`) resolves the engine from the explicit `engine` argument, else the `tts.engine` config key, else `local` — so a project with no TTS config still renders audio without an API key (#210).
+
+| Engine | Requires | Notes |
+|--------|----------|-------|
+| `local` | `edge-tts` extra (`pip install "autoinfo[tts]"`) | **Default.** Free, no API key. Voice via `tts.local_voice` (default `en-US-JennyNeural`). |
+| `openai` | `OPENAI_API_KEY` (or `AUTOINFO_LLM_API_KEY`) | OpenAI TTS API. Voices: alloy/echo/fable/onyx/nova/shimmer. |
+| `whisper` | `OPENAI_API_KEY` (or `AUTOINFO_LLM_API_KEY`) | OpenAI Whisper model via the TTS API. |
+| `azure` | `AZURE_SPEECH_KEY` (+ `AZURE_SPEECH_REGION` or `tts.azure_region`) | Azure Speech REST/SSML (issue #647). Voice via `tts.azure_voice`, default `zh-CN-XiaoxiaoNeural`, SSML language inferred from the voice prefix. Never falls back to `openai` — see the fallback rules below. |
+
+Fallback rules differ per engine, and this is deliberate — a silent downgrade can turn a clean local error into a 150-second OpenAI network timeout:
+
+- **Unknown engine name** — logs a warning and uses `openai`.
+- **`local`** — falls back to `openai` only when the `edge-tts` package is missing (`ImportError`); any other synthesis failure re-raises, because the operator chose `local` precisely to avoid an unreachable OpenAI endpoint (#210).
+- **`whisper`** — falls back to `openai` on failure.
+- **`azure`** — never falls back. A missing credential or transport failure surfaces as an actionable `RuntimeError`.
+
+Only the `azure` engine reads its credentials directly from the environment — its subscription key is deliberately not storable in `tts` config.
 
 ---
 
@@ -792,23 +812,23 @@ class ChannelHealth:
     channel_type: str                    # "smtp", "telegram", "wechat_oa", etc. — one of 13 canonical channels
     status: ChannelHealthStatus
     health_score: float                  # 0.0–100.0 (composite score)
-    
+
     # Recent performance
     delivery_count_24h: int = 0
     success_count_24h: int = 0
     failure_count_24h: int = 0
     success_rate_24h: float = 0.0        # success_count / delivery_count
-    
+
     # Latency (milliseconds)
     avg_latency_ms: float = 0.0
     p95_latency_ms: float = 0.0
     p99_latency_ms: float = 0.0
-    
+
     # Error breakdown
     last_error: str = ""
     last_error_at: str = ""
     consecutive_failures: int = 0
-    
+
     # Config
     failure_threshold: int = 5           # Consecutive failures before auto-suspend
     latency_threshold_ms: float = 30000.0  # P95 latency above which channel is degraded
@@ -850,8 +870,8 @@ When a channel exceeds its `failure_threshold` of consecutive failures or `laten
 ### 7.4 Health Score Calculation
 
 ```
-HealthScore = (SuccessRateWeight × SuccessRate) 
-            + (LatencyWeight × LatencyScore) 
+HealthScore = (SuccessRateWeight × SuccessRate)
+            + (LatencyWeight × LatencyScore)
             + (ConsecutiveFailurePenalty × -ConsecutiveFailures)
 
 Where:
@@ -1195,7 +1215,7 @@ B1: "这个 Digest 太长了，我只要每个 topic 3 篇文章"
   → B1 confirms → onboarding proceeds
 ```
 
-**Metrics**: 
+**Metrics**:
 - First delivery → preference verification completion rate
 - Config refinement rounds (target: ≤2 rounds)
 - Cross-product introduction → upgrade conversion rate

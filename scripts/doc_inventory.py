@@ -354,8 +354,22 @@ def _run(args: list[str], timeout: int) -> tuple[int, str, str] | None:
 
 
 def _venv_interpreter() -> Path | None:
-    cand = ROOT / ".venv" / "bin" / "python"
-    return cand if cand.is_file() else None
+    """Return the first existing project-venv interpreter, or ``None``.
+
+    POSIX venvs put the interpreter at ``.venv/bin/python``; Windows venvs use
+    ``.venv/Scripts/python.exe`` (sometimes ``python`` without the suffix), so
+    both layouts are probed. ``Path.is_file()`` calls ``stat()``, which on
+    Windows can raise ``OSError`` (e.g. WinError 1920) for a candidate the
+    process cannot access — that must skip the candidate, not crash the gate.
+    """
+    for parts in (("bin", "python"), ("Scripts", "python.exe"), ("Scripts", "python")):
+        cand = ROOT / ".venv" / parts[0] / parts[1]
+        try:
+            if cand.is_file():
+                return cand
+        except OSError:
+            continue
+    return None
 
 
 _ENV_REQUIREMENTS = ("autoinfo", "pytest")

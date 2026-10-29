@@ -41,6 +41,18 @@ store a raw key in a fallback entry when a `${ENV}` reference works.
 | `AUTOINFO_LLM_API_KEY` | API key for the configured LLM provider (OpenRouter, OpenAI, DeepSeek, Ollama, Azure, etc.). Drives extraction, summarization, Q&A synthesis, CEFR classification, translation, and TTS rendering. | **Required** for collection processing, KB extraction, Q&A, and audio output. Optional only if you never run `process`, `qa`, `cefr`, or `format=audio`. | `src/autoinfo/llm.py`, `src/autoinfo/qa.py`, `src/autoinfo/doctor.py`, `src/autoinfo/config.py`, `src/autoinfo/cli/init.py`, `src/autoinfo/mcp/server.py`, `src/autoinfo/output/__init__.py` |
 | `OPENAI_API_KEY` | Fallback key for OpenAI Text-to-Speech when `AUTOINFO_LLM_API_KEY` is unset and `llm.api_key` is blank. Only consulted by the audio renderer. | Optional. Only needed for `format=audio` output via OpenAI TTS. | `src/autoinfo/output/__init__.py` (`_render_audio_openai`) |
 
+## Text-to-Speech (Azure engine)
+
+The `azure` TTS engine (`tts.engine: azure`, issue #647) posts SSML to the Azure
+Speech REST endpoint. Its credentials are read straight from the environment —
+never from config — and the engine raises an actionable `RuntimeError` when the
+key is missing.
+
+| Env Var | Purpose | Required? | Source |
+|---------|---------|-----------|--------|
+| `AZURE_SPEECH_KEY` | Azure Speech Service subscription key. Always read from the environment; it is deliberately not storable in `tts` config. | **Required** for `tts.engine: azure` (`format=audio` / `format=audiobook`). Not needed for the `local`/`openai`/`whisper` engines. | `src/autoinfo/output/audio.py` (`_render_azure`), `src/autoinfo/config.py` (`TTSConfig`) |
+| `AZURE_SPEECH_REGION` | Azure Speech region, e.g. `eastasia`. Used as the fallback when neither `tts.azure_region` in config nor the render call supplies a region. | Optional. If unset, `tts.azure_region` must be set in config. | `src/autoinfo/output/audio.py`, `src/autoinfo/config.py` (`TTSConfig.azure_region`) |
+
 ## Runtime tuning
 
 | Env Var | Purpose | Required? | Source |

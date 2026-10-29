@@ -18,7 +18,7 @@
 | 01-Raw | Sole entry point for all collected content; carries full source provenance | All KB-related docs |
 | 03-Wiki | Append-only tier; entries never demoted/deleted by agents | All KB-related docs |
 | 00-Inbox | Deprecated scaffold tier; not the entry point | specs/pipeline.md |
-| G0-G5 | Quality gates: G0 Schema (hard), G1 Source authority, G2 Dedup, G3 Relevance, G4 Factual (hard), G5 Translation | AGENTS.md, README.md, specs/quality-gates.md |
+| G0-G7 | Quality gates: G0 Schema (hard), G1 Source authority, G2 Dedup, G3 Relevance, G4 Factual (hard), G5 Translation, G7 Entity-fact consistency (deterministic, no LLM; honest hedges never flagged) | AGENTS.md, README.md, specs/quality-gates.md |
 | D1-D3 | Delivery gates: D1 completeness, D2 format integrity, D3 freshness | specs/quality-gates.md, AGENTS.md |
 | G15 | Access-control gate: free always allowed; premium/enterprise require active paid subscription | README.md, specs/delivery.md |
 | B1 / B2 / B3 | End User (customer) / Direct User (agent) / Director User (human commander) | specs/user-lifecycle-definition.md, director-user-guide.md |

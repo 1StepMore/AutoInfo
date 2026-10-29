@@ -28,6 +28,25 @@ Each quality gate operates at a specific pipeline stage, evaluates a different s
 
 **Key rule**: G0-G3 are **mandatory** on every collected item. G4-G5 are **opt-in** (require explicit flags because they make LLM calls). **CurationGate** runs at Draft→Wiki promotion time (see §3.1). D1-D3 run **only for PROCESSED products**; RAW products skip all delivery gates.
 
+### 1.1 Default activation (what runs without opt-in)
+
+The table above states what a gate does *when it runs*; this states *when it
+runs* on a default deployment:
+
+| Gate(s) | Default activation | How to activate |
+|---------|--------------------|-----------------|
+| G0 / G1 / G2 / G3 / G7 | Always, at `process_collection()` time | — (no flag needed; soft gates act per their configured action) |
+| G4 | **Off by default** at process time; runs unconditionally in the CurationGate at Draft→Wiki promotion | CLI `--check-factual` / MCP `check_factual` (default `false`) — costs an LLM judgment call per item |
+| G5 | **Off by default** | CLI `--check-translation` / MCP `check_translation` (default `false`) — same cost profile |
+| D1-D3 | **Off by default on every shipped configuration**: the delivery-gate layer runs only where the project config defines `delivery_gates` (domain-level or global); `default_config.yaml` and every demo domain config set none, so the MCP/CLI generation paths skip it entirely | Add a `delivery_gates` block to the domain or global config (thresholds + actions recorded per config) |
+
+This activation split is deliberate: G4/G5 cost an LLM judgment call per item
+(judgment calls resolve config-first to `llm.judgment_model` — see
+[`pipeline.md`](pipeline.md) §3.5), and D1-D3 bind delivery policy that B3
+configures per deployment. AGENTS.md's gate table carries the same note; the
+default-on decision for D1-D3 is tracked as decision point A in
+`docs/dev/plans/agent-infra-remediation-2026-10-30.md`.
+
 **Concurrency note (gate semantics unchanged, 2026-08-13)**: post-extraction gates G3/G4/G5/CEFR run concurrently per item (bounded by `AUTOINFO_SUBTASK_CAP`, default 4; canonical gate order, G3 retry loop, G4 hard-gate 3× retry and the G0-G5 report order are preserved). All gate LLM calls route through `llm.call_with_fallback` and inherit the shared per-provider rate limiter (`AUTOINFO_LLM_MAX_CONCURRENCY`, default 4) + jittered 429/5xx backoff; G4/G5 judgment calls resolve config-first to `llm.judgment_model`/`llm.model` (issue #195 — see [`pipeline.md`](pipeline.md) §3.5); an LLM-failure surfaces as NOT_JUDGED (`QualityResult.judged=False`), never a silent pass.
 
 Pipeline diagram:

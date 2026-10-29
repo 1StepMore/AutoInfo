@@ -1,4 +1,4 @@
-.PHONY: install dev-install test lint clean stripe-mock backup validate doc-check
+.PHONY: install dev-install test lint clean stripe-mock backup validate battery doc-check
 
 # Interpreter binding (issue #424): gates resolve to the project venv instead of
 # whatever bare python3 is first on PATH, where a missing autoinfo surfaces as a
@@ -55,8 +55,16 @@ backup:
 validate:
 	$(PY) scripts/quality_gate.py $(DIR) || exit 1
 	@echo "L0 gate passed for $(DIR) — optional L1 semantic battery:"
-	@echo "  $(PY) scripts/agent_review/battery.py $(DIR)              # worklist preview"
-	@echo "  $(PY) scripts/agent_review/battery.py $(DIR) --semantic   # + LLM verdicts"
+	@echo "  make battery DIR=$(DIR)              # worklist preview"
+	@echo "  make battery DIR=$(DIR) SEMANTIC=1   # + LLM verdicts"
+
+# L1 agent review battery (issue #194 spec B): semantic blind-spot judging
+# over the residue L0 structurally cannot see. Default = deterministic
+# worklist preview (CI-safe, always exits 0); SEMANTIC=1 runs LLM verdicts
+# (FLAG/ESCALATE exit non-zero).
+# Usage: make battery DIR=outputs/<domain> [SEMANTIC=1]
+battery:
+	$(PY) scripts/agent_review/battery.py $(DIR) $(if $(SEMANTIC),--semantic,)
 
 # Documentation drift gate (issue #240, #540 follow-up): the generated
 # end-user coverage view, the demo-domains table (README, generated from

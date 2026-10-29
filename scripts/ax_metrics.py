@@ -2,7 +2,11 @@
 
 Agent-experience (AX) quality is pinned to six metrics, each mapped to a
 pillar and an axis (``agent-oriented-gap-register.md`` §6) and each with a
-target that CI enforces:
+target. CI enforcement (nightly workflow, since 2026-10-30): M-04
+(documentation freshness) and M-05 (token baseline) are gated on every
+nightly run; the run-sourced metrics (M-01/02/03/06) report ``UNMEASURED``
+on a fresh checkout and activate automatically once persisted validation
+runs exist:
 
 =========  ==========================  ===================  ==========================
 ID         Metric                      Target               Live source

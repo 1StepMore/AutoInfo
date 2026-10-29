@@ -1,9 +1,15 @@
 """Schedule-frequency gate for named end-users (todo 12 — P1-2 enforcement).
 
-Single enforcement seam for the cron ``add-delivery`` path (CLI
-``autoinfo cron add-delivery`` and MCP ``add_delivery_schedule``): when
-the schedule carries a named *user_id*, the requested schedule frequency
-is compared against the subscription's ``max_frequency``.
+Single enforcement seam for the CLI cron ``add-delivery`` path
+(``autoinfo cron add-delivery``): when the schedule carries a named
+*user_id*, the requested schedule frequency is compared against the
+subscription's ``max_frequency``.
+
+Note (2026-10-30): the MCP ``add_delivery_schedule`` tool is **not** wired
+to this gate — free-tier frequency enforcement currently covers the CLI
+path only. Wiring the MCP path is a tracked follow-up (see
+``docs/dev/plans/agent-infra-remediation-2026-10-30.md``, decision point A
+follow-up).
 
 ``user_id=""`` schedules (unattended/batch) skip the gate — quotas apply
 only to named end-users.

@@ -753,4 +753,4 @@ These are not interruptions. The agent presents them as observations and asks fo
 - `docs/dev/specs/expectations.md` F47 -- Data deletion and human-only purge
 - `docs/dev/specs/expectations.md` F53 -- Cross-collection merge trust boundary
 - `docs/dev/specs/operations.md` §4.6 -- Source health monitoring and escalation pattern
-- `docs/skills/autoinfo-skill/SKILL.md` -- Agent's operating skill (for reference; this is for the agent, not for you)
+- `.opencode/skills/autoinfo-skill/SKILL.md` -- Agent's operating skill (for reference; this is for the agent, not for you)

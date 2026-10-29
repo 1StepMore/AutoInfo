@@ -178,7 +178,7 @@ Two orientations, one hierarchy. The **agent track** proves the tool is operable
 
 ### Binary acceptance criteria
 
-1. **Full-surface agent operability.** An agent can exercise the entire feature surface — MCP tools (147/147), CLI groups (31/31), REST endpoints (8/8), delivery channels (13/13), collector reachability (30/30) — via real calls and record per-feature verdicts. Any surface row with neither a scenario nor a real artifact = FAIL.
+1. **Full-surface agent operability.** An agent can exercise the entire feature surface — MCP tools (149/149), CLI groups (31/31), REST endpoints (8/8), delivery channels (13/13), collector reachability (30/30) — via real calls and record per-feature verdicts. Any surface row with neither a scenario nor a real artifact = FAIL.
 2. **Self-discovering coverage.** An agent can enumerate coverage and features using only MCP tools and in-repo audit scripts, with no human help. False = FAIL.
 
 ### 3.2 Human track (deliverable acceptability) — the higher bar
@@ -242,7 +242,7 @@ The service-coverage scope is fixed by the end-user willingness-to-pay research 
 
 ### Binary acceptance criteria
 
-1. **Hard gates cannot be bypassed.** G0 (schema integrity) is a **deterministic** gate: it blocks unconditionally, with no retries — re-running a schema check cannot flip an invalid document to valid. G4 (factual consistency) is an LLM-judged gate: 3× retry with escalating context, then block. Blocked items are written to `_failed/`. A path that silently passes a hard-gate failure = FAIL.
+1. **Hard gates cannot be bypassed.** G0 (schema integrity) is a **deterministic** gate: it blocks unconditionally, with no retries — re-running a schema check cannot flip an invalid document to valid. G4 (factual consistency) is an LLM-judged gate: 3× retry with escalating context, then block. Blocked items are written to `_failed/`. A path that silently passes a hard-gate failure = FAIL. ("Hard" describes enforcement *when the gate runs*; activation is a separate axis: G4 is process-level opt-in — `check_factual` flag, default off — and additionally runs unconditionally in the Draft→Wiki CurationGate; D1-D3 run only where `delivery_gates` is configured. Default-activation matrix: `docs/dev/specs/quality-gates.md`.)
 2. **Soft gates act per configuration.** G1 (source authority), G2 (dedup), G3 (relevance), G5 (translation) apply their configured action (archive/flag/pass) with the configuration recorded. A gate running with no recorded configuration = RISK.
 3. **Delivery gates are enforced at output time.** D1 (product completeness), D2 (format integrity), D3 (freshness) run per delivery, with the configured thresholds recorded. A delivered product that skipped its gates = FAIL.
 4. **Raw-quality signals are present.** Freshness (per-domain TTL), dedup, and source traceability are enforced on the raw layer; stale content is demoted/excluded per lifecycle rules, never silently served. Violation = RISK.
@@ -460,7 +460,7 @@ Re-runnable per version, run from the project root. This catalog **replaces** th
 
 | # | Check | Command / surface | Produces | Dimension |
 |---|-------|-------------------|----------|-----------|
-| A1 | Scenario coverage audit | `python3 scripts/coverage_audit.py` | covered/missing tool list, 147/147 target | AC3-agent, AC1 |
+| A1 | Scenario coverage audit | `python3 scripts/coverage_audit.py` | covered/missing tool list, 149/149 target | AC3-agent, AC1 |
 | A2 | Scenario inventory + run | MCP `list_validation_scenarios` / `run_validation_scenario` | per-scenario status (passed/failed/unconfigured), per-step trace, root-cause report | AC1, AC3, AC7 |
 | A3 | System phase + health | MCP `diagnose_system`, `get_tool_count` | health_score + phase; live tool count | AC1 |
 | A4 | No-simulated-layer scan | grep over `src/` (excl. `tests/`) for `mock`/`fixture`/`placeholder`/`example.com`/`sk_test` | SUSPECT-table hits with dispositions | AC5, AC7 |

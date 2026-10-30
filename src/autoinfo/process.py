@@ -542,6 +542,15 @@ def _init_progress_table(conn: sqlite3.Connection) -> None:
     """)
 
 
+# Bounded retry for cursor/ledger writes under SQLite contention.  The
+# process pipeline and the KB index share one ``autoinfo.db``, so a write can
+# transiently raise ``OperationalError: database is locked``; swallowing that
+# at warning level let cursor rows silently vanish while the run reported
+# success (AutoInfo#663).
+_LEDGER_WRITE_ATTEMPTS = 3
+_LEDGER_RETRY_SLEEP_S = 0.5
+
+
 def _read_progress(domain: str) -> dict[str, Any]:
     """Read the persisted processing progress for *domain*.
 
@@ -570,20 +579,36 @@ def _read_progress(domain: str) -> dict[str, Any]:
 
 
 def _write_progress(domain: str, last_processed_index: int, total_items: int) -> None:
-    """Persist the current processing progress for *domain*."""
+    """Persist the current processing progress for *domain*.
+
+    Retries transient SQLite contention (``database is locked``) a bounded
+    number of times; a final failure is logged at ERROR — never silently
+    dropped, or the cursor drifts from what the run actually did (#663).
+    """
     db_path = _get_progress_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with _connect_progress_db() as conn:
-            _init_progress_table(conn)
-            conn.execute(
-                """INSERT OR REPLACE INTO processing_progress
-                   (domain, last_processed_index, total_items)
-                   VALUES (?, ?, ?)""",
-                (domain, last_processed_index, total_items),
-            )
-    except sqlite3.OperationalError as exc:
-        logger.warning("Could not write processing progress: %s", exc)
+    last_exc: sqlite3.OperationalError | None = None
+    for attempt in range(_LEDGER_WRITE_ATTEMPTS):
+        try:
+            with _connect_progress_db() as conn:
+                _init_progress_table(conn)
+                conn.execute(
+                    """INSERT OR REPLACE INTO processing_progress
+                       (domain, last_processed_index, total_items)
+                       VALUES (?, ?, ?)""",
+                    (domain, last_processed_index, total_items),
+                )
+            return
+        except sqlite3.OperationalError as exc:
+            last_exc = exc
+            if attempt + 1 < _LEDGER_WRITE_ATTEMPTS:
+                time.sleep(_LEDGER_RETRY_SLEEP_S * (attempt + 1))
+    logger.error(
+        "Could not write processing progress for '%s' after %d attempts: %s",
+        domain,
+        _LEDGER_WRITE_ATTEMPTS,
+        last_exc,
+    )
 
 
 def _reset_progress(domain: str) -> None:
@@ -639,7 +664,9 @@ def _mark_processed(domain: str, item_ids: Sequence[str]) -> None:
     Each id is inserted once (``INSERT OR IGNORE``) with an ISO8601 UTC
     ``processed_at`` timestamp.  Called per item as soon as that item's
     processing finishes, so a run killed by an external timeout keeps its
-    completed work.
+    completed work.  Transient SQLite contention is retried a bounded number
+    of times; a final failure is logged at ERROR and left unmarked so the
+    next run reprocesses those items instead of silently sinking them (#663).
     """
     ids = [str(i) for i in item_ids]
     if not ids:
@@ -647,16 +674,30 @@ def _mark_processed(domain: str, item_ids: Sequence[str]) -> None:
     db_path = _get_progress_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     processed_at = datetime.now(timezone.utc).isoformat()
-    try:
-        with _connect_progress_db() as conn:
-            _init_progress_table(conn)
-            conn.executemany(
-                "INSERT OR IGNORE INTO processing_items (domain, item_id, processed_at) "
-                "VALUES (?, ?, ?)",
-                [(domain, item_id, processed_at) for item_id in ids],
-            )
-    except sqlite3.OperationalError as exc:
-        logger.warning("Could not mark items processed for '%s': %s", domain, exc)
+    rows = [(domain, item_id, processed_at) for item_id in ids]
+    last_exc: sqlite3.OperationalError | None = None
+    for attempt in range(_LEDGER_WRITE_ATTEMPTS):
+        try:
+            with _connect_progress_db() as conn:
+                _init_progress_table(conn)
+                conn.executemany(
+                    "INSERT OR IGNORE INTO processing_items (domain, item_id, processed_at) "
+                    "VALUES (?, ?, ?)",
+                    rows,
+                )
+            return
+        except sqlite3.OperationalError as exc:
+            last_exc = exc
+            if attempt + 1 < _LEDGER_WRITE_ATTEMPTS:
+                time.sleep(_LEDGER_RETRY_SLEEP_S * (attempt + 1))
+    logger.error(
+        "Could not mark %d item(s) processed for '%s' after %d attempts: %s — "
+        "these ids are missing from the ledger and will be reprocessed next run",
+        len(ids),
+        domain,
+        _LEDGER_WRITE_ATTEMPTS,
+        last_exc,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -990,7 +1031,10 @@ def run_processing(
         interrupted run are skipped and the remaining items are processed
         even when *batch_size* is 0.  ``"start"`` clears the cursor and
         reprocesses from the beginning.  ``None`` (default) keeps the legacy
-        behaviour (cursor consulted only when *batch_size* > 0).
+        behaviour (cursor consulted only when *batch_size* > 0).  The one-shot
+        migration seed (legacy position cursor → id ledger) is always derived
+        from the default oldest-first walk of the full cache, never from the
+        reordered or windowed list this run processes (#663).
     since_days : int, optional
         When > 0, only items collected within the last *since_days* days are
         loaded and processed; items whose collection time cannot be determined
@@ -1033,12 +1077,19 @@ def run_processing(
         if not processed_ids:
             # One-shot migration seed: a pre-#596 domain has a legacy
             # position cursor but an empty id ledger.  The old semantics were
-            # "the first N items in cache order were processed", so seed that
-            # prefix now and continue on the id path.
+            # "the first N items in default cache order were processed", so
+            # the seed prefix is re-derived from a DEFAULT walk (oldest-first,
+            # no window).  Seeding from this run's list would betray
+            # --newest-first (mark the newest items done) and --since-days
+            # (mark the whole fresh window done) — AutoInfo#663.
             legacy = _read_progress(domain)
             legacy_index = int(legacy["last_processed_index"])
             if legacy_index > 0:
-                seed_ids = [it.id for it in cached_items[:legacy_index]]
+                if since_days == 0 and not newest_first:
+                    seed_items = cached_items  # this list *is* the default walk
+                else:
+                    seed_items = load_cached_items(domain)
+                seed_ids = [it.id for it in seed_items[:legacy_index]]
                 _mark_processed(domain, seed_ids)
                 processed_ids = set(seed_ids)
 

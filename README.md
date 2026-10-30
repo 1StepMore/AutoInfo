@@ -19,7 +19,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Product generation** — 8 product families (incl. premium-briefing, enterprise-briefing, magazine-digest) across Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video; digest, report, tutorial, presentation, export.
 - **Delivery & end users** — 13 delivery channels (SMTP, webhook, REST, file export, Discord, Telegram, WeChat Work/OA, DingTalk, FeiShu, RSS, social publish, push) with retry/fallback, cron schedules, per-user lifecycle/subscription, portal, and delivery logs.
 - **Cost, audit & observability** — per-domain/per-user cost metering and allocation, budget alerts, append-only audit log, per-item trace IDs, structured pipeline logs, Prometheus metrics, and `doctor` diagnostics.
-- **Agent-native surfaces** — 149 MCP tools across 35 categories, 31 CLI groups, REST API (port 8741), read-only MCP mode (4 tools), and 182 validation scenarios (86 functional + 96 regression) that execute real MCP/CLI/REST calls with per-step traces.
+- **Agent-native surfaces** — 149 MCP tools across 35 categories, 31 CLI groups, REST API (port 8741), read-only MCP mode (4 tools), and 183 validation scenarios (86 functional + 97 regression) that execute real MCP/CLI/REST calls with per-step traces.
 - **Data lifecycle & compliance** — source ToS classification/tier controls, soft-delete + restore + 30-day cleanup, tier-based retention, GDPR export/delete, and append-only knowledge lifecycle (TTL/freshness/decay, versioned re-collection).
 - **BYOK & LLM governance** — multi-provider via LiteLLM, per-task model routing, fallback chains, per-provider concurrency limiting with 429/5xx backoff, and a single documented default (`openrouter` + `deepseek/deepseek-chat`).
 
@@ -103,9 +103,9 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Demo domains | ✅ 21 demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail, plus english/french/hindi/italian/korean/portuguese/russian/spanish-learning) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedule MCP tools, cron-integrated |
 
-| Validation scenarios | ✅ 182 scenarios (86 functional + 96 regression in `src/autoinfo/mcp/scenarios/regression/`, `regression: true` key, recursive-glob auto-load) |
+| Validation scenarios | ✅ 183 scenarios (86 functional + 97 regression in `src/autoinfo/mcp/scenarios/regression/`, `regression: true` key, recursive-glob auto-load) |
 | Validation execution | ✅ Per-step `timeout_seconds`; per-step `recovery_steps` + partial-pass (`min_passing`/`pass_ratio`); per-step trace (step_index/duration/arguments/trace_id + llm_meta); root-cause report (`## Blockers` / `## Per-step trace` / `## Regression failures`) |
-| Regression flywheel | ✅ `src/autoinfo/mcp/scenarios/regression/` (96 regression scenarios) + `coverage_audit.py` "Regression scenarios: N" metric + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
+| Regression flywheel | ✅ `src/autoinfo/mcp/scenarios/regression/` (97 regression scenarios) + `coverage_audit.py` "Regression scenarios: N" metric + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
 
 | Validation delivery | ✅ `scripts/validation_delivery.py` builds 01-RAW/02-PROCESSED/03-KB/04-MATRIX/06-REJECTED + validation-report.md + manifest.json (per-file authenticity + D1-D3 gates + UX metrics UX_OK/completion_rate ≥ 0.8) + 01-QA-GATES/ gate reports (per-product `gate-report-<product>.{md,json}` + `gate-reports-index.json`) |
 | End-user coverage matrix (E8) | ✅ `scripts/coverage_matrix.py` + `docs/dev/specs/end-user-matrix.yaml`; surfaced as 04-MATRIX + coverage-gaps.json |
@@ -114,7 +114,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | LLM fallback chain | ✅ Shared `llm.call_with_fallback` — every LLM call site (extraction + 17 standalone) walks `[primary] + config.llm.fallback`; an empty `provider` inherits the primary provider, an empty `api_key` inherits the primary key only on the same gateway (a cross-endpoint fallback needs its own explicit `${ENV}` key); first successful model wins; per-provider shared rate limiting (`AUTOINFO_LLM_MAX_CONCURRENCY`, default 4) + jittered 429/5xx backoff on every chain entry and all fan-out paths |
 | Dead-source detection | ✅ Semantic Scholar 429 → `SourceFailure` (fail-fast); arXiv rss/bio → rss/q-bio fix |
 | CLI module entry | ✅ `python -m autoinfo.cli` runs the same Typer app; `collect` live per-source progress printer |
-| Test suite | ✅ ~6665 tests collected (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate) + #351 year-assertion tuning / #356 real-product scanner + release-scope gate (#406); order-dependency fixes landed 2026-08-12) |
+| Test suite | ✅ ~6671 tests collected (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate) + #351 year-assertion tuning / #356 real-product scanner + release-scope gate (#406); order-dependency fixes landed 2026-08-12) |
 
 ## Quick Start
 
@@ -148,7 +148,7 @@ AutoInfo is agent-first: every capability is an MCP tool. Connect your agent
 1. **Health** — `health_check()` → `{status, version, tools_count}`
 2. **Discover** — `list_domains()` → `get_domain_schema("<domain>")` → `list_available_models()`
 
-3. **Validate** — `list_validation_scenarios()` (182 scenarios: 86 functional + 96 regression) → `run_validation_scenario(scenario="system-health")`
+3. **Validate** — `list_validation_scenarios()` (183 scenarios: 86 functional + 97 regression) → `run_validation_scenario(scenario="system-health")`
 
 
 Validation is the fastest way to prove the system works: each scenario makes

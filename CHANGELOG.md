@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.9](https://github.com/1StepMore/AutoInfo/compare/v1.21.8...v1.21.9) (2026-10-30)
+
+
+### Bug Fixes
+
+* **collect:** pre-request validation gates + auto-disable after consecutive failures ([#669](https://github.com/1StepMore/AutoInfo/issues/669)) ([4faccd1](https://github.com/1StepMore/AutoInfo/commit/4faccd1c773618bdbe6664e7e87892f0c61d847f))
+
 ## [1.21.8](https://github.com/1StepMore/AutoInfo/compare/v1.21.7...v1.21.8) (2026-10-30)
 
 

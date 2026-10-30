@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.7](https://github.com/1StepMore/AutoInfo/compare/v1.21.6...v1.21.7) (2026-10-30)
+
+
+### Documentation
+
+* re-verify project-analysis-2026-10-29 on 2026-10-30; correct 12 findings ([#661](https://github.com/1StepMore/AutoInfo/issues/661)) ([335054e](https://github.com/1StepMore/AutoInfo/commit/335054e64d599ec32ccea00d6b5700bd6cbeebe7))
+
 ## [1.21.6](https://github.com/1StepMore/AutoInfo/compare/v1.21.5...v1.21.6) (2026-10-29)
 
 

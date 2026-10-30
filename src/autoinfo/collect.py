@@ -53,6 +53,22 @@ plog = get_pipeline_logger("collect")
 #: Checkpoint namespace for a collection run (per-source resume cursor).
 _COLLECT_PIPELINE = "collect"
 
+# ---------------------------------------------------------------------------
+# Auto-disable gate (#665)
+#
+# A source whose last N runs all ended ``status="error"`` is deterministically
+# broken (retired API, dead endpoint, moved feed URL): retrying it nightly
+# forever only produces failure noise (#665 — five sources failed 26-29
+# consecutive nights with zero mechanism to notice).  After N consecutive
+# errors the pipeline skips the source and records ``status="disabled_auto"``
+# (skip-class outcome, single event fired at the transition).  This touches
+# only collection *attempts* — never the source config (删源/改配置归人);
+# a recovered source (or an operator override) comes back through
+# ``run_collection(force_enable=[...])`` / CLI ``--force-enable``.
+# ---------------------------------------------------------------------------
+AUTO_DISABLE_FAILURE_THRESHOLD = 7
+STATUS_DISABLED_AUTO = "disabled_auto"
+
 
 # ---------------------------------------------------------------------------
 # Collection-layer domain topic guard (#332-B)
@@ -146,6 +162,7 @@ def run_collection(
     force_full: bool = False,
     progress_cb: Callable[[CollectionResult], None] | None = None,
     resume_from: str | None = None,
+    force_enable: list[str] | None = None,
 ) -> dict[str, Any]:
     """Execute a full collection run for a domain.
 
@@ -184,6 +201,13 @@ def run_collection(
         Sources that errored during a prior run are **not** marked completed
         and are therefore retried on resume.  ``None`` (default) keeps the
         legacy behaviour byte-identical and writes no checkpoint.
+    force_enable : list[str] | None
+        Escape valve for the #665 auto-disable gate: sources listed here are
+        collected this run even when their consecutive-failure history has
+        auto-disabled them.  A listed source that succeeds resets its error
+        streak naturally (the streak is trailing errors in ``_runs.json``),
+        so one forced success un-disables it.  No-op for sources that are
+        not auto-disabled.
 
     Returns
     -------
@@ -311,6 +335,7 @@ def run_collection(
             new_items_collector=all_new_items,
             force_full=force_full,
             keywords=keywords,
+            force_enable=force_enable,
         )
         per_source.append(src_result)
         if progress_cb is not None:
@@ -555,10 +580,28 @@ def _collect_from_source(
     new_items_collector: list[Item] | None = None,
     force_full: bool = False,
     keywords: list[str] | None = None,
+    force_enable: list[str] | None = None,
 ) -> CollectionResult:
     """Fetch items from a single source, deduplicate, and optionally cache."""
     src_start = time.time()
     errors: list[dict[str, Any]] = []
+
+    # -- Auto-disable gate (#665) -------------------------------------------
+    # A source with N consecutive recorded failures is deterministically
+    # broken — skip it (recorded as "disabled_auto") instead of sending the
+    # same failing request every night.  Runs before handler construction:
+    # no request, no handler build.
+    disabled_result = _auto_disable_skip(
+        domain=domain,
+        source_name=source_config.name,
+        source_type=source_config.type,
+        collection_id=collection_id,
+        dry_run=dry_run,
+        force_enable=force_enable,
+        duration_s=round(time.time() - src_start, 3),
+    )
+    if disabled_result is not None:
+        return disabled_result
 
     # -- Determine and instantiate handler ---------------------------------
     try:
@@ -628,6 +671,44 @@ def _collect_from_source(
             items_new=0,
             errors=[{"message": app_review_reason, "app_review_required": True}],
             duration_s=gate_duration,
+        )
+
+    # -- Pre-request validation gate (#664/#666) -----------------------------
+    # Empty required parameters and missing/placeholder credentials are
+    # deterministic failures — intercept them BEFORE the request instead of
+    # sending it to a guaranteed 400/401 every night.  Mirrors the app-review
+    # gate: skipped, with an explicit marker in errors, never healthy/failed.
+    precheck_block = _precheck_block(handler, source_config, topic, limit, keywords)
+    if precheck_block is not None:
+        plog.warning(
+            "Skipping source: pre-request validation failed",
+            source_type=source_config.type,
+            extra={
+                "source_name": source_config.name,
+                "reason": str(precheck_block.get("message", "")),
+            },
+        )
+        precheck_duration = round(time.time() - src_start, 3)
+        if not dry_run:
+            _log_run(
+                domain=domain,
+                source_name=source_config.name,
+                collection_id=collection_id,
+                items_found=0,
+                items_new=0,
+                status="skipped",
+                errors=[precheck_block],
+                duration_s=precheck_duration,
+            )
+        return CollectionResult(
+            collection_id=collection_id,
+            domain=domain,
+            source=source_config.name,
+            status="skipped",
+            items_found=0,
+            items_new=0,
+            errors=[precheck_block],
+            duration_s=precheck_duration,
         )
 
     # -- Fetch items -------------------------------------------------------
@@ -949,6 +1030,170 @@ def _app_review_block_reason(source_config: SourceConfig, handler: Any) -> str |
     )
 
 
+def _build_collector_ctx(
+    source_config: SourceConfig,
+    topic: str,
+    limit: int,
+    keywords: list[str] | None,
+) -> CollectorContext:
+    """Build the :class:`CollectorContext` for one fetch of *source_config*.
+
+    Single construction point shared by the pre-request gate and
+    :func:`_fetch_items`, so both see identical inputs.
+    """
+    return CollectorContext(
+        source_config=source_config,
+        topic=topic or "",
+        keywords=list(keywords or []),
+        limit=limit,
+        url=source_config.url or "",
+        query=(source_config.settings or {}).get("query", "") or "",
+        settings=handler_settings(source_config),
+    )
+
+
+def _precheck_block(
+    handler: Collector,
+    source_config: SourceConfig,
+    topic: str,
+    limit: int,
+    keywords: list[str] | None,
+) -> dict[str, Any] | None:
+    """Pre-request validation (#664/#666): return the skip marker or ``None``.
+
+    Delegates to the handler's :meth:`Collector.precheck` — the handler owns
+    its own parameter/credential semantics.  A raising precheck fails *open*
+    (logged, never a block): a broken guard must not silently disable a
+    source, the same fail-open rule the app-review gate applies to handler
+    probes.
+    """
+    try:
+        block = handler.precheck(_build_collector_ctx(source_config, topic, limit, keywords))
+    except Exception as exc:
+        logger.debug(
+            "precheck raised for source '%s' — failing open: %s",
+            source_config.name,
+            exc,
+        )
+        return None
+    if isinstance(block, dict) and block:
+        return block
+    return None
+
+
+def _read_runs(domain: str, source_name: str) -> list[dict[str, Any]]:
+    """Load ``collections/<domain>/<source>/_runs.json`` (``[]`` when absent/broken)."""
+    runs_path = Path(COLLECTIONS_DIR) / domain / source_name / "_runs.json"
+    if not runs_path.exists():
+        return []
+    try:
+        with open(runs_path, "r", encoding="utf-8") as fh:
+            runs: list[dict[str, Any]] = json.load(fh)
+    except (json.JSONDecodeError, FileNotFoundError, OSError):
+        return []
+    return runs if isinstance(runs, list) else []
+
+
+def _consecutive_source_failures(runs: list[dict[str, Any]]) -> int:
+    """Count trailing ``status="error"`` entries in a run history (#665).
+
+    ``disabled_auto`` markers are transparent to the streak (they record the
+    degraded state, not a recovery); any other status — success, skipped,
+    partial — ends it.
+    """
+    streak = 0
+    for run in reversed(runs):
+        status = str(run.get("status") or "")
+        if status == "error":
+            streak += 1
+        elif status == STATUS_DISABLED_AUTO:
+            continue
+        else:
+            break
+    return streak
+
+
+def _auto_disable_skip(
+    domain: str,
+    source_name: str,
+    source_type: str,
+    collection_id: str,
+    dry_run: bool,
+    force_enable: list[str] | None,
+    duration_s: float,
+) -> CollectionResult | None:
+    """Return a ``disabled_auto`` skip result when *source_name* is auto-disabled (#665).
+
+    A source whose last :data:`AUTO_DISABLE_FAILURE_THRESHOLD` runs all ended
+    ``status="error"`` is skipped without any request or handler build.  The
+    first degraded run fires the ``source_permanently_failing`` agent-callback
+    event (once — later runs only append further ``disabled_auto`` records);
+    subsequent degraded runs stay silent.  Listed in *force_enable* → never
+    skipped here.  ``dry_run`` reports the skip in the result but writes no
+    run record and fires no event.
+    """
+    if force_enable and source_name in force_enable:
+        return None
+    runs = _read_runs(domain, source_name)
+    if not runs:
+        return None
+    streak = _consecutive_source_failures(runs)
+    if streak < AUTO_DISABLE_FAILURE_THRESHOLD:
+        return None
+    already_degraded = str(runs[-1].get("status") or "") == STATUS_DISABLED_AUTO
+    message = (
+        f"source '{source_name}' auto-disabled after {streak} consecutive failed runs "
+        f"(threshold {AUTO_DISABLE_FAILURE_THRESHOLD}) — no request sent; re-enable "
+        f"with force_enable=['{source_name}'] once the endpoint is fixed"
+    )
+    error_dict: dict[str, Any] = {"message": message, "disabled_auto": True}
+    if not dry_run:
+        _log_run(
+            domain=domain,
+            source_name=source_name,
+            collection_id=collection_id,
+            items_found=0,
+            items_new=0,
+            status=STATUS_DISABLED_AUTO,
+            errors=[error_dict],
+            duration_s=duration_s,
+        )
+        if not already_degraded:
+            try:
+                from autoinfo.agent_callback import notify_source_permanently_failing
+
+                notify_source_permanently_failing(
+                    source=source_name,
+                    source_type=source_type,
+                    domain=domain,
+                    consecutive_failures=streak,
+                )
+            except Exception:
+                logger.exception(
+                    "source_permanently_failing callback failed for source '%s'",
+                    source_name,
+                )
+    plog.warning(
+        "Skipping auto-disabled source",
+        source_type=source_type,
+        extra={
+            "source_name": source_name,
+            "consecutive_failures": streak,
+            "already_degraded": already_degraded,
+        },
+    )
+    return CollectionResult(
+        collection_id=collection_id,
+        domain=domain,
+        source=source_name,
+        status=STATUS_DISABLED_AUTO,
+        items_found=0,
+        items_new=0,
+        errors=[error_dict],
+        duration_s=duration_s,
+    )
+
+
 def _build_handler(source_config: SourceConfig) -> Collector:
     """Build the collector for *source_config* via the registry.
 
@@ -984,16 +1229,7 @@ def _fetch_items(
     All source-specific behavior (guards, query resolution, slicing, dict ->
     ``Item`` normalization) lives in the collector.
     """
-    ctx = CollectorContext(
-        source_config=source_config,
-        topic=topic or "",
-        keywords=list(keywords or []),
-        limit=limit,
-        url=source_config.url or "",
-        query=(source_config.settings or {}).get("query", "") or "",
-        settings=handler_settings(source_config),
-    )
-    return handler.fetch_items(ctx)
+    return handler.fetch_items(_build_collector_ctx(source_config, topic, limit, keywords))
 
 
 class CacheWriteResult(NamedTuple):
@@ -1169,7 +1405,9 @@ def _log_run(
     Parameters
     ----------
     status:
-        Run outcome: ``"success"``, ``"error"``, or ``"skipped"``.
+        Run outcome: ``"success"``, ``"error"``, ``"skipped"``, or
+        ``"disabled_auto"`` (#665 auto-disable gate — a skip-class outcome
+        recorded when the source's consecutive-failure streak is exhausted).
     errors:
         Optional list of error dicts (only meaningful when status != success).
     duration_s:
@@ -1193,15 +1431,7 @@ def _log_run(
     if trace_ids:
         entry["trace_ids"] = trace_ids
 
-    if runs_path.exists():
-        try:
-            with open(runs_path, "r", encoding="utf-8") as fh:
-                runs: list[dict[str, Any]] = json.load(fh)
-        except (json.JSONDecodeError, FileNotFoundError):
-            runs = []
-    else:
-        runs = []
-
+    runs = _read_runs(domain, source_name)
     runs.append(entry)
 
     with open(runs_path, "w", encoding="utf-8") as fh:

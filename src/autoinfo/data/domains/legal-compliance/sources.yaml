@@ -30,7 +30,9 @@ sources:
   type: rss
   url: https://www.oyez.org/feed
   quality_tier: 2
-  enabled: true
+  # #665: www.oyez.org/feed no longer parses as XML (bozo, 27 consecutive);
+  # disabled until a working feed/endpoint is confirmed.
+  enabled: false
   tos_classification: open
   rate_limit: 10
   fetch_depth: abstract

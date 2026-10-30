@@ -136,12 +136,43 @@ class SemanticScholarHandler(BaseHandler):
         raise RuntimeError("Unexpected: all retries exhausted") from last_exc
 
     # ------------------------------------------------------------------
+    # Pre-request validation (#666)
+    # ------------------------------------------------------------------
+
+    def precheck(self, ctx: CollectorContext) -> dict[str, Any] | None:
+        """Empty-topic gate (#666): the search endpoint 400s on an empty query.
+
+        ``/paper/search?query=`` is a deterministic 400 — an empty required
+        parameter must be intercepted *before* the request, not sent.
+        """
+        if not (ctx.topic or ctx.query or "").strip():
+            return {
+                "message": (
+                    f"source '{ctx.source_name}' requires a topic/query but none "
+                    f"resolved — skipped before request (empty required parameter)"
+                ),
+                "empty_topic": True,
+            }
+        return None
+
+    # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def fetch_items(self, ctx: CollectorContext) -> list[Item]:
         """Fetch Semantic Scholar papers for the topic query."""
-        query = ctx.topic if ctx.topic else ""
+        # #666: an empty topic previously flowed straight into
+        # ``fetch("")`` → ``?query=`` → a guaranteed 400 on every run.
+        # Refuse the request instead (handler-level counterpart of the
+        # collect-level precheck, which records the skip).
+        query = (ctx.topic or ctx.query or "").strip()
+        if not query:
+            logger.warning(
+                "Semantic Scholar fetch skipped: no topic/query resolved — "
+                "refusing to send an empty ?query= request (#666)",
+                extra={"source_name": ctx.source_name},
+            )
+            return []
         papers = self.fetch(query, limit=ctx.resolved_limit(10))
         return [self.to_item(p) for p in papers]
 
@@ -155,7 +186,15 @@ class SemanticScholarHandler(BaseHandler):
 
         Returns:
             List of parsed paper dictionaries, each with mapped fields.
+
+        Raises:
+            SourceFailure: On an empty *query* — the search endpoint 400s
+                on ``?query=`` (#666); refuse before any request.
         """
+        if not (query or "").strip():
+            raise SourceFailure(
+                "Semantic Scholar fetch refused: query is empty (empty required parameter, #666)"
+            )
         limit = max(1, min(limit, 100))
         url = f"{SEARCH_URL}?query={quote(query)}&limit={limit}&fields={DEFAULT_FIELDS}"
 

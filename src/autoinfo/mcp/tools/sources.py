@@ -503,6 +503,17 @@ def build_tools() -> list[Tool]:
                         ),
                         "default": "",
                     },
+                    "force_enable": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Escape valve for the #665 auto-disable gate: source "
+                            "names to collect even though their consecutive-failure "
+                            "history auto-disabled them. One forced success resets "
+                            "the error streak and un-disables the source."
+                        ),
+                        "default": [],
+                    },
                 },
                 "required": [],
             },

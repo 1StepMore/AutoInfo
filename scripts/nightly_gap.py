@@ -56,13 +56,16 @@ DoD（见 docs/dev/plans/NIGHTLY.md §完成定义）：21 个域，每域四条
 ============= ==========================================================
 ``produced``  真跑过：有 success 运行且拿到过条目
 ``ran_empty`` 跑过但空：有 success 运行，条目恒为 0
-``skipped``   被跳过：**最近一次**运行是 skipped（带原因）
+``skipped``   被跳过：**最近一次**运行是 skipped / disabled_auto（带原因）
 ``failed``    有运行记录，但一次都没成功（error/其它）
 ``never_ran`` 没有任何运行记录
 ============= ==========================================================
 
 - skipped **不计**「已跑/覆盖」，也**不计**「采集失败/源损坏」——它是单独一类，
-  原因从跳过条目的 errors 归纳（``app_review_required`` / ``robots_disallowed`` / 其它）。
+  原因从跳过条目的 errors 归纳（``app_review_required`` / ``robots_disallowed`` /
+  ``credential_missing`` / ``empty_topic`` / ``disabled_auto`` / 其它）。
+  ``disabled_auto``（连续失败自动降级，#665）与策略跳过同类：当下可操作的阻断，
+  既不算 healthy 也不算 failed。
 - skipped 源**既不算 healthy 也不算 unhealthy**
   （``sources_unhealthy`` = 总数 − healthy − skipped）。
 - 除 skipped 外的历史口径一律保持不变：error-only 的源仍算「已跑」。改 error 的记账
@@ -101,8 +104,18 @@ STATE_SKIPPED = "skipped"
 STATE_FAILED = "failed"
 STATE_NEVER_RAN = "never_ran"
 
+# skip 类状态：最近一次运行为其中之一 ⇒ 该源这一轮没产出、不算 failed。
+# ``skipped`` 是策略跳过（app_review / robots / precheck 门，#455）；
+# ``disabled_auto`` 是连续失败自动降级（#665）——同样是「当下可操作的阻断」，
+# 与 skipped 同类：既不计 healthy 也不计采集失败。
+STATUS_DISABLED_AUTO = "disabled_auto"
+SKIP_CLASS_STATUSES = ("skipped", STATUS_DISABLED_AUTO)
+
 SKIP_REASON_APP_REVIEW = "app_review_required"
 SKIP_REASON_ROBOTS = "robots_disallowed"
+SKIP_REASON_CREDENTIAL_MISSING = "credential_missing"
+SKIP_REASON_EMPTY_TOPIC = "empty_topic"
+SKIP_REASON_DISABLED_AUTO = "disabled_auto"
 SKIP_REASON_OTHER = "other"
 
 
@@ -177,18 +190,29 @@ def classify_skip_reason(runs: list[dict[str, Any]]) -> tuple[str, str]:
     """
     errors: list[dict[str, Any]] = []
     for run in runs:
-        if _run_status(run) != "skipped":
+        if _run_status(run) not in SKIP_CLASS_STATUSES:
             continue
         for err in run.get("errors") or []:
             if isinstance(err, dict):
                 errors.append(err)
     if not errors:
+        # status 本身也是信号：无 errors 载荷的 disabled_auto 记录仍按其状态归类。
+        if any(_run_status(run) == STATUS_DISABLED_AUTO for run in runs):
+            return SKIP_REASON_DISABLED_AUTO, ""
         return SKIP_REASON_OTHER, ""
     detail = next((str(e.get("message") or "") for e in errors if e.get("message")), "")
+    if any(_run_status(run) == STATUS_DISABLED_AUTO for run in runs) or any(
+        bool(e.get("disabled_auto")) for e in errors
+    ):
+        return SKIP_REASON_DISABLED_AUTO, detail
     if any(bool(e.get("app_review_required")) for e in errors):
         return SKIP_REASON_APP_REVIEW, detail
     if any(bool(e.get("robots_disallowed")) for e in errors):
         return SKIP_REASON_ROBOTS, detail
+    if any(bool(e.get("credential_missing")) for e in errors):
+        return SKIP_REASON_CREDENTIAL_MISSING, detail
+    if any(bool(e.get("empty_topic")) for e in errors):
+        return SKIP_REASON_EMPTY_TOPIC, detail
     blob = " ".join(str(e.get("message") or "") for e in errors).lower()
     if "app review" in blob or "app/interface review" in blob:
         return SKIP_REASON_APP_REVIEW, detail
@@ -223,12 +247,13 @@ def source_run_state(runs: list[dict[str, Any]]) -> dict[str, Any]:
         }
 
     statuses = [_run_status(r) for r in runs]
-    skip_runs = sum(1 for s in statuses if s == "skipped")
+    skip_runs = sum(1 for s in statuses if s in SKIP_CLASS_STATUSES)
     productive = sum(1 for r, s in zip(runs, statuses) if s == "success" and _run_has_items(r))
     empty = sum(1 for r, s in zip(runs, statuses) if s == "success" and not _run_has_items(r))
 
-    # skipped 优先于其它状态：最近一次是跳过，这一轮它就没产出。
-    if statuses[-1] == "skipped":
+    # skipped 优先于其它状态：最近一次是跳过（含 disabled_auto，#665），
+    # 这一轮它就没产出。
+    if statuses[-1] in SKIP_CLASS_STATUSES:
         state = STATE_SKIPPED
     elif productive:
         state = STATE_PRODUCED

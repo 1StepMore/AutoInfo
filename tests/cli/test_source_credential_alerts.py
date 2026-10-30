@@ -325,6 +325,85 @@ class TestCheckSourceCredentials:
             missing = check_source_credentials("medical-research")
         assert missing == []
 
+    # -- #664: placeholder credentials are NOT credentials ------------------
+
+    def test_placeholder_literal_reported(self, tmp_path: Path) -> None:
+        """#664: a literal placeholder (YOUR_*) is unconfigured, not configured.
+
+        Twelve Data 实况：params.apikey=YOUR_TWELVEDATA_KEY 被当真实 key
+        发出去，每晚 401，连续 28 天无告警 —— 占位符必须视为未配置。
+        """
+        config_path = _write_config(
+            tmp_path,
+            sources_yaml=(
+                "      - name: Twelve Data\n"
+                "        type: api\n"
+                "        url: https://api.twelvedata.com/quote\n"
+                "        requires_key: true\n"
+                "        params: {apikey: YOUR_TWELVEDATA_KEY}\n"
+            ),
+        )
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            missing = check_source_credentials("medical-research")
+        assert len(missing) == 1
+        assert missing[0]["source"] == "Twelve Data"
+        assert missing[0]["source_type"] == "api"
+
+    def test_placeholder_in_api_key_reported(self, tmp_path: Path) -> None:
+        """#664: placeholder in settings.api_key is also rejected."""
+        config_path = _write_config(
+            tmp_path,
+            sources_yaml=(
+                "      - name: Alpha Vantage\n"
+                "        type: api\n"
+                "        url: https://www.alphavantage.co/query\n"
+                "        requires_key: true\n"
+                "        settings:\n"
+                "          api_key: YOUR_ALPHAVANTAGE_KEY\n"
+            ),
+        )
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            missing = check_source_credentials("medical-research")
+        assert len(missing) == 1
+
+    def test_params_token_counts_as_configured(self, tmp_path: Path) -> None:
+        """#664: a real credential riding in params.token satisfies the check."""
+        config_path = _write_config(
+            tmp_path,
+            sources_yaml=(
+                "      - name: Finnhub\n"
+                "        type: api\n"
+                "        url: https://finnhub.io/api/v1\n"
+                "        requires_key: true\n"
+                "        settings:\n"
+                "          params:\n"
+                "            token: finnhub-real-token\n"
+            ),
+        )
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            missing = check_source_credentials("medical-research")
+        assert missing == []
+
+    def test_params_env_ref_unset_reported(self, tmp_path: Path, monkeypatch) -> None:
+        """#664: ${ENV} refs buried in params are detected like top-level ones."""
+        monkeypatch.delenv("FINNHUB_API_KEY", raising=False)
+        config_path = _write_config(
+            tmp_path,
+            sources_yaml=(
+                "      - name: Finnhub\n"
+                "        type: api\n"
+                "        url: https://finnhub.io/api/v1\n"
+                "        requires_key: true\n"
+                "        settings:\n"
+                "          params:\n"
+                "            token: ${FINNHUB_API_KEY}\n"
+            ),
+        )
+        with patch("autoinfo.alerts.get_config_path", return_value=config_path):
+            missing = check_source_credentials("medical-research")
+        assert len(missing) == 1
+        assert missing[0]["key_ref"] == "FINNHUB_API_KEY"
+
 
 # ===================================================================
 # 3. Map consolidation: alerts + mcp.server share ONE source of truth

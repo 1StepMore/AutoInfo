@@ -47,6 +47,7 @@ class _FakeFetch:
         new_items_collector=None,
         force_full=False,
         keywords=None,
+        force_enable=None,
     ):
         name = source_config.name
         self.calls.append(name)

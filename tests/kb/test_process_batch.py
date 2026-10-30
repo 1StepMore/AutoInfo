@@ -12,6 +12,8 @@ Covers:
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from autoinfo import process as process_module
 from autoinfo.kb import KBStore
 from autoinfo.llm import LLMExtractor
 from autoinfo.models import ExtractionResult, Item, KBEntry
@@ -29,6 +32,7 @@ from autoinfo.process import (
 )
 from autoinfo.quality import QualityResult
 from tests._ansi import strip_ansi
+from tests._freshness import fresh_iso
 
 # ===================================================================
 # Fixtures
@@ -429,6 +433,312 @@ class TestBatchBackwardCompatibility:
         assert result.processed_count == 0
         assert result.remaining_count == 0
         assert result.is_complete is True
+
+
+# ===================================================================
+# Test: migration seed ordering (AutoInfo#663)
+# ===================================================================
+
+
+def _seed_item(item_id: str, collected_at: str) -> Item:
+    return Item(
+        id=item_id,
+        source_name="pubmed",
+        source_type="api",
+        source_platform="pubmed",
+        source_url=f"https://example.com/{item_id}",
+        title=f"Article {item_id}",
+        content=f"Content of {item_id}.",
+        content_type="text",
+        collected_at=collected_at,
+        language="en",
+        domain="medical-research",
+        topic_tags=["IVF"],
+        quality_tier=1,
+        raw_data={},
+    )
+
+
+class TestMigrationSeedOrdering:
+    """The one-shot ledger seed must follow the DEFAULT cache walk (#663).
+
+    A pre-#596 domain has a legacy position cursor but an empty id ledger.
+    The legacy semantics were "the first N items in default cache order were
+    processed", so the seed prefix is defined against the default
+    oldest-first walk of the FULL cache.  Deriving it from the list a run is
+    about to process marks fresh content as already done under
+    ``--newest-first`` (newest items first in the list) and under
+    ``--since-days`` (the seed swallows the whole fresh window).
+    """
+
+    OLD1_COLLECTED = "2020-01-01T00:00:00Z"
+    OLD2_COLLECTED = "2020-06-01T00:00:00Z"
+
+    @staticmethod
+    def _cache() -> tuple[list[Item], list[Item], list[Item]]:
+        """Return (default walk, newest-first order, 7-day window)."""
+        old1 = _seed_item("old-1", TestMigrationSeedOrdering.OLD1_COLLECTED)
+        old2 = _seed_item("old-2", TestMigrationSeedOrdering.OLD2_COLLECTED)
+        new1 = _seed_item("new-1", fresh_iso(1))
+        new2 = _seed_item("new-2", fresh_iso(0))
+        default_walk = [old1, old2, new1, new2]  # date dirs ascending
+        newest_first = [new2, new1, old2, old1]
+        window = [new1, new2]  # since_days=7 drops the 2020 items
+        return default_walk, newest_first, window
+
+    @staticmethod
+    def _fake_loader(calls: list[tuple[int, bool]]):
+        default_walk, newest_first_order, window = TestMigrationSeedOrdering._cache()
+
+        def fake_load(
+            domain: str,
+            base_path: Any = "collections",
+            *,
+            since_days: int = 0,
+            newest_first: bool = False,
+        ) -> list[Item]:
+            calls.append((since_days, newest_first))
+            if since_days > 0:
+                return list(window)
+            if newest_first:
+                return list(newest_first_order)
+            return list(default_walk)
+
+        return fake_load
+
+    @pytest.fixture
+    def isolated_db(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+        """Point the real progress DB at tmp_path — never the repo DB."""
+        db_path = tmp_path / "autoinfo.db"
+        monkeypatch.setattr("autoinfo.process._get_progress_db_path", lambda: db_path)
+        monkeypatch.setattr("autoinfo.process.get_config_path", lambda: None)
+        return db_path
+
+    def _run(
+        self,
+        loader: Any,
+        extracted: list[str],
+        mock_extraction: ExtractionResult,
+        **kwargs: Any,
+    ) -> ProcessResult:
+        def track_extraction(item: Item, **_: Any) -> ExtractionResult:
+            extracted.append(item.id)
+            return mock_extraction
+
+        with (
+            patch("autoinfo.process.load_cached_items", side_effect=loader),
+            patch.object(LLMExtractor, "extract", side_effect=track_extraction),
+            patch("autoinfo.process.run_quality_gates", MagicMock(return_value=_all_pass_gates())),
+            patch("autoinfo.process.KBStore", return_value=_mock_kb_store()),
+        ):
+            return run_processing("medical-research", **kwargs)
+
+    def test_newest_first_seed_marks_oldest_not_newest(
+        self,
+        mock_extraction: ExtractionResult,
+        isolated_db: Path,
+    ) -> None:
+        """Under --newest-first the seed consumes the OLDEST prefix; the fresh items are processed."""
+        calls: list[tuple[int, bool]] = []
+        loader = self._fake_loader(calls)
+        extracted: list[str] = []
+
+        # Pre-#596 state: legacy cursor says the first 2 items are done, ledger empty.
+        process_module._write_progress("medical-research", 2, 4)
+
+        result = self._run(
+            loader,
+            extracted,
+            mock_extraction,
+            batch_size=2,
+            resume_from="auto",
+            newest_first=True,
+        )
+
+        assert sorted(extracted) == ["new-1", "new-2"]
+        assert result.processed_count == 2
+        # The seed re-derived its prefix from a default-order walk, not from
+        # the newest-first list this run handed to the workers.
+        assert (0, False) in calls
+        assert (0, True) in calls
+        assert process_module._read_processed_ids("medical-research") == {
+            "old-1",
+            "old-2",
+            "new-1",
+            "new-2",
+        }
+
+    def test_since_days_seed_spares_the_fresh_window(
+        self,
+        mock_extraction: ExtractionResult,
+        isolated_db: Path,
+    ) -> None:
+        """Under --since-days the seed never consumes the fresh window itself."""
+        calls: list[tuple[int, bool]] = []
+        loader = self._fake_loader(calls)
+        extracted: list[str] = []
+
+        process_module._write_progress("medical-research", 2, 4)
+
+        result = self._run(
+            loader,
+            extracted,
+            mock_extraction,
+            batch_size=4,
+            resume_from="auto",
+            since_days=7,
+        )
+
+        # Bug behaviour was: seed took windowed[:2] == the whole fresh window,
+        # pending emptied out, and the run processed NOTHING.
+        assert sorted(extracted) == ["new-1", "new-2"]
+        assert result.processed_count == 2
+        assert (7, False) in calls
+        assert (0, False) in calls  # seed reload, no window
+        assert process_module._read_processed_ids("medical-research") == {
+            "old-1",
+            "old-2",
+            "new-1",
+            "new-2",
+        }
+
+    def test_second_run_continues_from_persisted_ledger(
+        self,
+        mock_extraction: ExtractionResult,
+        isolated_db: Path,
+    ) -> None:
+        """Ledger rows survive the run: the second batch picks up the rest.
+
+        Mirrors the nightly shape — a backlog larger than one ``batch_size``:
+        run 1 takes the two newest pending items, run 2 must continue with the
+        next two instead of resetting to zero or re-seeding.
+        """
+        # 6-item cache: legacy prefix (old-1, old-2) + four fresh items.
+        # Default walk (date dirs ascending): old-1, old-2, new-4 … new-1.
+        default_walk = [
+            _seed_item("old-1", self.OLD1_COLLECTED),
+            _seed_item("old-2", self.OLD2_COLLECTED),
+            _seed_item("new-4", fresh_iso(4)),
+            _seed_item("new-3", fresh_iso(3)),
+            _seed_item("new-2", fresh_iso(2)),
+            _seed_item("new-1", fresh_iso(1)),
+        ]
+        newest_order = list(reversed(default_walk))
+
+        def fake_load(
+            domain: str,
+            base_path: Any = "collections",
+            *,
+            since_days: int = 0,
+            newest_first: bool = False,
+        ) -> list[Item]:
+            return list(newest_order) if newest_first else list(default_walk)
+
+        extracted: list[str] = []
+
+        process_module._write_progress("medical-research", 2, 6)
+        self._run(
+            fake_load,
+            extracted,
+            mock_extraction,
+            batch_size=2,
+            resume_from="auto",
+            newest_first=True,
+        )
+        assert sorted(extracted) == ["new-1", "new-2"]
+
+        extracted.clear()
+        result = self._run(
+            fake_load,
+            extracted,
+            mock_extraction,
+            batch_size=2,
+            resume_from="auto",
+            newest_first=True,
+        )
+
+        # The next pending slice — not a reset to zero, not a re-seed.
+        assert sorted(extracted) == ["new-3", "new-4"]
+        assert result.processed_count == 2
+        assert result.is_complete is True
+        assert process_module._read_processed_ids("medical-research") == {
+            "old-1",
+            "old-2",
+            "new-1",
+            "new-2",
+            "new-3",
+            "new-4",
+        }
+
+
+# ===================================================================
+# Test: ledger write resilience (AutoInfo#663)
+# ===================================================================
+
+
+class TestLedgerWriteResilience:
+    """Cursor/ledger writes retry SQLite contention, then fail LOUD."""
+
+    @pytest.fixture
+    def isolated_db(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(
+            "autoinfo.process._get_progress_db_path", lambda: tmp_path / "autoinfo.db"
+        )
+        monkeypatch.setattr("autoinfo.process._LEDGER_RETRY_SLEEP_S", 0.0)
+
+    def test_mark_processed_retries_on_lock(self, isolated_db: None) -> None:
+        real_connect = process_module._connect_progress_db
+        attempts = {"n": 0}
+
+        def flaky_connect() -> sqlite3.Connection:
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise sqlite3.OperationalError("database is locked")
+            return real_connect()
+
+        with patch("autoinfo.process._connect_progress_db", side_effect=flaky_connect):
+            process_module._mark_processed("d-resilience", ["a", "b"])
+
+        assert attempts["n"] == 2
+        assert process_module._read_processed_ids("d-resilience") == {"a", "b"}
+
+    def test_mark_processed_exhaustion_is_loud_not_fatal(
+        self, isolated_db: None, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def locked_connect() -> sqlite3.Connection:
+            raise sqlite3.OperationalError("database is locked")
+
+        with (
+            patch("autoinfo.process._connect_progress_db", side_effect=locked_connect),
+            caplog.at_level(logging.ERROR, logger="autoinfo.process"),
+        ):
+            process_module._mark_processed("d-resilience", ["a"])  # must not raise
+
+        assert any(
+            "ledger" in rec.getMessage() or "processed" in rec.getMessage()
+            for rec in caplog.records
+            if rec.levelno == logging.ERROR
+        )
+        assert process_module._read_processed_ids("d-resilience") == set()
+
+    def test_write_progress_retries_on_lock(self, isolated_db: None) -> None:
+        real_connect = process_module._connect_progress_db
+        attempts = {"n": 0}
+
+        def flaky_connect() -> sqlite3.Connection:
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise sqlite3.OperationalError("database is locked")
+            return real_connect()
+
+        with patch("autoinfo.process._connect_progress_db", side_effect=flaky_connect):
+            process_module._write_progress("d-resilience", 7, 10)
+
+        assert attempts["n"] == 2
+        assert process_module._read_progress("d-resilience") == {
+            "last_processed_index": 7,
+            "total_items": 10,
+        }
 
 
 # ===================================================================

@@ -31,6 +31,18 @@ ever reached stale entries.  ``--since-days N`` restricts the backlog (and the
 subprocess) to items collected within the last N days, and ``--newest-first``
 processes the newest cached items first; both default to off.
 
+Recommended nightly posture (#663): pass ``--since-days 7 --newest-first``.
+The default walk is oldest-first, so a budgeted run without them digests the
+years-deep historical backlog at 4-15 items per night and the fresh content
+sits at the tail forever — that ordering is what produced the 18/21-domain
+LATE_COLLECT matrix finding.  Historical backlog beyond the window is then
+explicitly not processed per night; digest it with a manual unlimited-budget
+run (``--max-seconds 0``) instead.  Both flags are safe against pre-#596
+domains: the one-shot migration seed in ``run_processing`` always derives its
+prefix from the default oldest-first walk of the full cache (AutoInfo#663),
+so a ``--newest-first`` run can no longer mark the fresh window as already
+done.
+
 Exit codes:
     0  all selected domains processed successfully, or nothing was due
     1  at least one selected domain failed

@@ -1,0 +1,249 @@
+# Regression #663: the one-shot cursor migration seed must follow the DEFAULT
+# cache walk, and the id ledger must actually persist.
+#
+# The nightly lane passes `--resume-from auto --batch-size N` (and, since the
+# hermes-ops orchestration fix, `--since-days 7 --newest-first`).  A pre-#596
+# domain has a legacy `processing_progress` position cursor but an empty
+# `processing_items` id ledger, so every run took the one-shot seed path:
+# `cached_items[:legacy_index]`.  Seeding from the list the run is about to
+# process betrays both flags:
+#
+#   * `--newest-first`: the seed marks the NEWEST items as already done —
+#     exactly the fresh content the flag was meant to reach;
+#   * `--since-days`: the seed marks the whole fresh window done, so the run
+#     processes nothing at all.
+#
+# Combined with oldest-first + a 4-15 item nightly batch this is the #663
+# LATE_COLLECT mechanism: 18/21 domains only ever ingested stale cache.
+# The fix re-derives the seed prefix from a default oldest-first walk of the
+# full cache; `--newest-first` / `--since-days` apply only afterwards, to the
+# pending list.  Ledger/cursor writes retry SQLite contention and fail LOUD
+# (ERROR, not a swallowed warning) so rows can no longer silently vanish.
+#
+# These steps drive the real `run_processing` + real SQLite ledger under an
+# isolated cwd; only the LLM/gate/KB boundaries are stubbed — no network, no
+# API key needed.
+name: regression-663-process-newest-first-cursor
+description: "Regression #663: under --newest-first/--since-days the migration seed keeps the oldest prefix and the fresh window pending; the id ledger persists across runs"
+category: failure
+pyramid_layer: component
+pipeline_stage: A2
+user_level: B2.4
+regression: true
+regression_issue: "#663"
+requires_env: []
+steps:
+  - name: "newest-first run seeds the oldest prefix, processes the fresh items, persists the ledger"
+    kind: cli
+    timeout_seconds: 120
+    command: |-
+      python3 -c "
+      import json, os, sqlite3, tempfile
+      from datetime import datetime, timedelta, timezone
+      from pathlib import Path
+      from unittest.mock import MagicMock, patch
+
+      from autoinfo import process as pm
+      from autoinfo.models import ExtractionResult, Item
+      from autoinfo.process import run_processing
+      from autoinfo.quality import QualityResult
+
+      now = datetime.now(timezone.utc)
+      def iso(days):
+          return (now - timedelta(days=days)).isoformat()
+
+      def make_item(item_id, collected):
+          return Item(id=item_id, source_name='pubmed', source_type='api',
+              source_platform='pubmed', source_url='https://example.com/' + item_id,
+              title='T ' + item_id, content='C ' + item_id + '.',
+              content_type='text', collected_at=collected, language='en',
+              domain='seed-domain', topic_tags=[], quality_tier=1, raw_data={})
+
+      old1, old2 = '2020-01-01T00:00:00+00:00', '2020-06-01T00:00:00+00:00'
+      default_walk = [make_item('old-1', old1), make_item('old-2', old2),
+                      make_item('new-2', iso(2)), make_item('new-1', iso(1))]
+      newest_order = list(reversed(default_walk))
+      calls = []
+      def fake_load(domain, base_path='collections', *, since_days=0, newest_first=False):
+          calls.append((since_days, newest_first))
+          return list(newest_order) if newest_first else list(default_walk)
+
+      extracted = []
+      ext = ExtractionResult(item_id='m', title='M', tl_dr='d',
+          key_points=['p'], entities=[], relevance_score=80.0)
+      def track(item, **k):
+          extracted.append(item.id)
+          return ext
+
+      def gates():
+          return {
+              'G1-SourceAuthority': QualityResult(gate_name='G1-SourceAuthority',
+                  passed=True, score=1.0, details={}),
+              'G2-Dedup': QualityResult(gate_name='G2-Dedup',
+                  passed=True, score=1.0, details={}),
+              'G3-RelevanceScoring': QualityResult(gate_name='G3-RelevanceScoring',
+                  passed=True, score=80.0, details={}),
+          }
+
+      store = MagicMock()
+      store.store_entry.return_value = MagicMock()
+      store.list_entries.return_value = []
+
+      with tempfile.TemporaryDirectory() as tmp:
+          os.chdir(tmp)
+          db_path = Path(tmp) / 'autoinfo.db'
+          with (
+              patch.object(pm, '_get_progress_db_path', return_value=db_path),
+              patch.object(pm, 'get_config_path', return_value=None),
+              patch('autoinfo.process.load_cached_items', side_effect=fake_load),
+              patch.object(pm.LLMExtractor, 'extract', side_effect=track),
+              patch('autoinfo.process.run_quality_gates',
+                    MagicMock(return_value=gates())),
+              patch('autoinfo.process.KBStore', return_value=store),
+          ):
+              # Pre-#596 state: legacy position cursor says the first 2 items
+              # (in DEFAULT cache order) are done; id ledger empty.
+              pm._write_progress('seed-domain', 2, 4)
+              result = run_processing('seed-domain', batch_size=2,
+                                      resume_from='auto', newest_first=True)
+
+          assert sorted(extracted) == ['new-1', 'new-2'], extracted
+          assert result.processed_count == 2, result.processed_count
+          # Seed prefix derived from the default walk, NOT the newest-first list.
+          assert (0, False) in calls, calls
+          assert (0, True) in calls, calls
+          assert pm._read_processed_ids('seed-domain') == {
+              'old-1', 'old-2', 'new-1', 'new-2'}
+          # Real DB artifact: the ledger rows exist in sqlite, not just in memory.
+          conn = sqlite3.connect(str(db_path))
+          n = conn.execute(
+              \"SELECT COUNT(*) FROM processing_items WHERE domain='seed-domain'\"
+          ).fetchone()[0]
+          conn.close()
+          assert n == 4, n
+      print('NEWEST_FIRST_SEED_OK')
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["NEWEST_FIRST_SEED_OK"]
+
+  - name: "since-days run never seeds away the fresh window; second run continues from the ledger"
+    kind: cli
+    timeout_seconds: 120
+    command: |-
+      python3 -c "
+      import os, tempfile
+      from datetime import datetime, timedelta, timezone
+      from pathlib import Path
+      from unittest.mock import MagicMock, patch
+
+      from autoinfo import process as pm
+      from autoinfo.models import ExtractionResult, Item
+      from autoinfo.process import run_processing
+      from autoinfo.quality import QualityResult
+
+      now = datetime.now(timezone.utc)
+      def iso(days):
+          return (now - timedelta(days=days)).isoformat()
+
+      def make_item(item_id, collected):
+          return Item(id=item_id, source_name='pubmed', source_type='api',
+              source_platform='pubmed', source_url='https://example.com/' + item_id,
+              title='T ' + item_id, content='C ' + item_id + '.',
+              content_type='text', collected_at=collected, language='en',
+              domain='seed-domain', topic_tags=[], quality_tier=1, raw_data={})
+
+      old1, old2 = '2020-01-01T00:00:00+00:00', '2020-06-01T00:00:00+00:00'
+      default_walk = [make_item('old-1', old1), make_item('old-2', old2),
+                      make_item('new-2', iso(2)), make_item('new-1', iso(1))]
+      window = [default_walk[2], default_walk[3]]
+      calls = []
+      def fake_load(domain, base_path='collections', *, since_days=0, newest_first=False):
+          calls.append((since_days, newest_first))
+          if since_days > 0:
+              return list(window)
+          return list(default_walk)
+
+      extracted = []
+      ext = ExtractionResult(item_id='m', title='M', tl_dr='d',
+          key_points=['p'], entities=[], relevance_score=80.0)
+      def track(item, **k):
+          extracted.append(item.id)
+          return ext
+
+      def gates():
+          return {
+              'G1-SourceAuthority': QualityResult(gate_name='G1-SourceAuthority',
+                  passed=True, score=1.0, details={}),
+              'G2-Dedup': QualityResult(gate_name='G2-Dedup',
+                  passed=True, score=1.0, details={}),
+              'G3-RelevanceScoring': QualityResult(gate_name='G3-RelevanceScoring',
+                  passed=True, score=80.0, details={}),
+          }
+
+      store = MagicMock()
+      store.store_entry.return_value = MagicMock()
+      store.list_entries.return_value = []
+
+      with tempfile.TemporaryDirectory() as tmp:
+          os.chdir(tmp)
+          with (
+              patch.object(pm, '_get_progress_db_path',
+                           return_value=Path(tmp) / 'autoinfo.db'),
+              patch.object(pm, 'get_config_path', return_value=None),
+              patch('autoinfo.process.load_cached_items', side_effect=fake_load),
+              patch.object(pm.LLMExtractor, 'extract', side_effect=track),
+              patch('autoinfo.process.run_quality_gates',
+                    MagicMock(return_value=gates())),
+              patch('autoinfo.process.KBStore', return_value=store),
+          ):
+              pm._write_progress('seed-domain', 2, 4)
+              r1 = run_processing('seed-domain', batch_size=4,
+                                  resume_from='auto', since_days=7)
+              # Bug behaviour was: the seed consumed windowed[:2] == the whole
+              # fresh window, pending emptied, and the run processed nothing.
+              assert sorted(extracted) == ['new-1', 'new-2'], extracted
+              assert r1.processed_count == 2, r1.processed_count
+              assert (7, False) in calls, calls
+              assert (0, False) in calls, calls
+
+          # Fresh tmp DB for the continuation shape: a backlog larger than one
+          # batch; the second run must pick up the next slice (never reset to 0).
+          extracted.clear()
+          with tempfile.TemporaryDirectory() as tmp2:
+              os.chdir(tmp2)
+              def big_load(domain, base_path='collections', *, since_days=0, newest_first=False):
+                  walk = [make_item('old-1', old1), make_item('old-2', old2),
+                          make_item('new-4', iso(4)), make_item('new-3', iso(3)),
+                          make_item('new-2', iso(2)), make_item('new-1', iso(1))]
+                  return list(reversed(walk)) if newest_first else walk
+
+              with (
+                  patch.object(pm, '_get_progress_db_path',
+                               return_value=Path(tmp2) / 'autoinfo.db'),
+                  patch.object(pm, 'get_config_path', return_value=None),
+                  patch('autoinfo.process.load_cached_items', side_effect=big_load),
+                  patch.object(pm.LLMExtractor, 'extract', side_effect=track),
+                  patch('autoinfo.process.run_quality_gates',
+                        MagicMock(return_value=gates())),
+                  patch('autoinfo.process.KBStore', return_value=store),
+              ):
+                  pm._write_progress('seed-domain', 2, 6)
+                  run_processing('seed-domain', batch_size=2,
+                                 resume_from='auto', newest_first=True)
+                  assert sorted(extracted) == ['new-1', 'new-2'], extracted
+                  extracted.clear()
+                  r2 = run_processing('seed-domain', batch_size=2,
+                                      resume_from='auto', newest_first=True)
+                  assert sorted(extracted) == ['new-3', 'new-4'], extracted
+                  assert r2.processed_count == 2, r2.processed_count
+                  assert r2.is_complete is True
+                  assert pm._read_processed_ids('seed-domain') == {
+                      'old-1', 'old-2', 'new-1', 'new-2', 'new-3', 'new-4'}
+      print('LEDGER_CONTINUATION_OK')
+      "
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["LEDGER_CONTINUATION_OK"]

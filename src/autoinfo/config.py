@@ -91,6 +91,83 @@ SOURCE_KEY_ENV_VARS: dict[str, tuple[str, ...]] = {
     "email_imap": ("AUTOINFO_EMAIL_PASSWORD",),
 }
 
+# ---------------------------------------------------------------------------
+# Placeholder-credential detection (#664)
+#
+# A ``requires_key: true`` source whose configured credential is a literal
+# placeholder (``YOUR_TWELVEDATA_KEY``) is *unconfigured*, not configured —
+# sending the placeholder verbatim is a guaranteed 401/400 on every run.
+# Shared single point (D4) consumed by ``alerts.py`` (B3 detection) and
+# ``collectors/http_api.py`` (pre-request gate).
+# ---------------------------------------------------------------------------
+
+_PLACEHOLDER_CREDENTIAL_RE = re.compile(
+    r"""^(?:
+        your[-_][a-z0-9_]*          # YOUR_TWELVEDATA_KEY / your-key
+      | insert[-_][a-z0-9_]*        # INSERT_KEY_HERE
+      | <[^>]*>                     # <your key here>
+      | \*{3,}                      # ****
+      | x{3,}                       # xxx
+      | changeme | placeholder | dummy | example[-_]?key | none
+    )$""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Credential-ish settings locations scanned by both consumers, beyond the
+# canonical ``api_key``: keys may ride in static ``params`` (Twelve Data
+# ``apikey``, Finnhub ``token``) or static ``headers`` (``Authorization``).
+CREDENTIAL_SETTING_KEYS: tuple[str, ...] = ("api_key", "password", "client_id", "token")
+CREDENTIAL_PARAM_KEYS: tuple[str, ...] = ("apikey", "api_key", "token", "key", "access_token")
+CREDENTIAL_HEADER_KEYS: tuple[str, ...] = ("authorization", "x-api-key")
+
+
+def is_placeholder_credential(value: str) -> bool:
+    """Return True when *value* is an obvious placeholder, not a real key (#664).
+
+    Deterministic and conservative: only literal placeholder shapes
+    (``YOUR_*``, ``<...>``, ``xxx``, ``changeme``, …) match.  A value that
+    merely *looks short or weak* is still treated as configured — key
+    strength is not detectable and must never silently disable a source.
+    """
+    v = (value or "").strip()
+    return bool(v) and bool(_PLACEHOLDER_CREDENTIAL_RE.match(v))
+
+
+def iter_credential_settings(settings: dict[str, Any] | None) -> list[tuple[str, str]]:
+    """Return ``(path, value)`` for every non-empty credential-ish setting.
+
+    Covers the canonical top-level keys (``api_key``/``password``/
+    ``client_id``/``token``), their equivalents inside static ``params``
+    (``apikey``, ``token``, …) and static ``headers``
+    (``Authorization``/``X-API-Key`` — the ``Bearer `` prefix is stripped so
+    ``Bearer ${ENV}`` / ``Bearer <placeholder>`` inspect cleanly).
+    """
+    if not isinstance(settings, dict):
+        return []
+    found: list[tuple[str, str]] = []
+    for key in CREDENTIAL_SETTING_KEYS:
+        v = settings.get(key)
+        if isinstance(v, str) and v.strip():
+            found.append((key, v.strip()))
+    params = settings.get("params")
+    if isinstance(params, dict):
+        for key in CREDENTIAL_PARAM_KEYS:
+            v = params.get(key)
+            if isinstance(v, str) and v.strip():
+                found.append((f"params.{key}", v.strip()))
+    headers = settings.get("headers")
+    if isinstance(headers, dict):
+        for key in CREDENTIAL_HEADER_KEYS:
+            v = headers.get(key)
+            if isinstance(v, str) and v.strip():
+                v = v.strip()
+                if v.lower().startswith("bearer "):
+                    v = v[7:].strip()
+                if v:
+                    found.append((f"headers.{key}", v))
+    return found
+
+
 # quality_tier -> tos_classification mapping (source of truth for
 # ``SourceConfig.__post_init__`` tier auto-mapping and YAML parsing).
 TIER_TOS_MAP: dict[int, str] = {
@@ -1840,9 +1917,7 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
                 "inherits_provider": not bool(fb.provider),
                 "inherits_key": key_status == "inherited_same_gateway",
                 "key_status": key_status,
-                "double_prefix": bool(
-                    fb.model and fb.model.startswith(f"{effective_provider}/")
-                ),
+                "double_prefix": bool(fb.model and fb.model.startswith(f"{effective_provider}/")),
             }
         )
     return {

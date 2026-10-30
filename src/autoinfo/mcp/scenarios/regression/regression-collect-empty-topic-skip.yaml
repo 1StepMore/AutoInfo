@@ -1,0 +1,55 @@
+# Regression #666: 空 topic 的 semantic-scholar 不得再发 `?query=` 请求。
+#
+# Blind spot being closed: `medical-research/semantic-scholar` 在 topic 为空
+# 时仍发 `?query=&limit=15&fields=...` —— 必然 400，连续失败 29 晚。空参数
+# 请求属于确定性失败，必须前置拦截：handler 层（fetch_items/fetch 拒绝空
+# query）+ collect 层（precheck 记 skipped + empty_topic，不计 healthy/failed）。
+#
+# Deterministic (requires_env: []): 空 topic 守卫在 httpx 之前返回，
+# 全程无网络。
+name: regression-collect-empty-topic-skip
+description: "Regression #666: semantic-scholar refuses an empty-topic ?query= request (skipped as empty_topic, no 400)"
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.4
+regression: true
+regression_issue: "#666"
+requires_env: []
+steps:
+  - name: "empty topic is refused before any request at both layers"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.collectors.semantic_scholar import SemanticScholarHandler
+      from autoinfo.collectors.base import CollectorContext, SourceFailure
+      from autoinfo.config import SourceConfig
+
+      cfg = SourceConfig(
+          name="semantic-scholar", type="api",
+          url="https://api.semanticscholar.org/graph/v1",
+      )
+
+      # 1) collect 层 precheck：空 topic ⇒ empty_topic 标记（记录 skipped 用）
+      handler = SemanticScholarHandler()
+      block = handler.precheck(CollectorContext(source_config=cfg, topic="  "))
+      assert block is not None and block["empty_topic"] is True
+
+      # 2) handler 层 fetch_items：空 topic ⇒ 返回 []，绝不发 ?query=
+      assert handler.fetch_items(CollectorContext(source_config=cfg, topic="", limit=15)) == []
+
+      # 3) handler 层 fetch("")：显式拒绝（SourceFailure），同样无请求
+      try:
+          handler.fetch("", limit=5)
+          raise SystemExit("BUG: fetch(\"\") did not raise")
+      except SourceFailure:
+          pass
+
+      # 4) 有 topic ⇒ precheck 放行（正常采集路径不受影响）
+      assert handler.precheck(CollectorContext(source_config=cfg, topic="CRISPR")) is None
+      print("EMPTY_TOPIC_SKIP_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["EMPTY_TOPIC_SKIP_OK"]

@@ -61,6 +61,15 @@ def collect(
             "run; or a source name to start at that source."
         ),
     ),
+    force_enable: list[str] | None = typer.Option(
+        None,
+        "--force-enable",
+        help=(
+            "Collect a source even though its consecutive-failure history "
+            "auto-disabled it (#665). Repeatable: --force-enable uspto "
+            "--force-enable arXiv; comma lists are split."
+        ),
+    ),
 ) -> None:
     """Collect items from configured sources."""
     # -- Validate mutually exclusive flags ---------------------------------
@@ -92,6 +101,11 @@ def collect(
     sources = None
     if source:
         sources = [s.strip() for entry in source for s in entry.split(",") if s.strip()]
+
+    # `--force-enable` follows the same repeatable/comma convention (#665).
+    force_enabled = None
+    if force_enable:
+        force_enabled = [s.strip() for entry in force_enable for s in entry.split(",") if s.strip()]
 
     try:
         from autoinfo.collect import run_collection
@@ -141,6 +155,8 @@ def collect(
                     run_kwargs["force_full"] = True
                 if resume_from:
                     run_kwargs["resume_from"] = resume_from
+                if force_enabled:
+                    run_kwargs["force_enable"] = force_enabled
                 dom_result = run_collection(**run_kwargs)
                 results.append(dom_result)
                 if not (json_output or global_json()):
@@ -193,6 +209,8 @@ def collect(
                 single_run_kwargs["force_full"] = True
             if resume_from:
                 single_run_kwargs["resume_from"] = resume_from
+            if force_enabled:
+                single_run_kwargs["force_enable"] = force_enabled
             result = run_collection(**single_run_kwargs)
 
             # -- Output ----------------------------------------------------
@@ -247,9 +265,9 @@ def _check_requested_sources(results: list[dict[str, Any]]) -> None:
     """Exit non-zero when explicitly requested sources were unknown or failed.
 
     Issue #296: a requested source that is missing from the domain config
-    (``unknown_sources``) or that errored/skipped during collection must
-    surface as a CLI failure — never a silent exit 0.  Only enforced when
-    ``--source`` was provided (the caller guards on ``sources``).
+    (``unknown_sources``) or that errored/skipped/was auto-disabled during
+    collection must surface as a CLI failure — never a silent exit 0.  Only
+    enforced when ``--source`` was provided (the caller guards on ``sources``).
     """
     unknown: list[str] = []
     failed: list[str] = []
@@ -258,7 +276,7 @@ def _check_requested_sources(results: list[dict[str, Any]]) -> None:
         for name in res.get("unknown_sources") or []:
             unknown.append(f"'{name}' (domain '{domain_label}')")
         for src in res.get("per_source", []):
-            if src.get("status") in ("error", "skipped"):
+            if src.get("status") in ("error", "skipped", "disabled_auto"):
                 failed.append(f"'{src.get('source')}' (domain '{domain_label}')")
 
     if unknown:
@@ -304,6 +322,7 @@ def _make_progress_printer() -> Callable[[Any], None]:
         "partial": "⚠",
         "error": "✗",
         "skipped": "–",
+        "disabled_auto": "⊘",
     }
 
     def _on_source_done(src_result: Any) -> None:
@@ -330,6 +349,7 @@ def _print_human(result: dict[str, Any]) -> None:
             "partial": "⚠",
             "error": "✗",
             "skipped": "–",
+            "disabled_auto": "⊘",
         }.get(src["status"], "?")
 
         filtered = src.get("items_filtered", 0) or 0

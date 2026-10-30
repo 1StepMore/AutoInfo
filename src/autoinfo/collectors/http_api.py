@@ -22,7 +22,7 @@ import httpx
 import trafilatura
 
 from autoinfo.collectors.base import BaseHandler, CollectorContext, SourceFailure
-from autoinfo.config import SourceConfig
+from autoinfo.config import SourceConfig, is_placeholder_credential, iter_credential_settings
 from autoinfo.models import Item
 from autoinfo.textutil import clean_feed_text
 
@@ -156,6 +156,75 @@ class HttpApiHandler(BaseHandler):
         if elapsed < min_interval:
             time.sleep(min_interval - elapsed)
         self._last_request_time = time.time()
+
+    # ------------------------------------------------------------------
+    # Pre-request validation (#664/#666)
+    # ------------------------------------------------------------------
+
+    def precheck(self, ctx: CollectorContext) -> dict[str, Any] | None:
+        """Pre-request validation for generic ``api`` sources (#664/#666).
+
+        Two deterministic gates — a request that *must* fail (declared key
+        missing, required query empty) is intercepted here and recorded as
+        ``skipped`` by the pipeline instead of being sent to a guaranteed
+        401/400 every night:
+
+        1. **Credential gate** (#664): the source declares
+           ``requires_key: true`` and no usable credential resolves from
+           ``settings.api_key``, static ``params``/``headers`` credentials,
+           or ``AUTOINFO_HTTP_API_KEY``.  Placeholder values
+           (``YOUR_TWELVEDATA_KEY``) are rejected as unconfigured.
+        2. **Empty-topic gate** (#666): the source is query-driven
+           (``query_param`` configured) but no topic/query resolves — the
+           collect-level counterpart of the in-handler #182 guard, so the
+           skip is *recorded* rather than silently returning no items.
+        """
+        settings = ctx.settings if ctx.settings else self._settings
+        # -- 1. Credential gate (#664) --------------------------------------
+        if bool(getattr(ctx.source_config, "requires_key", False)) and not (
+            self._resolve_configured_key(settings)
+        ):
+            return {
+                "message": (
+                    f"source '{ctx.source_name}' declares requires_key but no usable "
+                    f"API key resolves (settings.api_key, params/headers credential, "
+                    f"AUTOINFO_HTTP_API_KEY); placeholder values are rejected — "
+                    f"skipped before request"
+                ),
+                "credential_missing": True,
+            }
+        # -- 2. Empty-topic gate (#666) --------------------------------------
+        query_param = settings.get("query_param", "")
+        if query_param:
+            query = ctx.topic or ctx.query or settings.get("query", "") or ""
+            if not query.strip():
+                return {
+                    "message": (
+                        f"source '{ctx.source_name}' is query-driven "
+                        f"(query_param={query_param!r}) but no topic/query resolved "
+                        f"— skipped before request (empty required parameter)"
+                    ),
+                    "empty_topic": True,
+                }
+        return None
+
+    def _resolve_configured_key(self, settings: dict[str, Any] | None) -> str:
+        """Return the first non-placeholder credential this request would carry (#664).
+
+        Scans the same locations the request actually uses — the canonical
+        ``api_key`` setting (or ``AUTOINFO_HTTP_API_KEY``), credentials
+        embedded in static ``params`` (Twelve Data ``apikey``, Finnhub
+        ``token``) and static ``headers`` — via the shared
+        :func:`autoinfo.config.iter_credential_settings` single point.
+        """
+        candidates: list[str] = []
+        for path, value in iter_credential_settings(settings or self._settings):
+            candidates.append(value)
+        candidates.append(os.environ.get("AUTOINFO_HTTP_API_KEY", ""))
+        for candidate in candidates:
+            if candidate.strip() and not is_placeholder_credential(candidate):
+                return candidate.strip()
+        return ""
 
     # ------------------------------------------------------------------
     # Public API

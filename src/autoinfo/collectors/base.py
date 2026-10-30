@@ -146,6 +146,28 @@ class Collector(ABC):
         """
         return bool(self.REQUIRES_APP_REVIEW)
 
+    def precheck(self, ctx: CollectorContext) -> dict[str, Any] | None:
+        """Pre-request validation hook (#664/#666).
+
+        Called by the collection pipeline *before* any fetch so a
+        deterministically-failing request is never sent (empty required
+        parameters, missing/placeholder credentials).  Return ``None`` to
+        proceed, or a dict describing the skip — recorded as
+        ``status="skipped"`` with this dict in ``errors`` (a skip-class
+        outcome: never counted healthy or failed, mirroring the
+        app-review gate markers):
+
+        * ``{"message": ..., "credential_missing": True}`` — the source
+          declared ``requires_key`` and no usable credential resolves.
+        * ``{"message": ..., "empty_topic": True}`` — the source is
+          query-driven and no topic/query resolves.
+
+        Handlers override to declare their own requirements; the default
+        allows every fetch.  A raising precheck must never be treated as a
+        block — the dispatch point fails open on exceptions.
+        """
+        return None
+
     @abstractmethod
     def fetch_items(self, ctx: CollectorContext) -> list[Item]:
         """Fetch items from the source described by *ctx*.

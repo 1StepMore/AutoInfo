@@ -36,9 +36,12 @@ sources:
 
   - name: arXiv
     type: rss
+    # #665: rss.arxiv.org/rss/q-bio returns zero entries every run (29
+    # consecutive); disabled until the feed URL/query is confirmed or the
+    # arXiv official API is adopted.
     url: https://rss.arxiv.org/rss/q-bio
     quality_tier: 2
-    enabled: true
+    enabled: false
     rate_limit: 10
 
   - name: CrossRef
@@ -91,7 +94,9 @@ sources:
     access: free
     rate_limit: 5  # requests per second without API key (45 req/s with key)
     api_key_optional: true
-    enabled: true
+    # #665: PatentsView API retired by USPTO (HTTP 301 -> data.uspto.gov);
+    # disabled until migrated to the new endpoint.
+    enabled: false
     fallback_rss: https://www.uspto.gov/feeds/patent_application.xml
 
 default_language: en

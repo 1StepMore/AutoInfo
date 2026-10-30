@@ -84,7 +84,9 @@ sources:
   frequency: daily
   access: free
   rate_limit: 30
-  enabled: true
+  # #665: www.retailwire.com/feed returns 404 every run (26 consecutive);
+  # disabled until the feed path is updated.
+  enabled: false
 topics:
 - name: E-commerce
   keywords:

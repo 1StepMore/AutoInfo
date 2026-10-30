@@ -32,9 +32,7 @@ from autoinfo.collectors.uspto import USPTOHandler
 from autoinfo.config import SourceConfig
 
 DEMO_DIR = Path(__file__).resolve().parents[2] / "src" / "autoinfo" / "data" / "domains"
-SCENARIOS_DIR = (
-    Path(__file__).resolve().parents[2] / "src" / "autoinfo" / "mcp" / "scenarios"
-)
+SCENARIOS_DIR = Path(__file__).resolve().parents[2] / "src" / "autoinfo" / "mcp" / "scenarios"
 
 
 def _load_sources(domain: str) -> list[dict]:
@@ -92,6 +90,7 @@ class TestDispatchRouting:
             url="https://api.semanticscholar.org/graph/v1",
         )
         handler = _build_handler(cfg)
+        topic = "machine learning"  # #666: empty topic is refused before any request
         resp = httpx.Response(
             200,
             json={
@@ -110,8 +109,11 @@ class TestDispatchRouting:
             },
             request=httpx.Request("GET", "http://test"),
         )
-        with patch("httpx.get", return_value=resp):
-            items = _fetch_items(handler, cfg, topic="", limit=5)
+        with patch("httpx.get", return_value=resp) as mock_get:
+            items = _fetch_items(handler, cfg, topic=topic, limit=5)
+
+        requested = mock_get.call_args[0][0]
+        assert "query=machine%20learning" in requested  # quote() → %20
 
         assert len(items) == 1
         assert items[0].source_name == "semantic_scholar"
@@ -142,9 +144,7 @@ class TestUsptoFailure:
             request=post_req,
             response=httpx.Response(500, request=post_req),
         )
-        get_req = httpx.Request(
-            "GET", "https://www.uspto.gov/feeds/patent_application.xml"
-        )
+        get_req = httpx.Request("GET", "https://www.uspto.gov/feeds/patent_application.xml")
         get_err = httpx.HTTPStatusError(
             "not found",
             request=get_req,

@@ -311,6 +311,7 @@ class TestSourceTypeAwareness:
         result = _run_collection(
             items=[_make_item("s1", "Quantum computing advances")],
             topics=[TopicConfig(name="gene editing", keywords=["CRISPR", "embryo"])],
+            topic="gene editing",  # #666: empty topic is refused before any request
             source_type="api",
             source_name="semantic-scholar",
             source_url="https://api.semanticscholar.org/graph/v1/paper/search",

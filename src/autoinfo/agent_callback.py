@@ -81,6 +81,7 @@ _VALID_EVENTS = {
     "new_report",
     "new_tutorial",
     "source_requires_key",
+    "source_permanently_failing",
 }
 
 _SCHEMA_VERSION = 1
@@ -310,6 +311,53 @@ def notify_source_requires_key(
     }
     return enqueue_agent_notification(
         event="source_requires_key",
+        payload=payload,
+        trace_id=trace_id or str(uuid.uuid4()),
+        product_id="",
+    )
+
+
+def notify_source_permanently_failing(
+    source: str,
+    source_type: str,
+    domain: str,
+    consecutive_failures: int,
+    trace_id: str | None = None,
+) -> int:
+    """Fire-and-forget push that a source was auto-disabled after repeated failures.
+
+    #665 escalation event: a source whose consecutive-failure streak reached
+    the auto-disable threshold is deterministically broken (retired API, dead
+    endpoint, moved feed URL).  It is skipped at collection time from now on;
+    the human operator decides whether to fix the config (new endpoint /
+    ``enabled: false``) or force-enable it.  Delivered through the durable
+    outbox to every agent callback subscribed to
+    ``source_permanently_failing``.
+
+    Fired once at the transition into the degraded state — later collection
+    runs only append further ``disabled_auto`` records and stay silent, so
+    the operator is notified once per degradation, not every night.
+
+    Args:
+        source: Source name (e.g. ``"uspto"``).
+        source_type: Source type (e.g. ``"uspto"``).
+        domain: Domain the source belongs to.
+        consecutive_failures: The failure streak that triggered the disable.
+        trace_id: Optional per-event trace identifier (generated when omitted).
+
+    Returns:
+        The outbox row id, or ``0`` if the event could not be enqueued.
+    """
+    payload = {
+        "source": source,
+        "source_type": source_type,
+        "domain": domain,
+        "consecutive_failures": consecutive_failures,
+        "severity": "critical",
+        "triggered_at": _now_utc(),
+    }
+    return enqueue_agent_notification(
+        event="source_permanently_failing",
         payload=payload,
         trace_id=trace_id or str(uuid.uuid4()),
         product_id="",

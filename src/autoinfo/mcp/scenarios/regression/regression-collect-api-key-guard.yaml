@@ -1,0 +1,92 @@
+# Regression #664: `requires_key` 声明必须有消费者 —— generic `type: api`
+# 在**发请求之前**校验凭据；占位符 key（YOUR_TWELVEDATA_KEY）不算已配置。
+#
+# Blind spot being closed: Twelve Data 把字面占位符当真实 key 发出去
+# （401 连续 28 晚）、FRED 无 key 照发（400 连续 28 晚）—— 都是确定性失败，
+# 却每晚实打一次。修法：HttpApiHandler.precheck 前置闸（collect 层记
+# skipped + credential_missing 标记，不计 healthy/failed）+ alerts 检测
+# 把占位符视为未配置。
+#
+# Deterministic (requires_env: []): 不联网、不写盘 —— 直接驱动
+# HttpApiHandler.precheck 与 alerts._missing_credential_for。
+name: regression-collect-api-key-guard
+description: "Regression #664: requires_key sources are prechecked (no request without a usable key; placeholders rejected)"
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.4
+regression: true
+regression_issue: "#664"
+requires_env: []
+steps:
+  - name: "http_api precheck blocks missing/placeholder credentials before request"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.collectors.http_api import HttpApiHandler
+      from autoinfo.collectors.base import CollectorContext
+      from autoinfo.config import SourceConfig
+
+      def ctx(cfg):
+          return CollectorContext(source_config=cfg, topic="t", settings=dict(cfg.settings or {}))
+
+      # 1) requires_key 且无任何凭据 ⇒ credential_missing（不发请求）
+      cfg = SourceConfig(name="FRED", type="api", url="https://f", requires_key=True)
+      block = HttpApiHandler(cfg).precheck(ctx(cfg))
+      assert block is not None and block["credential_missing"] is True
+
+      # 2) Twelve Data 实况：params.apikey=占位符 ⇒ 同样拦截
+      cfg2 = SourceConfig(
+          name="Twelve Data", type="api", url="https://api.twelvedata.com/quote",
+          requires_key=True, settings={"params": {"apikey": "YOUR_TWELVEDATA_KEY"}},
+      )
+      block2 = HttpApiHandler(cfg2).precheck(ctx(cfg2))
+      assert block2 is not None and block2["credential_missing"] is True
+
+      # 3) 真实 key（api_key / params.token / env）放行
+      ok1 = SourceConfig(name="A", type="api", url="https://a", requires_key=True,
+                         settings={"api_key": "sk-real-value"})
+      ok2 = SourceConfig(name="B", type="api", url="https://b", requires_key=True,
+                         settings={"params": {"token": "finnhub-real-token"}})
+      assert HttpApiHandler(ok1).precheck(ctx(ok1)) is None
+      assert HttpApiHandler(ok2).precheck(ctx(ok2)) is None
+
+      # 4) 未声明 requires_key 的 keyless 源（World Bank 式）永不拦截
+      wb = SourceConfig(name="World Bank Data", type="api", url="https://w",
+                        settings={"params": {"format": "json"}})
+      assert HttpApiHandler(wb).precheck(ctx(wb)) is None
+      print("API_KEY_GUARD_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["API_KEY_GUARD_OK"]
+
+  - name: "alerts detection treats placeholders as unconfigured"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.alerts import _missing_credential_for
+      from autoinfo.config import SourceConfig
+
+      # Twelve Data 式（requires_key + params 占位符）⇒ 必须上报
+      td = SourceConfig(name="Twelve Data", type="api", url="https://t", requires_key=True,
+                        settings={"params": {"apikey": "YOUR_TWELVEDATA_KEY"}})
+      cred = _missing_credential_for(td, {"params": {"apikey": "YOUR_TWELVEDATA_KEY"}})
+      assert cred is not None and cred["source"] == "Twelve Data"
+
+      # 真实字面 key ⇒ 不上报（原有语义保持）
+      ok = SourceConfig(name="Alpha Vantage", type="api", url="https://a", requires_key=True,
+                        settings={"api_key": "abc123literal"})
+      assert _missing_credential_for(ok, {"api_key": "abc123literal"}) is None
+
+      # keyless 源（无 requires_key）⇒ 永不上报
+      wb = SourceConfig(name="World Bank Data", type="api", url="https://w",
+                        settings={"params": {"format": "json"}})
+      assert _missing_credential_for(wb, {"params": {"format": "json"}}) is None
+      print("ALERTS_PLACEHOLDER_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ALERTS_PLACEHOLDER_OK"]

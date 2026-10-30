@@ -1,0 +1,134 @@
+# Regression #665: 连续 N 次失败（=7）的源自动降级为 disabled_auto，
+# 不再每晚发注定失败的请求；逃生阀 force_enable 可强制跑一次。
+#
+# Blind spot being closed: 5 个失效外源（uspto/ProductHunt/arXiv/oyez/
+# retailwire）连续失败 26-29 晚 —— 「源已失效」没有任何机制能识别，只能靠人
+# 手动改 yaml。修法：采集分发处读 _runs.json 的 trailing errors，达阈值即
+# 跳过（记 status="disabled_auto"，不发请求、不建 handler）；转换时刻产出
+# source_permanently_failing agent-callback 事件（仅一次）；force_enable
+# 强制跑一次，成功即自然清零连败（源自动恢复）。
+#
+# Deterministic (requires_env: []): 纯函数 + 临时 _runs.json，无网络。
+name: regression-collect-auto-disable
+description: "Regression #665: a source with 7 consecutive errors is auto-disabled (disabled_auto, no request); force_enable is the escape valve"
+category: edge_case
+pyramid_layer: unit
+pipeline_stage: A1
+user_level: B2.4
+regression: true
+regression_issue: "#665"
+requires_env: []
+steps:
+  - name: "streak counting: trailing errors, disabled_auto transparent, success resets"
+    kind: cli
+    command: |-
+      python3 -c '
+      from autoinfo.collect import _consecutive_source_failures
+      # trailing errors
+      assert _consecutive_source_failures(
+          [{"status": "success"}, {"status": "error"}, {"status": "error"}]) == 2
+      # disabled_auto 记录的是降级态，不是恢复 —— streak 穿透
+      assert _consecutive_source_failures(
+          [{"status": "error"}, {"status": "disabled_auto"}, {"status": "error"}]) == 2
+      # 一次 success 清零
+      assert _consecutive_source_failures(
+          [{"status": "error"}, {"status": "success"}, {"status": "error"}]) == 1
+      # 策略跳过（skipped）中断连败
+      assert _consecutive_source_failures(
+          [{"status": "error"}] * 5 + [{"status": "skipped"}]) == 0
+      print("STREAK_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["STREAK_OK"]
+
+  - name: "7 consecutive errors -> disabled_auto skip, no handler build; force_enable bypasses"
+    kind: cli
+    command: |-
+      python3 -c '
+      import json, tempfile
+      from pathlib import Path
+      from autoinfo import collect as collect_mod
+      from autoinfo.collect import (
+          AUTO_DISABLE_FAILURE_THRESHOLD, _auto_disable_skip,
+      )
+
+      tmp = tempfile.mkdtemp()
+      collect_mod.COLLECTIONS_DIR = tmp
+      runs_dir = Path(tmp) / "demo" / "dead-src"
+      runs_dir.mkdir(parents=True)
+      runs = [{"collection_id": f"c{i}", "timestamp": "2026-10-30T00:00:00+00:00",
+               "status": "error", "items_found": 0, "items_new": 0,
+               "items_filtered": 0, "items_duplicate": 0,
+               "errors": [{"message": "404"}], "duration_ms": 1.0}
+              for i in range(AUTO_DISABLE_FAILURE_THRESHOLD)]
+      (runs_dir / "_runs.json").write_text(json.dumps(runs))
+
+      # 隔离 agent-callback（不往真实 outbox 写行）
+      import autoinfo.agent_callback as ac
+      ac.notify_source_permanently_failing = lambda **kw: 1
+
+      # 达阈值 ⇒ disabled_auto + 记账
+      r = _auto_disable_skip(domain="demo", source_name="dead-src",
+                             source_type="rss", collection_id="c1",
+                             dry_run=False, force_enable=None, duration_s=0.0)
+      assert r is not None and r.status == "disabled_auto"
+      assert r.errors[0]["disabled_auto"] is True
+      logged = json.loads((runs_dir / "_runs.json").read_text())[-1]["status"]
+      assert logged == "disabled_auto"
+
+      # 逃生阀：force_enable ⇒ 不跳过（返回 None，照常采集）
+      r2 = _auto_disable_skip(domain="demo", source_name="dead-src",
+                              source_type="rss", collection_id="c2",
+                              dry_run=False, force_enable=["dead-src"], duration_s=0.0)
+      assert r2 is None
+      print("AUTO_DISABLE_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["AUTO_DISABLE_OK"]
+
+  - name: "nightly_gap classifies disabled_auto as skip-class (not failed)"
+    kind: cli
+    command: |-
+      python3 -c '
+      import importlib.util
+      from pathlib import Path
+      # Repo root: walk up from cwd until scripts/nightly_gap.py is found
+      # (portable — no dev-machine absolute paths, see issue #347).
+      root = Path.cwd()
+      while not (root / "scripts" / "nightly_gap.py").is_file():
+          if root.parent == root:
+              raise SystemExit("repo root not found from cwd")
+          root = root.parent
+      spec = importlib.util.spec_from_file_location(
+          "nightly_gap", root / "scripts" / "nightly_gap.py")
+      m = importlib.util.module_from_spec(spec)
+      spec.loader.exec_module(m)
+
+      # 最近一次 disabled_auto ⇒ skipped 态（不计 failed / 不算覆盖）
+      state = m.source_run_state([
+          {"status": "error"}, {"status": "disabled_auto"}])
+      assert state["state"] == m.STATE_SKIPPED, state
+      assert state["skip_reason"] == m.SKIP_REASON_DISABLED_AUTO, state
+
+      # skip 原因归纳：credential_missing / empty_topic 标记
+      state2 = m.source_run_state([
+          {"status": "success"},
+          {"status": "skipped", "errors": [{"message": "no key", "credential_missing": True}]},
+      ])
+      assert state2["state"] == m.STATE_SKIPPED
+      assert state2["skip_reason"] == m.SKIP_REASON_CREDENTIAL_MISSING, state2
+
+      state3 = m.source_run_state([
+          {"status": "skipped", "errors": [{"message": "no topic", "empty_topic": True}]},
+      ])
+      assert state3["skip_reason"] == m.SKIP_REASON_EMPTY_TOPIC, state3
+      print("GAP_CLASSIFICATION_OK")
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["GAP_CLASSIFICATION_OK"]

@@ -53,7 +53,8 @@ steps:
 
           def fake_fetch(source_config, domain, topic, limit, dry_run,
                          existing_entries, collection_id, checker,
-                         new_items_collector=None, force_full=False, keywords=None):
+                         new_items_collector=None, force_full=False,
+                         keywords=None, force_enable=None):
               fetches.append(source_config.name)
               return CollectionResult(
                   collection_id=collection_id,

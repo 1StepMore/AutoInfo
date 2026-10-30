@@ -22,7 +22,14 @@ from typing import Any, Literal
 
 import yaml
 
-from autoinfo.config import SOURCE_KEY_ENV_VARS, SourceConfig, get_config_path, load_config
+from autoinfo.config import (
+    SOURCE_KEY_ENV_VARS,
+    SourceConfig,
+    get_config_path,
+    is_placeholder_credential,
+    iter_credential_settings,
+    load_config,
+)
 from autoinfo.delivery import get_channel
 from autoinfo.models import AlertRule, Item, Product, ProductType
 
@@ -575,11 +582,16 @@ def _missing_credential_for(
     """Return ``{source, source_type, key_ref}`` when *source* lacks a credential.
 
     Detection order:
-    1. An ``${ENV_VAR}`` reference in a raw credential setting (``api_key``,
-       ``password``, ``client_id``, ``token``) whose variable is
-       unset/empty. The raw settings are required because ``load_config``
-       resolves references to empty strings when the variable is unset.
-    2. A literal credential in the resolved settings.
+    1. An ``${ENV_VAR}`` reference in a raw credential setting
+       (``api_key``/``password``/``client_id``/``token`` and their
+       equivalents inside static ``params``/``headers``, via
+       ``iter_credential_settings``) whose variable is unset/empty. The raw
+       settings are required because ``load_config`` resolves references to
+       empty strings when the variable is unset.
+    2. A literal credential in the resolved settings.  Placeholder values
+       (``YOUR_TWELVEDATA_KEY``, ``<...>``, ``xxx``, …) do NOT count as
+       configured (#664) — a placeholder sent verbatim is a guaranteed
+       401/400 on every run.
     3. A known key-requiring source type (``SOURCE_KEY_ENV_VARS``) with at
        least one canonical env var unset/empty.
     4. A source that explicitly declares ``requires_key: true`` (generic
@@ -591,24 +603,22 @@ def _missing_credential_for(
     never read into or returned from this function.
     """
     raw = raw_settings or {}
-    for setting_key in ("api_key", "password", "client_id", "token"):
-        raw_value = raw.get(setting_key)
-        if isinstance(raw_value, str):
-            ref = _extract_key_ref(raw_value)
-            if ref is not None:
-                if not os.environ.get(ref, "").strip():
-                    return {
-                        "source": source.name,
-                        "source_type": source.type,
-                        "key_ref": ref,
-                    }
-                return None  # env var set, credential configured
+    for _path, raw_value in iter_credential_settings(raw):
+        ref = _extract_key_ref(raw_value)
+        if ref is not None:
+            if not os.environ.get(ref, "").strip():
+                return {
+                    "source": source.name,
+                    "source_type": source.type,
+                    "key_ref": ref,
+                }
+            return None  # env var set, credential configured
 
     settings = source.settings or {}
-    for setting_key in ("api_key", "password", "client_id", "token"):
-        value = settings.get(setting_key)
-        if isinstance(value, str) and value.strip():
-            return None  # a literal credential is configured
+    for _path, value in iter_credential_settings(settings):
+        if is_placeholder_credential(value):
+            continue  # a placeholder is not a credential (#664)
+        return None  # a literal credential is configured
 
     for env_name in SOURCE_KEY_ENV_VARS.get(source.type, ()):
         if not os.environ.get(env_name, "").strip():

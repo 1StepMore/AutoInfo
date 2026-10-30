@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.8](https://github.com/1StepMore/AutoInfo/compare/v1.21.7...v1.21.8) (2026-10-30)
+
+
+### Bug Fixes
+
+* **process:** migration seed always follows default cache walk; ledger writes retry and fail loud ([#667](https://github.com/1StepMore/AutoInfo/issues/667)) ([568530c](https://github.com/1StepMore/AutoInfo/commit/568530cdfcc615cd0e5d113c5fe23fee6f296ba4)), closes [#663](https://github.com/1StepMore/AutoInfo/issues/663)
+
 ## [1.21.7](https://github.com/1StepMore/AutoInfo/compare/v1.21.6...v1.21.7) (2026-10-30)
 
 

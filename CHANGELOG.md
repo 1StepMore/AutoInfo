@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.10](https://github.com/1StepMore/AutoInfo/compare/v1.21.9...v1.21.10) (2026-10-31)
+
+
+### Miscellaneous Chores
+
+* **docs:** split AGENTS.md to the 200-line adherence ceiling ([#672](https://github.com/1StepMore/AutoInfo/issues/672)) ([8e98958](https://github.com/1StepMore/AutoInfo/commit/8e9895870939ce5cee342e9b9621231e1c010baa))
+
 ## [1.21.9](https://github.com/1StepMore/AutoInfo/compare/v1.21.8...v1.21.9) (2026-10-30)
 
 

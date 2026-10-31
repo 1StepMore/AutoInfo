@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 127 |
-| Total lines | 39132 |
-| Active files | 95 |
+| Total files | 129 |
+| Total lines | 39297 |
+| Active files | 97 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 13 files / 775 lines |
 | Category — specs | 12 files / 9859 lines |
 | Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 30 files / 10861 lines |
+| Category — docs/dev | 32 files / 11026 lines |
 | Category — docs/root | 8 files / 1615 lines |
 
 ## Inventory
@@ -79,7 +79,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `demo-release-standard.md` | 43 | docs/root | active | — |
 | `dev/AutoInfo-development-brief-v4.md` | 310 | docs/dev | active | — |
 | `dev/acceptance-framework.md` | 508 | docs/dev | active | — |
-| `dev/agent-era-doc-architecture-autoinfo.md` | 95 | docs/dev | active | reference |
+| `dev/agent-era-doc-architecture-autoinfo.md` | 96 | docs/dev | active | reference |
 | `dev/agent-era-doc-architecture.md` | 282 | docs/dev | active | instruction |
 | `dev/autoinfo-business-validation-20260902.md` | 293 | docs/dev | active | — |
 | `dev/autoinfo-corrections-20260904.md` | 439 | docs/dev | active | — |
@@ -91,6 +91,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/director-user-guide.md` | 756 | docs/dev | active | — |
 | `dev/enduser-coverage-matrix.md` | 220 | docs/dev | active | — |
 | `dev/founder-expectations.md` | 461 | docs/dev | active | — |
+| `dev/llm-config.md` | 82 | docs/dev | active | — |
 | `dev/mcp-usage-examples.md` | 324 | docs/dev | active | — |
 | `dev/new-domain-guide.md` | 942 | docs/dev | active | — |
 | `dev/plans/2026-08-30-AutoInfo-GraphEngineering落地实施方案-修正版.md` | 153 | docs/dev | active | — |
@@ -98,6 +99,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/plans/README.md` | 65 | docs/dev | active | plan-index |
 | `dev/plans/agent-infra-remediation-2026-10-30.md` | 172 | docs/dev | active | — |
 | `dev/plans/agent-oriented-gap-register.md` | 608 | docs/dev | active | plan |
+| `dev/repo-map.md` | 82 | docs/dev | active | — |
 | `dev/required-api-keys.md` | 158 | docs/dev | active | — |
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
 | `dev/source-diagnosis.md` | 176 | docs/dev | active | — |

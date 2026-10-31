@@ -1,356 +1,177 @@
 # AutoInfo — Agent Guide
 
+> Root instruction **index** — rules + pointers, not a corpus (#671; adherence ceiling ~200 lines,
+> `docs/dev/agent-era-doc-architecture.md` §1). Detail loads on demand: repo layout → `docs/dev/repo-map.md` ·
+> LLM setup → `docs/dev/llm-config.md` · gates/pipeline → `docs/dev/specs/` · examples → `docs/dev/mcp-usage-examples.md`.
+
 ## What Is AutoInfo
 
-AutoInfo is a **universal information tracking and knowledge base platform**. You configure sources and topics; AutoInfo handles collection, LLM-based structured extraction, summarization, and builds a queryable knowledge base.
-
-**Key principle**: Domain-agnostic. The demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail, english-learning, french-learning, hindi-learning, italian-learning, korean-learning, portuguese-learning, russian-learning, spanish-learning) are configurations, not hardcoded features. Users define their own domains.
+AutoInfo is a **universal information tracking and knowledge base platform**. You configure
+sources and topics; AutoInfo handles collection, LLM-based structured extraction,
+summarization, and builds a queryable knowledge base. **Domain-agnostic**: the demo domains
+(medical-research, ai-commercial, financial-intelligence, …) are configurations, not
+hardcoded features — users define their own domains.
 
 ## Agent Operating Model
 
-AutoInfo is designed **agent-first**:
+**Agent-first**: the human director communicates intent in natural language → you translate
+to MCP tool calls (stdio server). All capabilities are MCP tools (counts: `README.md` →
+Status table). CLI mirrors MCP — `--domain X --topic Y` maps 1:1 to tool parameters; humans may use the CLI as a fallback.
 
-```
-Director-user (human) ──NL──> Agent ──MCP tools──> AutoInfo MCP Server
-                                ↑                           │
-                                └──── structured JSON-RPC ───┘
-```
-
-1. **You (the agent)** connect to AutoInfo's MCP server over stdio (SSE transport is future work)
-2. **All capabilities** are exposed as MCP tools (counts in `README.md` → Status table)
-3. **CLI mirrors MCP** — `--domain X --topic Y` flags map 1:1 to tool parameters
-4. **Human director** communicates intent to you in natural language; you translate to tool calls
-5. **Human can also use CLI directly** as a fallback, but the primary interface is through you
-
-## Quick Start (5 Seconds)
-
-Connect your AI agent to AutoInfo immediately:
-
-**Cursor**: `.cursor/mcp.json` is already committed to the repo -- restart Cursor
-and the `autoinfo` MCP server is ready to use.
-
-**Claude Desktop**: Copy `.claude/claude_desktop_config.json` from this repo to
-`claude_desktop_config.json` in your Claude config directory:
-- **Linux**: `~/.config/Claude/claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-
-**OpenCode**: `.opencode/mcp.json` is already committed -- OpenCode discovers it
-automatically via project-level configuration.
-
-**Manual (any platform)**:
-```bash
-python -m autoinfo.mcp.server
-```
-
-## Running the CLI
-
-The CLI is the human-facing entry point — same capabilities as MCP, with
-`--domain X --topic Y` flags mapping 1:1 to tool parameters. Two equivalent
-invocations run the same Typer app (`src/autoinfo/cli/__init__.py`):
-
-| Entry | Command | How it's wired |
-|-------|---------|----------------|
-| **Console script (primary)** | `autoinfo <cmd>` | `pip install -e .` / `make install` creates it from `pyproject.toml` `[project.scripts] autoinfo = "autoinfo.cli:app"` |
-| **Module entry (equivalent)** | `python -m autoinfo.cli <cmd>` | Runs the same app via `src/autoinfo/cli/__main__.py` |
-
-Do **not** confuse the CLI with the MCP server: `python -m autoinfo.mcp.server`
-starts the MCP stdio server (agent-facing, protocol over stdio — never use it
-interactively). The CLI prints human output; the MCP server speaks JSON-RPC.
-
-First commands:
+## Quick Start & CLI
 
 ```bash
-autoinfo --help                              # or: python -m autoinfo.cli --help
-autoinfo init --demo medical-research        # scaffold a demo domain
-autoinfo collect --domain medical-research   # fetch items (live per-source progress lines)
-autoinfo process --domain medical-research   # LLM extraction + quality gates (G4/G5 opt-in — see gate-table note)
+python -m autoinfo.mcp.server               # MCP stdio server (agent-facing; never interactive)
+autoinfo init --demo medical-research       # scaffold a demo domain
+autoinfo collect --domain medical-research  # fetch items (live per-source progress lines)
+autoinfo process --domain medical-research  # LLM extraction + quality gates (G4/G5 opt-in — see gates)
 ```
 
-## Project Structure
-
-```
-AutoInfo/
-├── AGENTS.md                       # ← You are here
-├── README.md                       # Project overview
-├── pyproject.toml                  # Python packaging
-├── Makefile                        # Build automation
-├── .gitignore
-├── docs/
-│   ├── dev/
-│   │   ├── founder-expectations.md # Index doc (simplified; full content in specs/)
-│   │   ├── specs/                  # Extracted spec files (2026-07-26 restructuring)
-│   │   │   ├── expectations.md     # F01-F72 expectation catalog (72 expectations, 16 phases)
-│   │   │   ├── quality-gates.md    # G0-G7, D1-D3 gate catalog & configuration + testing strategy
-│   │   │   ├── pipeline.md         # Collection pipeline, KB pipeline, LLM config, extraction, search, performance targets
-│   │   │   ├── delivery.md         # Output generation, delivery channels, end user lifecycle
-│   │   │   ├── operations.md       # Cost, data privacy, knowledge lifecycle, observability
-│   │   │   ├── market-positioning.md # Priority matrix, competitive landscape, pricing, personas
-│   │   │   ├── mcp-tools.md        # MCP tools catalog (counts in README.md Status table)
-│   │   │   ├── data-models.md      # Consolidated data model schemas
-│   │   │   ├── user-lifecycle-definition.md # Foundational user type definitions (B1/B2/B3)
-│   │   │   ├── multi-tenancy-auth.md    # Multi-tenancy and authorization spec
-│   │   │   └── ops-runbook.md           # Operations runbook spec
-│   │   ├── cross-dimensional-catalog.md # Cross-dimensional catalog — keystone product matrix (A1-A7 × B1/B2/B3, supersedes archived gap docs)
-│   │   ├── archive/                  # Archived/historical docs
-│   │   ├── director-user-guide.md    # Human-Agent interaction lifecycle
-├── .opencode/
-│   └── skills/                     # Agent skills — deep-modules/doc-manager/maintainer-workflow/validation-runner (developing AutoInfo) + autoinfo-skill/translator-qa-skill (operator skills for agent-users of AutoInfo; moved from docs/skills/ 2026-10-30)
-├── src/
-│   └── autoinfo/
-│       ├── cli/                     # 31 CLI command groups
-│       ├── mcp/                     # MCP server (149 tools); server.py = hub (app, discovery, _TOOL_DISPATCH, call_tool); context.py = shared helper tier; tools/ = per-domain schemas + handler bodies (_handle_*), one module per domain; _TOOL_DISPATCH = single name→handler dispatch table (#581)
-│       ├── api/                     # REST API (FastAPI, port 8741)
-│       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
-│       ├── collectors/              # 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap) + registry.py (source_type → Collector lookup; enforced `fetch_items(ctx)` contract)
-│       ├── llm.py                   # LLM extraction engine
-│       ├── output/                   # Output generation package (digest, report, tutorial, presentation, export; formats: Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video) — __init__.py (hub + product orchestration) + contracts.py (dependency-free contract types + JSON-LD literals) + audience.py (audience vocabulary) + sources.py (source labelling + drift filtering) + templating.py (Jinja env + product templates) + gates.py (product judge + delivery gates) + report.py (report synthesis internals) + export.py (KB export family: export_kb + all format exporters) + entries.py (shared deterministic entry filters) + grouping.py (thematic grouping: LLM/deterministic/keyword + degradation state) + render.py (report + generic Markdown/HTML/JSON/agent renderers) + tutorial.py + presentation.py + audio.py (product pipelines) + ebook.py (B23: EPUB/MOBI/audiobook) + video.py (HyperFrames HTML+GSAP→MP4, 36+8 themes) + video_assets/ (themes + templates) + seo.py + free_tier.py (free-tier product limits)
-│       ├── data/                     # Domain configs (domains/*/sources.yaml) + 8 output product templates (the 8 `*.md.j2` files; `templates/` also holds 3 `*.html.j2` renderer variants — 11 `.j2` in total — incl. premium-briefing.md.j2, enterprise-briefing.md.j2) + prompts/ (16 LLM prompt files, loaded via prompts.py)
-│       ├── prompts.py                # Prompt registry + loader (issue #426): PROMPTS_DIR / list_prompts / get_prompt / render_prompt / PROMPT_VERSIONS / PROMPT_PLACEHOLDERS. `$name` placeholders — NOT `{name}` (several prompts carry literal JSON braces). Prompt text is byte-pinned in tests/test_prompts.py.
-│       ├── cefr.py                  # CEFR classification (EN/ZH/JA)
-│       ├── quality.py               # Quality gates G0-G7, D1-D3 delivery gates
-│       ├── delivery.py              # Delivery channel abstraction
-│       ├── delivery/scheduler.py    # Delivery schedule management (cron integration)
-│       ├── delivery/gate_report.py   # Per-product gate reports (01-QA-GATES/ md+json for validation delivery)
-│       ├── delivery/frequency_gate.py # Delivery frequency gate (free-tier frequency enforcement at cron add-delivery)
-│       ├── alerts.py                # Alert rule CRUD, YAML persistence, check & dispatch
-│       └── ...                      # email_sender, keywords, qa, etc.
-```
+MCP client configs are committed: `.cursor/mcp.json` (restart Cursor), `.opencode/mcp.json`
+(auto-discovered); Claude Desktop: copy `.claude/claude_desktop_config.json` to the path in
+`docs/dev/llm-config.md`. CLI entry points (same Typer app, `src/autoinfo/cli/__init__.py`):
+`autoinfo <cmd>` (from `pip install -e .` / `make install`) or `python -m autoinfo.cli <cmd>`.
+**Do not confuse CLI with MCP server**: `python -m autoinfo.mcp.server` speaks JSON-RPC over
+stdio — never interactive.
 
 ## Architecture Rules
 
-Hard constraints derived from `founder-expectations.md`. Violating them produces incorrect behavior.
+Hard constraints derived from `docs/dev/founder-expectations.md` (the *why* lives in
+`docs/adr/`). Violating them produces incorrect behavior.
 
 ### KB Pipeline
 
-```
-Collected Item → 01-Raw → 02-Draft → 03-Wiki
-     ↑             ↑          ↑           ↑
-  Auto-ingest    Sole       Agent can   Agent
-                 entry      process &   promotes
-                 point      create      Draft → Wiki
-```
+`Collected Item → 01-Raw (sole entry, auto-ingest) → 02-Draft (agent processes/creates from
+Raw only) → 03-Wiki (agent promotes)`.
 
 | Rule | Why |
 |------|-----|
-| **01-Raw is the sole entry point** for all collected content | Every collected item must have complete source provenance. No skipping. |
-| **Agent cannot create Draft from outside** — only from 01-Raw | Prevents garbage entries. Raw→Draft→Wiki is sequential. |
-| **Agent promotes Draft→Wiki via `promote_kb_draft`** | AutoInfo's KB is a **database** for raw/processed data production, not a human-curated knowledge base (director decision 2026-08-08). Promotion is a production step, executed by the agent with no human gate — maximum automation, agent as user. A human promote/approval step would cripple production throughput. |
-| **03-Wiki is append-only** | Once promoted, entries stay. Agent cannot demote or delete Wiki entries. Deprecation (tag `status: deprecated`) only upon explicit human command. |
-| **Source metadata is mandatory** | Every Raw entry must have `source_url`, `source_type`, `source_platform`. |
-| **Product-analysis metadata** | Per-product analysis fields persist in entry `custom_fields["product_analysis"]` — uses the existing custom_fields metadata dict (no schema/rule change); filterable via `search_knowledge_base(filter_custom_fields=...)`. |
+| **01-Raw is the sole entry point** for all collected content | Every collected item must have complete source provenance; no skipping |
+| **Agent cannot create Draft from outside** — only from 01-Raw | Prevents garbage entries; Raw→Draft→Wiki is sequential |
+| **Agent promotes Draft→Wiki via `promote_kb_draft`** | Production step executed by the agent, no human gate (director decision 2026-08-08; ADR-0002) |
+| **03-Wiki is append-only** | Demotion/deletion are not agent operations; tag `status: deprecated` only upon explicit human command |
+| **Source metadata is mandatory** | Every Raw entry must have `source_url`, `source_type`, `source_platform` |
+| **Product-analysis metadata** | Per-product fields persist in `custom_fields["product_analysis"]`; filterable via `search_knowledge_base(filter_custom_fields=...)` |
+
+Full KB/collection pipeline detail: `docs/dev/specs/pipeline.md` §1–2; rationale:
+`docs/adr/0001`, `docs/adr/0002`.
 
 ### Collection Pipeline
 
-Two phases, separable in time:
+Two phases, separable in time: `collect` (parallel source handlers → raw JSON cache to
+`collections/` → dedup URL→DOI→fuzzy title→semantic → collection log), then `process` (LLM
+extraction with per-task model config → quality gates → 01-Raw KB entries). Every handler
+implements the `Collector` ABC's `fetch_items(ctx)` contract via `collectors/registry.py` —
+adding a source is one class plus one registration, never a dispatch-chain edit.
 
-```
-Phase 1 — Fetch:     autoinfo collect --domain medical
-  → Source handlers fetch items in parallel
-  → Raw JSON cached to collections/
-  → Dedup (URL → DOI → fuzzy title → semantic)
-  → Collection log written
+### Quality Gates
 
-Every handler implements the `Collector` ABC's `fetch_items(ctx)` contract.
-`collect.py` resolves it through `collectors/registry.py` — adding a source is
-one class plus one registration, never a dispatch-chain edit.
+| Gate | Type | Action on failure |
+|------|------|-------------------|
+| G0: Schema integrity | 🔴 Hard | block (no retry; deterministic check, retrying cannot change the result; item written to `_failed/`) |
+| G1: Source authority (tier check) | 🟡 Soft | configurable: archive/flag/pass |
+| G2: Dedup (URL + fuzzy title) | 🟡 Soft | configurable: archive/flag/pass |
+| G3: Relevance scoring (0-100) | 🟡 Soft | configurable: archive/flag/pass (below threshold) |
+| G4: Factual consistency | 🔴 Hard | 3× retry with escalating context → block |
+| G5: Translation accuracy | 🟡 Soft | configurable: archive/flag/pass |
+| G7: Entity-fact consistency | 🟡 Soft | default flag (deterministic, no LLM); per-domain `block`; honest hedges never flagged |
+| D1: Product completeness / D2: Format integrity | 🔴 Hard | block delivery |
+| D3: Freshness | 🟡 Soft | configurable threshold |
 
-Phase 2 — Process:   autoinfo process --domain medical [--model deepseek-chat]
-  → Reads cached raw items
-  → LLM extraction (configurable model per task)
-  → Quality gates (G0/G1/G2/G3/G7 by default; G4/G5 opt-in flags)
-  → Creates 01-Raw KB entries
-```
-
-### Quality Gates (Production-Grade)
-
-Hard/soft split with retry-first, block-last philosophy. G0 (Schema Integrity) and G4 (Factual Consistency) are **hard gates** — G0 blocks without retry (deterministic check), G4 retries 3× with escalating context then blocks. G1-G3 and G5 are **soft gates** with configurable thresholds and actions (archive/flag/pass). 3 delivery gates (D1-D3) check product completeness, format integrity, and freshness at output time. Validation-delivery packaging additionally persists per-product `01-QA-GATES/gate-report-<product>.{md,json}` (D1-D3 + authenticity verdicts, md for humans / json for agents) with a `gate-reports-index.json` — the packaged reports record delivery-gate outcomes; G0-G5 run at the process layer and are not recomputed in packaging.
-
-| Gate | Type | Priority | Action on Failure |
-|------|------|----------|-------------------|
-| G0: Schema integrity | 🔴 Hard | 🔴 P0 | block (**no retry**; deterministic check, retrying cannot change the result) (item written to `_failed/`) |
-| G1: Source authority (tier check) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass |
-| G2: Dedup (URL + fuzzy title) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass |
-| G3: Relevance scoring (0-100) | 🟡 Soft | 🔴 P0 | Configurable: archive/flag/pass (below threshold) |
-| G4: Factual consistency | 🔴 Hard | 🟡 P1 | 3× retry with escalating context → block |
-| G5: Translation accuracy | 🟡 Soft | 🟡 P1 | Configurable: archive/flag/pass |
-| G7: Entity-fact consistency (deterministic) | 🟡 Soft | 🟡 P1 | Default flag (no LLM); per-domain `block`; honest hedges never flagged |
-| D1: Product completeness | 🔴 Hard | 🔴 P0 | Blocks delivery |
-| D2: Format integrity | 🔴 Hard | 🔴 P0 | Blocks delivery |
-| D3: Freshness | 🟡 Soft | 🟡 P1 | Configurable threshold |
-
-> **Default activation** — the table states what a gate does *when it runs*; this states *when it runs*: G0/G1/G2/G3/G7 run by default at process time. **G4/G5 are opt-in flags** (CLI `--check-factual` / `--check-translation`; MCP `check_factual` / `check_translation`, default `false`) — G4 additionally runs unconditionally in the Draft→Wiki CurationGate (`promotion.py`). **D1-D3 run only where `delivery_gates` is configured** — the shipped default config and every demo domain config set none, so delivery gates are off by default (the default-on decision is tracked as decision point A in `docs/dev/plans/agent-infra-remediation-2026-10-30.md`).
+- **Default activation** — the table says what a gate does *when it runs*; this says *when
+  it runs*: G0/G1/G2/G3/G7 run by default at process time; **G4/G5 are opt-in flags** (CLI
+  `--check-factual` / `--check-translation`; MCP `check_factual` / `check_translation`,
+  default `false`) — G4 additionally runs unconditionally in the Draft→Wiki CurationGate.
+  D1-D3 run only where `delivery_gates` is configured — the shipped default config and
+  every demo domain set none, so **delivery gates are off by default** (decision point A
+  in `docs/dev/plans/agent-infra-remediation-2026-10-30.md`).
+- Full gate catalog + configuration + testing strategy: `docs/dev/specs/quality-gates.md`.
 
 ### Product QC — 3-Layer Model (issue #194)
 
-Product/delivery quality control is **layered**, not one mechanism. L0 is the
-default workhorse; L1 is opt-in; humans own value judgment.
-
-| Layer | What | Default? | Command |
-|-------|------|----------|---------|
-| **L0 dead-code gate** | `scripts/quality_gate.py` — deterministic structural checks over product files: F1 empty shell, F2 placeholders, F3 doubled citations, F4 forbidden words, C1 fake entries, C2 log leaks, C3 CJK residue, C4 truncated lines, C5 source integrity, **C6 narrative grounding** (#192), X1 cross-product entity conflicts. Exit 0/1/2. | **Yes — blocking** | `make validate DIR=outputs/<domain>` (or `python3 scripts/quality_gate.py <dir>`) |
-| **L1 agent battery** | `scripts/agent_review/battery.py` — semantic blind-spot judging over the residue L0 structurally cannot see (coverage absence, claim fabrication vs honest hedge, product intent). Verdicts carry mandatory evidence; unreachable/unparseable judgment ⇒ **ESCALATE, never PASS** (#195). Blind-spot manifest: `scripts/agent_review/blindspots.yaml`. | **No — opt-in `--semantic`** | `python3 scripts/agent_review/battery.py outputs/<domain> --semantic` |
-| **ESCALATE (human)** | Value/intent calls — value-hierarchy inversion, product-positioning tradeoffs, "is this premium selection differentiated?" — go to the human director. Never machine-final for subjective calls. | — | surfaced as `ESCALATE` verdicts in the L1 report |
-
-**Single-production discipline**: a product is produced ONCE; the QC pipeline
-(L0 → opt-in L1 → ESCALATE) is the arbiter. Do NOT regenerate-and-select the
-"best" version — that reintroduces hidden selection bias. A failed gate sends
-the product back for ONE constrained regeneration (with the flagged defect
-fed back), then re-gates.
-
-**L1 vendor/model agnosticism (#194/#195)**: the battery LLM channel is the
-config-driven `config.llm` resolution (provider/model/api_key/base_url +
-fallback chain) — no vendor or model name is hardcoded in the battery or its
-blind-spot manifest. Structured output is capability-probed (config
-`llm.json_mode`); unsupported ⇒ markdown verdict blocks parsed
-deterministically into the same schema.
-
-**Honest hedges are PASS**: a product that says "not disclosed in the
-available sources" is CORRECT behavior (#179/#191) — never flag it.
+- **L0 dead-code gate** (default, blocking): `make validate DIR=outputs/<domain>` (or
+  `python3 scripts/quality_gate.py <dir>`) — deterministic structural checks (F1 empty
+  shell, F2 placeholders, F3 doubled citations, F4 forbidden words, C1 fake entries, C2
+  log leaks, C3 CJK residue, C4 truncated lines, C5 source integrity, C6 narrative
+  grounding #192, X1 cross-product entity conflicts). Exit 0/1/2.
+- **L1 agent battery** (opt-in `--semantic`): `scripts/agent_review/battery.py` — semantic
+  blind-spot judging over residue L0 cannot see; verdicts carry mandatory evidence;
+  unreachable/unparseable judgment ⇒ **ESCALATE, never PASS** (#195). Manifest:
+  `scripts/agent_review/blindspots.yaml`. Vendor/model-agnostic via `config.llm`
+  (structured output capability-probed, else deterministic markdown parsing).
+- **ESCALATE (human)**: value/intent calls go to the human director — never machine-final
+  for subjective calls.
+- **Single-production discipline**: a product is produced ONCE; QC (L0 → opt-in L1 →
+  ESCALATE) is the arbiter. No regenerate-and-select ("best of N" reintroduces hidden
+  selection bias). A failed gate ⇒ ONE constrained regeneration (defect fed back), re-gate.
+- **Honest hedges are PASS**: "not disclosed in the available sources" is CORRECT behavior
+  (#179/#191) — never flag it.
 
 ## Agent Constraints (MUST NOT)
 
 | Action | Reason |
 |--------|--------|
-| **Run `init_project` MCP tool** | Use `init_project` MCP tool for agent workflows instead of CLI `init`. CLI `init` remains available for humans. |
-| **Do not manage raw API keys** | Use `configure_llm()` MCP tool for BYOK setup — stores env var reference (`\${AUTOINFO_LLM_API_KEY}`), never the raw key. Never store, generate, or transmit keys. |
-| **Do not demote or delete Wiki entries** | 03-Wiki is append-only. Promotion Draft→Wiki is an **agent operation** (`promote_kb_draft`, no human gate); demotion/deletion are not agent operations. |
-| **Do not create Draft from outside** | Draft must come from 01-Raw. |
-| **Do not demote Wiki entries** | Wiki is append-only. Tag `deprecated` only upon human command. |
-| **Do not delete source or domain config** | Human decides what sources/domains to remove. |
-| **Do not modify `.autoinfo/config.yaml` directly** | Use MCP tools (`add_source`, `add_topic`). |
-| **Do not run `autoinfo doctor`** | Use `diagnose_system()` MCP tool instead — returns structured health data. |
+| Run the CLI `init` in agent workflows | Use the `init_project` MCP tool; CLI `init` remains for humans |
+| Manage raw API keys | Use `configure_llm()` for BYOK — stores an env-var reference (`${AUTOINFO_LLM_API_KEY}`), never the raw key; never store/generate/transmit keys |
+| Demote or delete Wiki entries | 03-Wiki is append-only; `deprecated` tag only upon explicit human command |
+| Create Draft from outside 01-Raw | Draft must come from 01-Raw |
+| Delete source or domain config | Human decides what sources/domains to remove |
+| Modify `.autoinfo/config.yaml` directly | Use MCP tools (`add_source`, `add_topic`) |
+| Run `autoinfo doctor` | Use `diagnose_system()` — returns structured health data |
 
 ## Merging a PR (MUST)
 
-Two agents write to this repository. The rules below are not style preferences — each one exists because its absence produced a specific failure.
+Each rule exists because its absence produced a specific failure (two agents write here).
 
 | Rule | Why |
 |------|-----|
-| **Rebase onto the latest `origin/main` before merging** | `main-protection` sets `strict_required_status_checks_policy: true`, so a stale branch cannot merge at all. With two writers this is not ceremony: a stale-base merge can be textually clean and still semantically wrong, because the CI that validated it never saw the other agent's change. |
-| **Merge with `--squash` only** | The ruleset allows no other merge method. |
-| **Expect no human approval gate** | `required_approving_review_count` is 0. GitHub also forbids approving your own PR, and agents push under the repo owner account — so a review requirement could not be satisfied by an agent anyway. The approval lives in the director's instruction, not in GitHub. |
+| **Rebase onto the latest `origin/main` before merging** | `strict_required_status_checks_policy: true`; with two writers a stale-base merge can be textually clean yet semantically wrong — the rebase makes CI test the real merge result |
+| **Merge with `--squash` only** | The ruleset allows no other merge method |
+| **Expect no human approval gate** | `required_approving_review_count` is 0; GitHub forbids self-approval and agents push under the repo owner account — approval lives in the director's instruction |
+| **Sign off every commit** | DCO (`Signed-off-by` trailer; `git commit -s`; ADR-0009) |
+| **Prefer fewer, larger PRs** | The release PR auto-merges minutes after any push to `main` (ADR-0007), invalidating open PRs — budget ~20 min rebase CI cycle |
 
-**Expect the rebase to cost a full CI cycle.** The release PR auto-merges within
-minutes of any push to `main` (`Release PR auto-merge` triggers on `push`), so
-every release invalidates every open PR and forces the rebase above. Budget
-~20 min. Do not weaken `strict_required_status_checks_policy` to avoid it: with
-two writers a stale-base merge can be textually clean, semantically wrong, and
-still green in CI — the rebase is what makes CI test the real merge result.
+## Tool Discovery & Response Format
 
-The auto-merge itself is load-bearing, not incidental — it exists because
-without it the tag went uncuts (1.17.8 shipped a silent half-release, 1.17.9 sat
-untagged for 33 min). The churn is the price of correct releases. The available
-mitigation is on our side: **fewer, larger PRs**, which means fewer merges and
-therefore fewer rebase cycles.
+Discovery: `health_check()` → `tools/list` → `list_domains()` → `get_domain_schema(domain)`
+→ `list_available_models()` → `list_output_templates(domain)`. Full catalog with counts:
+`README.md` (single source of truth). Validation: `list_validation_scenarios` /
+`run_validation_scenario` (contract: `docs/dev/validation-scenario-contract.md`). All tools
+return `{success: true, data: ...}` or `{success: false, error: {code, message, actionable}}`
+(ADR-0005; codes in `src/autoinfo/mcp/errors.py`). Follow the remediation hint in
+`error.message`. `LLM_NOT_CONFIGURED` when no key; `process_collection` with no cached items
+returns `{status: "noop"}`. Worked patterns: `docs/dev/mcp-usage-examples.md`.
 
-## Tool Discovery Guidance
+## LLM Configuration (essentials)
 
-The full MCP tools catalog — with the counts — lives in `README.md` (Status table
-+ MCP Tools table) and is discoverable at runtime via `health_check()` →
-`tools/list` → `get_tool_count()`.
-Category → key-tool mapping is maintained in the README, not duplicated here.
-
-**Discovery flow**: `health_check()` → `tools/list` (MCP auto-discovery) → `list_domains()` → `get_domain_schema(domain)` → `list_available_models()` → `list_output_templates(domain)`.
-
-
-**Validation**: `list_validation_scenarios` / `run_validation_scenario` — functional
-and regression scenarios (counts in `README.md` → Status table) under
-`src/autoinfo/mcp/scenarios/regression/`; per-scenario timeout,
-recovery_steps + partial-pass, per-step trace + root-cause report, regression flywheel;
-env-gated steps report `unconfigured` (never silently pass); `llm_assert` runs a real
-model call. Scenario authoring contract: `docs/dev/validation-scenario-contract.md`.
-
-**Response format**: All tools return `{success: true, data: ...}` on success and `{success: false, error: {code, message, actionable}}` on failure. `actionable` is a boolean flag; the remediation guidance itself lives in `message`. Error codes: `src/autoinfo/mcp/errors.py` (`ErrorCode` enum, 29 values, all CamelCase; never-emitted codes retired — T-S-05). LLM-required tools return `LLM_NOT_CONFIGURED` when no key is configured. REST API uses the same envelope.
-
-## Common Patterns
-
-Full step-by-step worked examples live in **`docs/dev/mcp-usage-examples.md`** —
-the authoritative index of every pattern with real call traces. The highest-value
-patterns, inlined:
-
-**Track a new topic**: `add_topic(domain, name, keywords)` → `collect_sources(domain, topic, dry_run=true)` → `collect_sources(...)` → `process_collection(domain)` → `list_summaries(domain, topic)` → `flag_for_knowledge_base(summary_id, tags)`.
-
-**Check system health**: `diagnose_system()` → returns `health_score` (0-100) + `phase` (`uninitialized` / `llm_unconfigured` / `no_sources` / `ready_to_collect` / `operational`). On degraded status, inspect `phase`.
-
-**Search KB**: `search_knowledge_base(domain, query, mode="hybrid")` (FTS5 + vector), `mode="vector"` (semantic only), or `mode="faceted"` with `filters={...}`; `filter_custom_fields={...}` facets on custom_fields JSON (e.g. `{"product_analysis.action_required": ""}`). Omit `domain` to search across all domains.
-
-**Handle MCP errors**: All tools return `{success, error: {code, message, actionable}}`. Read `error.code`, follow the remediation hint in `error.message` (`actionable: true` marks that a hint exists, e.g. `DOMAIN_NOT_FOUND` says "Use `add_domain()`"). `process_collection` with no cached items returns `{status: "noop"}`, not an error.
-
-## LLM Configuration
-
-AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
-
-| Config | Default | Notes |
-|--------|---------|-------|
-| provider | openrouter | Use "openai" for OpenAI-compatible endpoints |
-| model | deepseek/deepseek-chat | Any LiteLLM-supported model |
-| base_url | (none) | Required for non-OpenRouter endpoints |
-| api_key | ${AUTOINFO_LLM_API_KEY} | Set via env var or config |
-| json_mode | False | `response_format={"type":"json_object"}` sent only when `json_mode` is True AND `reasoning_model` is False (reasoning providers reject the param). |
-| reasoning_model | False | Mark the model as a reasoning model (DeepSeek R1/V4 style). When True: (1) `response_format` is always skipped, (2) chain-of-thought is disabled by default via `additional_body={"thinking":{"type":"disabled"}}` — reasoning consumes the shared `max_tokens` budget *before* content, so leaving it on truncates JSON output (finish_reason=length). Judgment gates (G4 factual, G5 translation, llm_judge, translation QA judge, validation-scenario judge) re-enable thinking with raised `max_tokens` via `disable_thinking=False`. |
-| fallback | [] | Ordered `llm.fallback` list — each entry: `model` (required), optional `provider`/`base_url`/`api_key`. An empty `provider` inherits the primary provider; an empty `api_key` inherits the primary key (or its resolved `${ENV}` reference) **only when the fallback targets the same `base_url` as the primary** — a cross-endpoint fallback must carry its own explicit `${ENV}` key (one vendor's key is never transmitted to another vendor's gateway). Every LLM call path (extraction, validation judge, quality gates, translation QA, output generation, keyword suggest, Q&A, CEFR) walks `[primary] + fallback` via `llm.call_with_fallback`; the first successful model wins. Every chain entry runs under the same per-provider limiter and 429/5xx backoff (below). |
-| max_concurrency | 4 | Per-provider shared rate limiting: `AUTOINFO_LLM_MAX_CONCURRENCY` env override (clamped ≥1, unparsable → default) bounds in-flight requests per `(provider, base_url)` via a shared `threading.Semaphore` in `call_with_fallback` (llm.py `_PROVIDER_SEMAPHORES`). Enforced across **every** fan-out path — process workers, post-extraction gates, cefr_batch, output grouping, MCP `to_thread` handlers, fallback chain. No single global process-wide lock. |
-| 429/5xx backoff | 3 attempts (2 retries) | Jittered exponential backoff on HTTP 429 and 5xx inside `call_with_fallback`: base 1.0s, factor 2, cap 8s, jitter ±25% (llm.py `MAX_LLM_ATTEMPTS`/`BACKOFF_*`). Non-retryable 4xx (400/403/404) surface immediately — never retried. After the final attempt the last error surfaces. |
-
-**Precedence** (highest to lowest):
-1. MCP tool parameter (e.g. `init_project(llm_provider="openai")`)
-2. Config file `.autoinfo/config.yaml` → `llm.provider`, `llm.model`
-3. Environment variable `AUTOINFO_LLM_API_KEY`
-4. Default values (openrouter/deepseek/deepseek-chat)
-
-**Custom endpoint** (e.g. OpenCode Go, Ollama, Azure): set `provider="openai"`, `base_url` to your endpoint, `api_key` via env var, `model` to your model name.
-
-**Fallback example** (`.autoinfo/config.yaml`) — when the fallback sits on the **same gateway** as the primary, empty `provider`/`api_key` inherit the primary provider/key. The entry below carries full fields with empty `provider`/`api_key`; because its `base_url` equals the primary's, an empty `api_key` inherits the primary key (or its resolved `${ENV}` reference). A **cross-endpoint** fallback (different `base_url`) does NOT inherit the key and must carry its own explicit `${ENV}` reference — keys are never shared across gateways:
-```yaml
-llm:
-  provider: openai
-  model: deepseek-v4-flash
-  base_url: https://opencode.ai/zen/go/v1
-  fallback:
-    - provider: ''
-      model: mimo-v2.5
-      base_url: https://opencode.ai/zen/go/v1
-      api_key: ''
-```
-
-**Per-task model routing**: `_resolve_task_llm_config` (config.py) resolves the model per task and feeds `call_with_fallback(task=)` → `_build_config_with_model` (process.py). Extraction/classification tasks use the task-config model (else the base model).
-
-Judgment calls (G4 factual, G5 translation, llm_judge — the `JUDGMENT_TASKS` frozenset, config.py) are exempt from task overrides and resolve **config-first** (issue #195, 2026-09-03): `llm.judgment_model` → `llm.model` (provider-qualified) → `JudgmentModelNotConfiguredError`, raised loudly at the first judgment attempt. The shipped default is the `llm.judgment_model: openai/deepseek-v4-flash` line in `default_config.yaml` — a deployment-editable config value, **not** a code constant. There is no `JUDGMENT_MODEL` constant in the codebase; it was retired in #195 so an unconfigured deployment can never silently call a guessed model (the #127 ghost-model failure mode). A drifted `llm.tasks[<name>].model` entry can never change what model judges content.
+- **Precedence** (highest first): MCP tool parameter → `.autoinfo/config.yaml` `llm.*` →
+  `AUTOINFO_LLM_API_KEY` → defaults (openrouter / deepseek/deepseek-chat).
+- **Judgment calls** (G4/G5/llm_judge) resolve **config-first** (#195):
+  `llm.judgment_model` → `llm.model` → `JudgmentModelNotConfiguredError` — no hardcoded
+  model constant; a drifted task override can never change what model judges content.
+- **Fallback chain**: `[primary] + llm.fallback` — first success wins, shared per-provider
+  limiter + jittered 429/5xx backoff. **A cross-endpoint fallback never inherits the
+  primary key** — it must carry its own `${ENV}` reference.
+- Full setup (env table, `json_mode`/reasoning controls, custom endpoints, fallback
+  example, per-task routing): **`docs/dev/llm-config.md`**.
 
 ## `.omo/` Workspace
 
-The `.omo/` directory is the **agent-orchestrator workspace** used by Sisyphus-style workflows (plans, notepads, evidence, drafts, run-continuation, scripts, `boulder.json`). It is agent runtime scratch space, not AutoInfo product data.
-
-- Agents may **read** `.omo/` to recover orchestrator context (plans, evidence, notepads).
-- Do **not** treat `.omo/` contents as KB entries, sources, or product output. Not part of the collection pipeline or 4-tier KB.
-- Do **not** modify `.omo/` from AutoInfo MCP tools. It is owned by the orchestrator layer above AutoInfo.
-- `.omo/` is gitignored runtime state, not a source-of-truth directory.
+`.omo/` is the **agent-orchestrator workspace** (Sisyphus-style plans/notepads/evidence/
+`boulder.json`) — gitignored runtime scratch, not AutoInfo product data. Agents may **read**
+it to recover orchestrator context; never treat it as KB/sources/output, never modify it
+from AutoInfo MCP tools (owned by the orchestrator layer above AutoInfo).
 
 ## Runtime Artifacts vs Source Files
 
-AutoInfo generates runtime state at execution time. Distinguish from source:
-
-| Path | Type | Notes |
-|------|------|-------|
-| `src/` | **Source** | Code, the only source of truth for behavior |
-| `tests/` | **Source** | Test suite |
-| `docs/` | **Source** | Documentation |
-| `AGENTS.md`, `README.md`, `pyproject.toml`, `Makefile` | **Source** | Project metadata |
-| `collections/` | Runtime | Raw JSON cache from `collect`, gitignored |
-| `knowledge/` | Runtime | 4-tier KB pipeline output (01-Raw, 02-Draft, 03-Wiki), gitignored |
-| `outputs/` | Runtime | Generated digests, reports, exports, gitignored |
-| `mvp/` | Runtime | Concierge MVP pilot delivery dirs (`mvp/<user_id>/`: product + gate report + provenance), gitignored |
-| `autoinfo.db` | Runtime | SQLite KB + user + cost stores, gitignored |
-| `logs/` | Runtime | Structured pipeline logs, gitignored |
-| `.autoinfo/` | Runtime | Project config (`config.yaml`), gitignored — modify via MCP tools, not by hand |
-| `.omo/` | Runtime | Agent-orchestrator workspace, gitignored (see above) |
-
-Never hand-edit runtime artifacts to fix behavior — fix the source.
+`src/`, `tests/`, `docs/`, repo metadata are **source** — the only source of truth for
+behavior. `collections/`, `knowledge/`, `outputs/`, `mvp/`, `autoinfo.db`, `logs/`,
+`.autoinfo/`, `.omo/` are gitignored **runtime state**. Never hand-edit runtime artifacts
+to fix behavior — fix the source. Full per-path table: `docs/dev/repo-map.md`.
 
 ## Backlog Priority Triggers
 
-某些 P1 项的等级由「该工作量是否继续发生」决定 —— 触发条件命中时**等级自动回升，不需要重新评审**：
+某些 P1 项的等级由「该工作量是否继续发生」决定——触发条件命中时**等级自动回升，不需要重新评审**：
 
 | 项 | 当前等级 | 回升触发 | 回升后 |
 |:--|:--|:--|:--|
@@ -358,44 +179,22 @@ Never hand-edit runtime artifacts to fix behavior — fix the source.
 
 ## Status
 
-Component-by-component status and **all counts** live in **`README.md` → Status
-table** — that is the single source of truth; AGENTS.md deliberately does not
-duplicate them (pointer-only). For the concrete values, run
-`python3 scripts/doc_inventory.py`, which writes `docs/dev/doc-inventory.md`.
-`scripts/doc_inventory.py --check` still validates the README numbers against
-the code/CLI (live tool list, scenario files, pytest collection), so they cannot
-drift from reality.
-
-Operational invariants (full rules in Architecture Rules above and
-`docs/dev/acceptance-framework.md`):
-- KB pipeline: 01-Raw sole entry → 02-Draft → 03-Wiki append-only.
-- Quality gates: G0/G4 hard (retry-then-block), G1-G3/G5 soft, D1-D3 delivery.
-- Promotion Draft→Wiki is an **agent operation** (`promote_kb_draft`, no human gate).
-- Everything else is deferred/planned in `docs/dev/founder-expectations.md` §14.
+Status and **all counts** live in **`README.md` → Status table** (single source of truth;
+AGENTS.md is pointer-only). Regenerate: `python3 scripts/doc_inventory.py`; `--check`
+validates counts against code/CLI. Invariants: Architecture Rules above +
+`docs/dev/acceptance-framework.md` (AC1-AC9).
 
 ## References
 
-- `docs/dev/workflow-charter.md` — Development workflow charter (7-stage process + 3 support methods, English index; canonical methodology: `docs/dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md`; adoption decision: `docs/adr/0006-dev-process-workflow-charter.md`)
-- `docs/dev/mcp-usage-examples.md` — Full worked MCP tool workflow examples (moved from Common Patterns)
-- `docs/dev/required-api-keys.md` — Full catalog of API keys and environment variables
-- `docs/dev/founder-expectations.md` — D3 index (simplified after split; see `docs/archive/founder-expectations-pre-split.md` for full original)
-- `docs/dev/specs/` — Extracted spec files (12 files: expectations.md, quality-gates.md, pipeline.md, delivery.md, operations.md, market-positioning.md, mcp-tools.md, data-models.md, user-lifecycle-definition.md, multi-tenancy-auth.md, ops-runbook.md, end-user-matrix.yaml)
-- `docs/archive/kb-pipeline-reference.md` — Reference KB pipeline model (archived)
-- `docs/dev/cross-dimensional-catalog.md` — **Keystone**: A1-A7 Pipeline × B1/B2/B3 Users (126 cells = 7×18; 42 catalogued gaps, 5 gap types). Supersedes archived gap-audit docs.
-- `docs/dev/enduser-coverage-matrix.md` — End-user feature coverage matrix (A–E, 99 items); **generated** from `docs/dev/specs/end-user-matrix.yaml` (`report_demand`) by `scripts/coverage_matrix.py --render-enduser-doc`. Historical analysis: `docs/archive/enduser-coverage-matrix-analysis.md`.
-- `docs/dev/acceptance-framework.md` — **Acceptance mechanism (keystone, AC1-AC9)**: user model integrity, data-layer integrity, dual orientation (agent-operated tool / human-first results), coverage commitment, quality, commercial viability, process governance, documentation health (AC8), test & validation suite health (AC9). Supersedes `launch-validation-framework.md` as the top-level validation charter (D1-D5 now archived at `docs/archive/launch-validation-framework.md`; evidence machinery retained as tooling).
-- `docs/dev/validation-scenario-contract.md` — Scenario authoring **and agent-tester execution** how-to (real MCP/CLI/REST calls, real artifacts); authoring + execution merged into one doc 2026-08-08 (former runbook archived at `docs/archive/agent-tester-validation.md`); graded against `acceptance-framework.md` (AC1-AC9)
-- `docs/adr/` — Architecture Decision Records: the *why* behind architecture rules (01-Raw sole entry, agent promotion without human gate, LLM fallback chain, reasoning-model JSON control, unified envelope, release-please version truth). Template: `docs/adr/TEMPLATE.md`.
-- `docs/glossary.md` — Project glossary (Ubiquitous Language): the authoritative definitions of KB pipeline, gates, user types, and agent/tooling terms.
-- `docs/demo-release-standard.md` — Demo release **Definition of Done** (4 checkable criteria: independent review / 2 consecutive one-shots in stable band / residual register current / repo+protocol clean). Audience: the human decision authority + coding agents executing QC. NOT end-user material.
-- `docs/known-limitations/demo-quality-residuals.md` — Demo quality **residual risk register**: known failure classes → detection layer → severity → status; new classes are registered here BEFORE being fixed. Audience: coding agents + future maintainers. NOT end-user material.
-- `docs/dev/agent-era-doc-architecture.md` — Portable playbook: agent-era documentation architecture (generic, applies to any project).
-- `docs/dev/agent-era-doc-architecture-autoinfo.md` — AutoInfo-specific map of the doc architecture (what to keep/update, the maintenance loop, cleaned-items record).
+- `docs/dev/repo-map.md` — repo layout + runtime-artifact boundary · `docs/dev/llm-config.md` — full LLM setup (both loaded on demand)
+- `docs/dev/workflow-charter.md` — dev process (canonical methodology: `docs/dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md`; ADR-0006)
+- `docs/dev/mcp-usage-examples.md` — worked MCP patterns · `docs/dev/required-api-keys.md` — API keys/env vars catalog
+- `docs/dev/founder-expectations.md` (D3 index) · `docs/dev/specs/` (extracted specs) · `docs/dev/cross-dimensional-catalog.md` (**keystone** matrix A1-A7 × B1/B2/B3) · `docs/dev/enduser-coverage-matrix.md`
+- `docs/dev/acceptance-framework.md` — **keystone** acceptance (AC1-AC9); `docs/dev/validation-scenario-contract.md` — scenario contract
+- `docs/adr/` — decision records · `docs/glossary.md` — ubiquitous language · `docs/demo-release-standard.md` — demo DoD · `docs/known-limitations/demo-quality-residuals.md` — residual register
+- `docs/dev/agent-era-doc-architecture.md` + `-autoinfo.md` — doc-architecture playbook + AutoInfo map (maintenance loop, cleaned-items record)
 
 ## Community
 
-- `CONTRIBUTING.md` — Human-facing contribution guide (Conventional Commits, AI contribution policy, mandatory 回归场景).
-- `GOVERNANCE.md` — Roles, label taxonomy, review policy, branch protection + DCO, release management (release-please).
-- `CODE_OF_CONDUCT.md` — Contributor Covenant v2.1.
-- `SECURITY.md` — Vulnerability reporting (48-72h acknowledgment) + security-relevant areas (BYOK keys, webhooks, REST port 8741).
-- `.github/` — PR/issue templates (mandatory 回归场景), CODEOWNERS, workflow gates (pr-title-check, baseline-aware coverage, release-please), dependabot, `.pre-commit-config.yaml` (gitleaks + credential-url guard).
+`CONTRIBUTING.md` (Conventional Commits, AI policy, mandatory 回归场景) · `GOVERNANCE.md` ·
+`CODE_OF_CONDUCT.md` · `SECURITY.md` · `.github/` (templates, CODEOWNERS, release-please workflow gates).

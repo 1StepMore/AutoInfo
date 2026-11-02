@@ -1,6 +1,14 @@
 <!-- agent: multi-tenancy-auth-spec -->
 # Multi-Tenancy, Authentication, Rate Limiting & Admin Dashboard
 
+> **Decision (2026-11-02): multi-tenancy isolation is OUT OF SCOPE.** AutoInfo is a
+> single-tenant, locally operated agent tool; the trust boundary is the OS process plus
+> loopback HTTP, and `user_id` / `actor` are advisory data-scoping cursors, never an
+> authorization boundary. See [ADR 0012](../../adr/0012-multi-tenancy-out-of-scope.md).
+> This document is retained as **design reference only** — nothing below is on the roadmap,
+> and any statement describing the work as "planned" or "gated on the SSE transport
+> milestone" is superseded by that decision.
+
 > **Deferral note:** Current MCP server is stdio-only — auth deferred until SSE transport.
 > The spec below is architectural design only. No code paths enforce tenant isolation,
 > API key validation, or rate limiting while the server runs over stdio (assumed trusted process).
@@ -43,7 +51,7 @@
 
 | Level | Disposition | Rationale |
 |-------|-------------|-----------|
-| `F58` Multi-tenancy isolation | `blocked-with-record` | No tenant model or enforcement (`user_id` advisory only; CD-001/CD-042); gated on this spec's recorded SSE-transport milestone — the stdio-only server cannot carry tenant context. |
+| `F58` Multi-tenancy isolation | `out-of-scope` | Director decision 2026-11-02 (ADR-0012): single-tenant local agent tool — no tenant model or isolation boundary will be built (`user_id` advisory only; CD-001/CD-042). Supersedes this spec's SSE-transport gate. |
 | `F59` End-user authentication | `blocked-with-record` | Zero auth primitives (no sessions/tokens/passwords; CD-002); gated on the recorded SSE-transport milestone; the `AuthRequired`/`SessionExpired` error codes were retired until that implementation lands (T-S-05). |
 | `F60` Rate limiting & abuse prevention | `documented-limit` | LLM-provider concurrency/backoff, per-source limits, and tier/free-tier quotas shipped (CD-003 partial 2026-08-13); this spec's sliding-window API-surface quotas (429 + Retry-After) are the documented ceiling, dependent on F59. |
 | `F62` Admin dashboard | `out-of-scope` | V1 operations surface is CLI/MCP (`status`, `cost dashboard`, `doctor`, `diagnose_system`, `get_metrics`, Prometheus); this spec's `/admin` console (CD-005/CD-013) is P2 roadmap, outside the V1 boundary. |
@@ -134,8 +142,7 @@ cursor.execute("SELECT * FROM kb_entries WHERE domain = ?", (domain,))
 
 # Required pattern (v2 with multi-tenancy):
 cursor.execute(
-    "SELECT * FROM kb_entries WHERE tenant_id = ? AND domain = ?",
-    (current_tenant.id, domain)
+    "SELECT * FROM kb_entries WHERE tenant_id = ? AND domain = ?", (current_tenant.id, domain)
 )
 ```
 

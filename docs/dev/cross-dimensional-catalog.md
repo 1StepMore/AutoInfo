@@ -603,7 +603,7 @@ Gaps that are not about missing features but about how the system is architected
 
 | Level | Disposition | Rationale |
 |-------|-------------|-----------|
-| `F58` Multi-tenancy isolation | `blocked-with-record` | No tenant model or enforcement (`user_id` advisory only); gated on the recorded SSE-transport milestone (CD-001, `multi-tenancy-auth.md`). |
+| `F58` Multi-tenancy isolation | `out-of-scope` | Director decision 2026-11-02 (ADR-0012): single-tenant local agent tool — no tenant model or isolation boundary will be built (`user_id` advisory only; CD-001). Supersedes the earlier SSE-transport gate. |
 | `F59` End-user authentication | `blocked-with-record` | Zero auth primitives; gated on the recorded SSE-transport milestone (CD-002); the `AuthRequired`/`SessionExpired` codes were retired until that implementation lands (T-S-05). |
 | `F60` Rate limiting & abuse prevention | `documented-limit` | LLM-provider concurrency/backoff, per-source limits, and tier/free-tier quotas shipped (CD-003 partial 2026-08-13); API-surface quotas (429+Retry-After, `batch_run` cap) are the documented ceiling. |
 | `F61` Cron reliability & backup | `documented-limit` | Heartbeat/missed-detection/alerts/`get_schedule_status` + backup/restore shipped (CD-004, CD-014 resolved); backfill and crond-health-in-`diagnose_system()` are the documented ceiling. |

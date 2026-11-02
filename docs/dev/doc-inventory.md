@@ -13,15 +13,15 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 129 |
-| Total lines | 39297 |
-| Active files | 97 |
+| Total files | 130 |
+| Total lines | 39401 |
+| Active files | 98 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
-| Category — adr | 13 files / 775 lines |
-| Category — specs | 12 files / 9859 lines |
+| Category — adr | 14 files / 872 lines |
+| Category — specs | 12 files / 9866 lines |
 | Category — validation-reports | 26 files / 5752 lines |
 | Category — docs/dev | 32 files / 11026 lines |
 | Category — docs/root | 8 files / 1615 lines |
@@ -41,7 +41,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0009-dco-squash-merge-signoff.md` | 103 | adr | active | adr |
 | `adr/0010-mcp-tools-list-omits-output-schema.md` | 47 | adr | active | — |
 | `adr/0011-quality-gate-attempt-semantics.md` | 72 | adr | active | adr |
-| `adr/README.md` | 57 | adr | active | adr-index |
+| `adr/0012-multi-tenancy-out-of-scope.md` | 96 | adr | active | adr |
+| `adr/README.md` | 58 | adr | active | adr-index |
 | `adr/TEMPLATE.md` | 32 | adr | active | adr |
 | `agent-infrastructure-audit-2026-10-30.md` | 251 | docs/root | active | — |
 | `archive/AutoInfo-development-brief-v2.md` | 226 | archive | archived | — |
@@ -109,7 +110,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/expectations.md` | 1228 | specs | active | — |
 | `dev/specs/market-positioning.md` | 404 | specs | active | market-positioning |
 | `dev/specs/mcp-tools.md` | 126 | specs | active | — |
-| `dev/specs/multi-tenancy-auth.md` | 799 | specs | active | — |
+| `dev/specs/multi-tenancy-auth.md` | 806 | specs | active | — |
 | `dev/specs/operations.md` | 972 | specs | active | — |
 | `dev/specs/ops-runbook.md` | 1040 | specs | active | — |
 | `dev/specs/pipeline.md` | 637 | specs | active | — |

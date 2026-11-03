@@ -59,6 +59,13 @@ key is missing.
 |---------|---------|-----------|--------|
 | `AUTOINFO_DB_BUSY_TIMEOUT_MS` | SQLite `PRAGMA busy_timeout` in milliseconds. Controls how long a write waits for the database lock before returning `SQLITE_BUSY`. Default 30000 (30s). | Optional. Only tune if you see `database is locked` errors under heavy concurrent writes. | `src/autoinfo/kb.py` (`_db_busy_timeout_ms`) |
 
+## REST API serve posture
+
+| Env Var | Purpose | Required? | Source |
+|---------|---------|-----------|--------|
+| `AUTOINFO_ALLOW_NON_LOOPBACK` | Explicit operator confirmation for a non-loopback REST API bind (`python -m autoinfo.api.server`). Without it, any non-loopback `--host`/`rest_api.host` (e.g. `0.0.0.0`) refuses to start with exit code 2 — AutoInfo is a single-tenant local tool whose trust boundary is the OS process plus loopback HTTP (ADR-0012), and the REST API has no authentication. Set to `1`/`true`/`yes`/`on` only behind an authenticated reverse proxy. | Optional. Only needed when intentionally exposing the API beyond loopback. | `src/autoinfo/api/server.py` (`_enforce_loopback_bind`) |
+| `AUTOINFO_CORS_ORIGINS` | Comma-separated browser origins allowed to call the REST API cross-origin. Fallback for `rest_api.cors_origins` in `.autoinfo/config.yaml` (config file wins). Only consulted on a confirmed non-loopback bind: there the server never serves allow-all CORS — unset means deny every cross-origin request; a loopback bind keeps the localhost security zone regardless. | Optional. | `src/autoinfo/api/server.py` (`_load_rest_config`), `src/autoinfo/config.py` (`parse_cors_origins`) |
+
 ## Audit actor identity
 
 | Env Var | Purpose | Required? | Source |

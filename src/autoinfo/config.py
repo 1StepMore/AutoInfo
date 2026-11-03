@@ -577,6 +577,19 @@ class CostAlertsConfig:
     alert_webhook: str = ""
 
 
+def parse_cors_origins(raw: Any) -> tuple[str, ...]:
+    """Parse ``rest_api.cors_origins`` — a YAML list or a comma-separated string.
+
+    Whitespace-only entries are dropped; an unset/empty value yields ``()``,
+    which the serve path treats as "deny all cross-origin requests".
+    """
+    if not raw:
+        return ()
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    return tuple(str(origin).strip() for origin in raw if str(origin).strip())
+
+
 @dataclass
 class RestAPIConfig:
     """REST API server settings."""
@@ -584,6 +597,11 @@ class RestAPIConfig:
     enabled: bool = True
     port: int = 8741
     host: str = "127.0.0.1"
+    #: Browser origins allowed to call the API cross-origin.  Empty denies all
+    #: cross-origin requests.  A loopback bind keeps allow-all regardless (the
+    #: ADR-0012 trust boundary is the OS process plus loopback HTTP); a
+    #: non-loopback bind never serves ``*`` — it serves exactly this list.
+    cors_origins: tuple[str, ...] = ()
 
 
 @dataclass
@@ -1070,6 +1088,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
             enabled=bool(rest_api_raw.get("enabled", True)),
             port=int(rest_api_raw.get("port", 8741)),
             host=str(rest_api_raw.get("host", "127.0.0.1")),
+            cors_origins=parse_cors_origins(rest_api_raw.get("cors_origins")),
         ),
         stripe=StripeConfig(
             webhook_secret=str(stripe_raw.get("webhook_secret", "")),
@@ -1411,6 +1430,7 @@ def config_to_dict(config: Config) -> dict[str, Any]:
         "enabled": config.rest_api.enabled,
         "port": config.rest_api.port,
         "host": config.rest_api.host,
+        "cors_origins": list(config.rest_api.cors_origins),
     }
     raw["stripe"] = {
         "webhook_secret": config.stripe.webhook_secret,

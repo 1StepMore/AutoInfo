@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.12](https://github.com/1StepMore/AutoInfo/compare/v1.21.11...v1.21.12) (2026-11-03)
+
+
+### Documentation
+
+* **adr:** record multi-tenancy as out of scope (ADR-0012) ([#676](https://github.com/1StepMore/AutoInfo/issues/676)) ([c13ced5](https://github.com/1StepMore/AutoInfo/commit/c13ced528dda1dee30616739492d9b7712a5f0ac))
+
 ## [1.21.11](https://github.com/1StepMore/AutoInfo/compare/v1.21.10...v1.21.11) (2026-11-03)
 
 

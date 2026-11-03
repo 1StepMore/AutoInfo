@@ -101,5 +101,5 @@ def test_expectation_rows_all_classified(coverage: Any) -> None:
     assert len(items) == 72
     assert all(i["classification"] != "unclassified" for i in items)
     by_id = {i["item"]: i["classification"] for i in items}
-    assert by_id["F58"] == "blocked-with-record"
+    assert by_id["F58"] == "out-of-scope"
     assert by_id["F68"] == "out-of-scope"

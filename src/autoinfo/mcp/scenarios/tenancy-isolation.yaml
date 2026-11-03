@@ -2,14 +2,15 @@
 #
 # v1 is a single-tenant, stdio-only, assumed-trusted process (see
 # docs/dev/specs/multi-tenancy-auth.md — "Never Designed — spec only, zero
-# implementation"; F58/F59 dispositions are `blocked-with-record`, gated on the
+# implementation"; F58 multi-tenancy is `out-of-scope` per ADR-0012, the
+# 2026-11-02 director decision; F59 auth remains `blocked-with-record` on the
 # SSE transport milestone).  Tenant isolation is NOT implemented; this scenario
 # must never claim it is.  What it does assert is the committed boundary:
 # there is no tenant-scoped tool and no tenant parameter on the agent surface,
 # so a cross-tenant access attempt cannot be expressed and is rejected as an
-# UnknownTool, and the spec records the boundary (stdio-trusted,
-# blocked-with-record).  A cross-tenant guard that cannot run would be a
-# failure, never a silent pass.
+# UnknownTool, and the spec records the boundary (stdio-trusted, F58
+# out-of-scope with ADR-0012 backing).  A cross-tenant guard that cannot run
+# would be a failure, never a silent pass.
 name: tenancy-isolation
 description: "Cross-tenant guard: no tenant-scoped tool or tenant parameter on the agent surface; tenant tool calls are rejected as UnknownTool, and the stdio-trusted v1 boundary is recorded (T-A-09)"
 category: edge_case
@@ -80,20 +81,38 @@ steps:
       exit_code: 0
       stdout_has: ["TENANCY_ISOLATION_UNAVAILABLE"]
 
-  - name: "the stdio-trusted v1 boundary is recorded in the multi-tenancy spec"
+  - name: "the stdio-trusted v1 boundary is recorded in the multi-tenancy spec and backed by ADR-0012"
     kind: cli
     command: |-
       python3 - <<'PY'
+      import re
       from pathlib import Path
-      text = Path("docs/dev/specs/multi-tenancy-auth.md").read_text(encoding="utf-8")
-      for needle in (
-          "Never Designed",
-          "stdio",
-          "blocked-with-record",
-          "| `F58` Multi-tenancy isolation | `blocked-with-record` |",
-      ):
-          assert needle in text, "v1 boundary record missing: " + needle
-      print("TENANCY_BOUNDARY_RECORDED stdio-trusted")
+      spec = Path("docs/dev/specs/multi-tenancy-auth.md").read_text(encoding="utf-8")
+      # The v1 boundary record itself stays (stdio-only, never-designed
+      # multi-tenancy).
+      for needle in ("Never Designed", "stdio"):
+          assert needle in spec, "v1 boundary record missing: " + needle
+      # F58 must carry the committed `out-of-scope` disposition (ADR-0012);
+      # any other value — including the superseded `blocked-with-record` — is
+      # a stale record and fails here.
+      m = re.search(
+          r"^\|\s*`F58`\s*Multi-tenancy isolation\s*\|\s*`([^`]+)`\s*\|",
+          spec,
+          re.MULTILINE,
+      )
+      assert m, "F58 disposition row missing from multi-tenancy-auth.md"
+      assert m.group(1) == "out-of-scope", (
+          "F58 disposition drifted from ADR-0012: " + m.group(1)
+      )
+      # The disposition must stay ADR-backed: an out-of-scope without a
+      # recorded, Accepted decision is not acceptable.
+      adr = Path("docs/adr/0012-multi-tenancy-out-of-scope.md")
+      assert adr.exists(), "ADR-0012 missing — out-of-scope needs ADR backing"
+      assert re.search(
+          r"\*\*Status\*\*:\s*Accepted",
+          adr.read_text(encoding="utf-8"),
+      ), "ADR-0012 is not Accepted"
+      print("TENANCY_BOUNDARY_RECORDED f58-out-of-scope adr-accepted")
       PY
     expect:
       success: true

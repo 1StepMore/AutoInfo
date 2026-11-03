@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.13](https://github.com/1StepMore/AutoInfo/compare/v1.21.12...v1.21.13) (2026-11-03)
+
+
+### Bug Fixes
+
+* **api:** refuse non-loopback bind; confirmed bind never serves "*" CORS ([#680](https://github.com/1StepMore/AutoInfo/issues/680)) ([#681](https://github.com/1StepMore/AutoInfo/issues/681)) ([671ac2a](https://github.com/1StepMore/AutoInfo/commit/671ac2af4bcbfcb86aee9f034a26bba1fc28ce25))
+
 ## [1.21.12](https://github.com/1StepMore/AutoInfo/compare/v1.21.11...v1.21.12) (2026-11-03)
 
 

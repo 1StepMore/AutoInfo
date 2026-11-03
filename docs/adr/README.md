@@ -55,3 +55,4 @@ if the decision changes, write a new ADR and mark the old one `Superseded by NNN
 | [0009](0009-dco-squash-merge-signoff.md) | DCO author/sign-off mismatch is a squash artifact: document it, never rewrite history (2026-10-01) | Accepted |
 | [0010](0010-mcp-tools-list-omits-output-schema.md) | `tools/list` omits the shared `outputSchema`; the envelope is documented once (2026-10-22) | Accepted |
 | [0011](0011-quality-gate-attempt-semantics.md) | `retries` means extra attempts (`1 + retries`); G0 is one attempt, G4 is 1+3 (2026-10-24) | Accepted |
+| [0012](0012-multi-tenancy-out-of-scope.md) | Multi-tenancy isolation is out of scope: single-tenant local agent tool; `user_id`/`actor` are never an authz boundary (2026-11-02) | Accepted |

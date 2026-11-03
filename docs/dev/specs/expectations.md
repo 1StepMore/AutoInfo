@@ -1194,7 +1194,7 @@ The research report reveals a clear **polarization** between "engineering-feasib
 
 | Level | Disposition | Rationale |
 |-------|-------------|-----------|
-| `F58` Multi-tenancy isolation | `blocked-with-record` | No tenant model or enforcement exists (`user_id` advisory only); gated on the recorded SSE-transport milestone — the stdio-only server cannot carry tenant context (`multi-tenancy-auth.md` deferral note). |
+| `F58` Multi-tenancy isolation | `out-of-scope` | Director decision 2026-11-02 (ADR-0012): AutoInfo is a single-tenant, locally operated agent tool. No tenant model or isolation boundary will be built; `user_id` / `actor` are advisory data-scoping cursors, never an authorization boundary. Supersedes the earlier SSE-transport gate. |
 | `F59` End-user authentication | `blocked-with-record` | Zero auth primitives (no sessions/tokens/passwords); gated on the recorded SSE-transport milestone; the `AuthRequired`/`SessionExpired` codes were retired until that implementation lands (T-S-05). |
 | `F60` Rate limiting & abuse prevention | `documented-limit` | LLM-provider concurrency/backoff, per-source rate limits, and tier/free-tier product quotas are shipped; API-surface request quotas (429 + Retry-After, `batch_run` cap) are the documented ceiling, dependent on F59. |
 | `F61` Cron reliability & backup | `documented-limit` | Heartbeat + missed-schedule detection + alerts + `get_schedule_status` + backup/restore scripts are shipped (CD-004/CD-014 resolved); backfill (`--backfill-since`) and crond health inside `diagnose_system()` are the documented ceiling. |

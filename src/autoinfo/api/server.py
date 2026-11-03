@@ -2,22 +2,33 @@
 
 Usage::
 
-    python -m autoinfo.api.server
+    python -m autoinfo.api.server [--host HOST] [--port PORT]
 
 The server listens on ``http://127.0.0.1:8741`` by default.
 Port and host are configurable via ``.autoinfo/config.yaml`` under the
-``rest_api`` key.
+``rest_api`` key or the ``--host``/``--port`` flags.
+
+AutoInfo is a single-tenant, locally operated agent tool (ADR-0012): the
+trust boundary is the OS process plus loopback HTTP.  A non-loopback bind
+is therefore refused at startup unless the operator explicitly confirms it
+with ``AUTOINFO_ALLOW_NON_LOOPBACK=1`` — and a confirmed non-loopback bind
+never serves allow-all CORS: it serves exactly the origins configured via
+``rest_api.cors_origins`` (or ``AUTOINFO_CORS_ORIGINS``), defaulting to
+none, which denies every cross-origin browser request.
 """
 
 from __future__ import annotations
 
+import argparse
+import ipaddress
 import json
 import logging
 import os
+import sys
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import uvicorn
 import yaml
@@ -30,10 +41,18 @@ from autoinfo import __version__
 from autoinfo.api.portal import router as portal_router
 from autoinfo.api.routes import router as api_v1_router
 from autoinfo.api.storefront import router as storefront_router
-from autoinfo.config import RestAPIConfig
+from autoinfo.config import RestAPIConfig, parse_cors_origins
 from autoinfo.mcp.errors import ErrorCode
 
 logger = logging.getLogger(__name__)
+
+#: Explicit operator confirmation required for a non-loopback bind (ADR-0012
+#: residual risk follow-up, issue #680).  Anything else refuses to start.
+ALLOW_NON_LOOPBACK_ENV = "AUTOINFO_ALLOW_NON_LOOPBACK"
+
+#: Comma-separated CORS origins, consulted when ``rest_api.cors_origins`` is
+#: unset.  Config file wins over the environment (repo precedence).
+CORS_ORIGINS_ENV = "AUTOINFO_CORS_ORIGINS"
 
 # ---------------------------------------------------------------------------
 # Config I/O (mirrors mcp/server.py pattern)
@@ -46,16 +65,25 @@ def _config_path() -> Path:
 
 
 def _load_rest_config() -> RestAPIConfig:
-    """Load REST API config from ``.autoinfo/config.yaml``.
+    """Load REST API config from ``.autoinfo/config.yaml`` plus env fallbacks.
 
-    Looks for a ``rest_api`` section with ``port`` and ``host`` keys.
-    When the config file is absent or the section is missing, falls back
-    to defaults (127.0.0.1:8741).
-
-    Once Task 3 adds ``rest_api`` to the :class:`Config` dataclass, the
-    ``getattr`` path below will return the parsed ``RestAPIConfig``
-    directly from YAML.
+    Looks for a ``rest_api`` section with ``port``, ``host`` and
+    ``cors_origins`` keys.  When the config file is absent or the section is
+    missing, falls back to defaults (127.0.0.1:8741, no CORS origins).  The
+    config file wins over the environment (repo precedence): CORS origins
+    fall back to ``AUTOINFO_CORS_ORIGINS`` only when the section does not
+    configure them.
     """
+    cfg = _read_rest_config()
+    if not cfg.cors_origins:
+        env_raw = os.environ.get(CORS_ORIGINS_ENV, "").strip()
+        if env_raw:
+            cfg.cors_origins = parse_cors_origins(env_raw)
+    return cfg
+
+
+def _read_rest_config() -> RestAPIConfig:
+    """Read the ``rest_api`` section from ``.autoinfo/config.yaml``."""
     config_path = _config_path()
     if not config_path.is_file():
         logger.info("No config found at %s, using defaults", config_path)
@@ -80,6 +108,7 @@ def _load_rest_config() -> RestAPIConfig:
         return RestAPIConfig(
             port=int(rest_api_raw.get("port", 8741)),
             host=str(rest_api_raw.get("host", "127.0.0.1")),
+            cors_origins=parse_cors_origins(rest_api_raw.get("cors_origins")),
         )
     except Exception:
         logger.warning("Failed to parse rest_api config, using defaults", exc_info=True)
@@ -531,14 +560,174 @@ async def stripe_webhook(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    """Start the REST API server via ``uvicorn.run()``."""
-    cfg = _load_rest_config()
-    logger.info(
-        "Starting AutoInfo API on http://%s:%d",
-        cfg.host,
-        cfg.port,
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse serve entry-point flags (``.autoinfo/config.yaml`` stays the default)."""
+    parser = argparse.ArgumentParser(
+        prog="python -m autoinfo.api.server",
+        description=(
+            "Start the AutoInfo REST API server "
+            "(single-tenant, loopback bind by default — ADR-0012)."
+        ),
     )
+    parser.add_argument(
+        "--host",
+        default=None,
+        help=(
+            "Bind address (default: rest_api.host from .autoinfo/config.yaml, else 127.0.0.1). "
+            "A non-loopback bind requires AUTOINFO_ALLOW_NON_LOOPBACK=1."
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Bind port (default: rest_api.port from .autoinfo/config.yaml, else 8741)",
+    )
+    return parser.parse_args(argv)
+
+
+def _is_loopback_host(host: str) -> bool:
+    """True when *host* binds to loopback only.
+
+    ``localhost`` and the whole IPv4/IPv6 loopback ranges (``127.0.0.0/8``,
+    ``::1``) count; anything else — including ``0.0.0.0``, ``::`` and an empty
+    host — exposes the server beyond the ADR-0012 trust boundary.
+    """
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip()).is_loopback
+    except ValueError:
+        return False
+
+
+def _enforce_loopback_bind(host: str) -> None:
+    """Refuse a non-loopback bind unless the operator explicitly confirmed.
+
+    AutoInfo is a single-tenant, locally operated agent tool (ADR-0012): the
+    trust boundary is the OS process plus loopback HTTP, and the REST API has
+    no authentication.  A non-loopback bind turns the server into a real
+    exposure and must never start silently — the operator confirms it via
+    ``AUTOINFO_ALLOW_NON_LOOPBACK=1``, ideally only behind an authenticated
+    reverse proxy.
+    """
+    if _is_loopback_host(host):
+        return
+    confirmed = os.environ.get(ALLOW_NON_LOOPBACK_ENV, "").strip().lower()
+    if confirmed in {"1", "true", "yes", "on"}:
+        return
+    sys.stderr.write(
+        f"AutoInfo API refused to start: host {host!r} is not a loopback address.\n"
+        "\n"
+        "AutoInfo is a single-tenant, locally operated agent tool (ADR-0012); its trust\n"
+        "boundary is the OS process plus loopback HTTP, and the REST API has no\n"
+        "authentication. A non-loopback bind exposes it beyond the local machine and\n"
+        "is not supported.\n"
+        "\n"
+        "If you really need a non-loopback bind, place an authenticated reverse proxy\n"
+        f"in front and set {ALLOW_NON_LOOPBACK_ENV}=1; narrow CORS via rest_api.cors_origins\n"
+        f"in .autoinfo/config.yaml or {CORS_ORIGINS_ENV}.\n"
+    )
+    raise SystemExit(2)
+
+
+def _resolve_cors_origins(host: str, configured: tuple[str, ...]) -> tuple[str, ...]:
+    """Effective ``allow_origins`` for the resolved bind address.
+
+    A loopback bind keeps the historical allow-all: only local origins can
+    reach a loopback socket, so ``*`` stays inside the ADR-0012 trust
+    boundary.  A non-loopback bind never serves ``*`` (issue #680) — it
+    serves exactly the configured origins, defaulting to none, which denies
+    every cross-origin browser request until the operator narrows in real
+    origins.
+    """
+    if _is_loopback_host(host):
+        return ("*",)
+    return tuple(configured)
+
+
+def _apply_cors(origins: tuple[str, ...]) -> None:
+    """Rebuild the app's CORS middleware with *origins*.
+
+    ``app`` is module-level with the loopback allow-all baked in; the
+    middleware stack is assembled lazily on startup, so replacing the CORS
+    entry here — before ``uvicorn.run`` — is the serve-time narrowing point.
+    Dropping any previously built stack forces a rebuild from the updated
+    list (Starlette refuses ``add_middleware`` once a stack exists).
+    """
+    app.middleware_stack = None
+    # ``Middleware.cls`` is typed as a generic factory; cast to a plain class
+    # object so the identity comparison typechecks.
+    app.user_middleware[:] = [
+        mw for mw in app.user_middleware if cast("type[Any]", mw.cls) is not CORSMiddleware
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(origins),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def _ensure_posture_logging() -> logging.Logger:
+    """Return the module logger with one console handler for posture lines.
+
+    Under a bare ``uvicorn.run`` uvicorn configures only its own loggers, so
+    the module logger has no handler — INFO would be dropped and the operator
+    would never see the bind/CORS posture.  Attach one stderr handler at INFO
+    so the posture prints next to uvicorn's own lines.  Existing handlers
+    (tests, embedding hosts) are left untouched.
+    """
+    posture_logger = logging.getLogger(__name__)
+    if not posture_logger.handlers:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter("%(levelname)-8s %(message)s"))
+        posture_logger.addHandler(handler)
+    if posture_logger.level == logging.NOTSET or posture_logger.level > logging.INFO:
+        posture_logger.setLevel(logging.INFO)
+    return posture_logger
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Start the REST API server via ``uvicorn.run()``."""
+    args = _parse_args(argv)
+    cfg = _load_rest_config()
+    if args.host is not None:
+        cfg.host = args.host
+    if args.port is not None:
+        cfg.port = args.port
+
+    _enforce_loopback_bind(cfg.host)
+    origins = _resolve_cors_origins(cfg.host, cfg.cors_origins)
+    _apply_cors(origins)
+
+    # Posture lines through a module-logger console handler: under a bare
+    # ``uvicorn.run`` uvicorn configures only its own loggers, so an INFO
+    # posture line would otherwise be dropped (WARNING+ survive via
+    # ``lastResort``) and the operator would never see the bind/CORS posture.
+    console = _ensure_posture_logging()
+    if _is_loopback_host(cfg.host):
+        console.info(
+            "Starting AutoInfo API on http://%s:%d "
+            "(bind=loopback-only, CORS=allow-all inside the localhost security zone — ADR-0012)",
+            cfg.host,
+            cfg.port,
+        )
+    else:
+        console.warning(
+            "NON-LOOPBACK BIND: AutoInfo API serves on http://%s:%d "
+            "(%s=1 accepted). Single-tenant local tool with no authentication — "
+            "keep an authenticated reverse proxy in front. CORS allow_origins=%s "
+            "(configure via rest_api.cors_origins in .autoinfo/config.yaml or %s; "
+            "empty denies all cross-origin requests).",
+            cfg.host,
+            cfg.port,
+            ALLOW_NON_LOOPBACK_ENV,
+            list(origins),
+            CORS_ORIGINS_ENV,
+        )
+
     uvicorn.run(app, host=cfg.host, port=cfg.port)
 
 

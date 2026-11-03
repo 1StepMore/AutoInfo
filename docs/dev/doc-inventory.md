@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 130 |
-| Total lines | 39401 |
+| Total lines | 39408 |
 | Active files | 98 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 14 files / 872 lines |
 | Category — specs | 12 files / 9866 lines |
 | Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 32 files / 11026 lines |
+| Category — docs/dev | 32 files / 11033 lines |
 | Category — docs/root | 8 files / 1615 lines |
 
 ## Inventory
@@ -101,7 +101,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/plans/agent-infra-remediation-2026-10-30.md` | 172 | docs/dev | active | — |
 | `dev/plans/agent-oriented-gap-register.md` | 608 | docs/dev | active | plan |
 | `dev/repo-map.md` | 82 | docs/dev | active | — |
-| `dev/required-api-keys.md` | 158 | docs/dev | active | — |
+| `dev/required-api-keys.md` | 165 | docs/dev | active | — |
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
 | `dev/source-diagnosis.md` | 176 | docs/dev | active | — |
 | `dev/specs/data-models.md` | 779 | specs | active | — |

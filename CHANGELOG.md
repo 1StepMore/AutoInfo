@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.14](https://github.com/1StepMore/AutoInfo/compare/v1.21.13...v1.21.14) (2026-11-04)
+
+
+### Bug Fixes
+
+* **validation:** 断言误报——补 HTML 结构标签白名单与 scheme:// 识别 ([#677](https://github.com/1StepMore/AutoInfo/issues/677)) ([#684](https://github.com/1StepMore/AutoInfo/issues/684)) ([923fbc2](https://github.com/1StepMore/AutoInfo/commit/923fbc293cada7ddbfff090d99d5fb3336299aeb))
+
 ## [1.21.13](https://github.com/1StepMore/AutoInfo/compare/v1.21.12...v1.21.13) (2026-11-03)
 
 

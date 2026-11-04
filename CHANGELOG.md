@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.16](https://github.com/1StepMore/AutoInfo/compare/v1.21.15...v1.21.16) (2026-11-04)
+
+
+### Documentation
+
+* refresh derived doc surfaces after inventory sweep ([#689](https://github.com/1StepMore/AutoInfo/issues/689)) ([1e20992](https://github.com/1StepMore/AutoInfo/commit/1e2099261ade8366390667907ae071a29e34133e))
+
+
+### Tests
+
+* **gates:** register perf-concurrency flake; pre-commit doc-drift check ([#692](https://github.com/1StepMore/AutoInfo/issues/692)) ([99b36ca](https://github.com/1StepMore/AutoInfo/commit/99b36cab7246682ee8c9e4a201991080f4ce009b))
+
 ## [1.21.15](https://github.com/1StepMore/AutoInfo/compare/v1.21.14...v1.21.15) (2026-11-04)
 
 

@@ -85,7 +85,7 @@ output-tutorial-presentation, output-video, processing), products-billing needs
 `STRIPE_API_KEY`, and sources-a6-keyed needs `FRED_API_KEY` + `FINNHUB_API_KEY`.
 After configuring keys, re-run those to GREEN (`passed`, never
 `unconfigured`). Observed example (47-scenario suite, 2026-08-05): **37 passed / 0 failed
-/ 10 unconfigured**; the suite has since grown to 186 (86 functional + 100 regression; §1.8) — the baseline shape (all
+/ 10 unconfigured**; the suite has since grown to 187 (86 functional + 101 regression; §1.8) — the baseline shape (all
 env-gated `unconfigured`, nothing failed) is unchanged.
 
 ---
@@ -378,8 +378,8 @@ every scenario in `scenarios/regression/` must carry `regression: true` and a
 
 ## 1.8 Scenario inventory (as of 2026-10-26)
 
-186 scenario files in `src/autoinfo/mcp/scenarios/` (86 functional flat in `scenarios/`
-+ 100 regression in `scenarios/regression/`). The list below is a wave-by-wave log, not an
+187 scenario files in `src/autoinfo/mcp/scenarios/` (86 functional flat in `scenarios/`
++ 101 regression in `scenarios/regression/`). The list below is a wave-by-wave log, not an
  exhaustive enum — for the live count and the full inventory always call
  `list_validation_scenarios()` or `python3 scripts/coverage_audit.py`:
 
@@ -724,7 +724,7 @@ Rules inside the loop:
 
 ### 2.6.3 Final sweep
 
-1. Re-run 186 scenarios with keys configured — all must report `passed` (expect 0
+1. Re-run 187 scenarios with keys configured — all must report `passed` (expect 0
    failed, 0 unconfigured).
 2. Run `python3 scripts/coverage_audit.py`; report **149/149 covered, zero MISSING**.
 3. Cleanup sweep: re-run every scenario's `cleanup_steps` result (they run
@@ -808,7 +808,7 @@ Before handing off to the director, verify all of the following:
 - [ ] RED was recorded before GREEN for every row.
 - [ ] Every GREEN has a real artifact on disk / DB / log / sink, and that artifact was shown to the director (pasted or absolute path).
 - [ ] No `unconfigured` row was graded as a pass; each missing key was surfaced as a BYOK obligation.
-- [ ] All 186 scenarios re-run GREEN with keys configured (0 failed, 0 unconfigured); `python3 scripts/coverage_audit.py` reports 149/149 with zero MISSING.
+- [ ] All 187 scenarios re-run GREEN with keys configured (0 failed, 0 unconfigured); `python3 scripts/coverage_audit.py` reports 149/149 with zero MISSING.
 - [ ] All 8 REST endpoints exercised via `curl` against `uvicorn autoinfo.api.server:app --port 8741`.
 - [ ] All mutating calls have paired cleanup, verified by `list_*` and `git status --porcelain`.
 - [ ] Runtime artifacts (`collections/`, `knowledge/`, `outputs/`, `exports/`, `autoinfo.db`, `.autoinfo/`, `logs/`, `.omo/`) are NOT committed and the working tree is clean.

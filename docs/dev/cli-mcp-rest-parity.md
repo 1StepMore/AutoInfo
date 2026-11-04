@@ -275,7 +275,7 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 
 | Capability | CLI | MCP | REST | Status | Notes |
 |------------|-----|-----|------|--------|-------|
-| Add delivery schedule | `cron add-delivery` | `add_delivery_schedule` | — | ✓ CLI+MCP | |
+| Add delivery schedule | `cron add-delivery` | `add_delivery_schedule` | — | ✓ CLI+MCP | free-tier frequency gate enforced on both paths (#674) |
 | List delivery schedules | `cron list-deliveries` | `list_delivery_schedules` | — | ✓ CLI+MCP | |
 | Remove delivery schedule | `cron remove-delivery` | `remove_delivery_schedule` | — | ✓ CLI+MCP | |
 

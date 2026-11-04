@@ -444,6 +444,11 @@ def _handle_add_delivery_schedule(
         Optional end-user ID whose stored ``content_preference`` is
         applied when the scheduled output is generated.  Empty by
         default (no preference lookup).
+
+    Named end-users (non-empty ``user_id``) pass the free-tier frequency
+    gate before the schedule is created — the same single seam the CLI
+    ``cron add-delivery`` path consults (#674).  ``user_id=""``
+    (batch/unattended) skips the gate.
     """
     try:
         from autoinfo.delivery.scheduler import (
@@ -480,6 +485,20 @@ def _handle_add_delivery_schedule(
                 code=ErrorCode.INVALID_CRON_EXPRESSION,
                 message=f"'{cron_expression}' is not a valid cron expression",
                 actionable=True,
+            )
+
+        # Free-tier frequency gate (#674) — the same single seam the CLI
+        # ``cron add-delivery`` path consults: a named end-user's requested
+        # frequency is checked against the subscription ``max_frequency``;
+        # ``user_id=""`` (batch/unattended) skips the gate entirely.
+        from autoinfo.delivery.frequency_gate import check_schedule_frequency
+
+        gate = check_schedule_frequency(user_id=user_id, frequency=period)
+        if not gate["allowed"]:
+            return error_response(
+                code=gate["code"],
+                message=gate["message"],
+                actionable=bool(gate["actionable"]),
             )
 
         new_schedule = DeliverySchedule(

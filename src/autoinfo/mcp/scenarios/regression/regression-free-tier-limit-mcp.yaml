@@ -1,0 +1,108 @@
+# Regression #674: the MCP ``add_delivery_schedule`` tool consults the SAME
+# free-tier frequency-gate seam as the CLI ``cron add-delivery`` path — an
+# over-frequency named free user (daily period under a weekly subscription
+# ceiling) is rejected with the canonical FREE_TIER_LIMIT envelope, while
+# weekly / premium / batch (user_id="") schedule creation is unchanged.
+#
+# Deterministic (requires_env: []): the gate reads the user-store
+# subscription (bootstrapped hermetically in the subprocess's temp cwd —
+# no LLM, no network); schedule persistence lands in the same temp cwd
+# (.autoinfo/delivery_schedules.yaml is resolved from Path.cwd()).  Runs
+# inside an ABSOLUTE temp cwd (tempfile.mkdtemp, try/finally cleanup) —
+# same pattern as regression-free-tier-limit.yaml.
+name: regression-free-tier-limit-mcp
+description: "Regression #674: MCP add_delivery_schedule enforces the free-tier frequency gate for named users (daily under weekly limit rejected with FREE_TIER_LIMIT); weekly/premium/batch unchanged"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B1.2
+regression: true
+regression_issue: "#674 MCP add_delivery_schedule not wired to the free-tier frequency gate"
+requires_env: []
+steps:
+  - name: "MCP add_delivery_schedule blocks over-frequency named free user"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, shutil, tempfile
+      from pathlib import Path
+      from autoinfo.mcp.errors import ErrorCode
+      from autoinfo.mcp.tools.scheduling import _handle_add_delivery_schedule
+      from autoinfo.user_store import (
+          create_profile,
+          create_subscription,
+          init_db,
+      )
+
+      tmp = Path(tempfile.mkdtemp(prefix="regression-free-tier-limit-mcp-"))
+      old = os.getcwd()
+      try:
+          os.chdir(tmp)
+          init_db()
+          create_profile(user_id="u-mcp-gate", name="u-mcp-gate", status="active")
+          create_subscription(
+              user_id="u-mcp-gate", plan="free", tier="free", status="active",
+              max_products=1, max_frequency="weekly", allow_custom=False,
+          )
+
+          # 1. Named free user, daily period under the weekly ceiling →
+          #    blocked with the canonical envelope.  The CLI path already
+          #    rejects the same request; this guards the MCP main path.
+          blocked = _handle_add_delivery_schedule(
+              domain="medical-research",
+              cron_expression="0 8 * * *",
+              output_type="digest",
+              period="daily",
+              user_id="u-mcp-gate",
+          )
+          assert blocked["success"] is False, blocked
+          assert blocked["error"]["code"] == ErrorCode.FREE_TIER_LIMIT.value, blocked
+          assert blocked["error"]["actionable"] is True, blocked
+          assert "upgrade" in blocked["error"]["message"].lower(), blocked["error"]["message"]
+
+          # 2. Weekly within the allowance → created.
+          allowed = _handle_add_delivery_schedule(
+              domain="medical-research",
+              cron_expression="0 8 * * 1",
+              output_type="digest",
+              period="weekly",
+              user_id="u-mcp-gate",
+          )
+          assert allowed["created"] is True, allowed
+          assert allowed["schedule"]["period"] == "weekly", allowed
+
+          # 3. Premium user: daily schedule is within the plan ceiling.
+          init_db()
+          create_profile(user_id="u-mcp-prem", name="u-mcp-prem", status="active")
+          create_subscription(
+              user_id="u-mcp-prem", plan="premium", tier="premium", status="active",
+              max_products=8, max_frequency="daily", allow_custom=True,
+          )
+          premium = _handle_add_delivery_schedule(
+              domain="medical-research",
+              cron_expression="0 8 * * *",
+              output_type="digest",
+              period="daily",
+              user_id="u-mcp-prem",
+          )
+          assert premium["created"] is True, premium
+
+          # 4. user_id="" batch path skips the gate entirely.
+          batch = _handle_add_delivery_schedule(
+              domain="medical-research",
+              cron_expression="0 8 * * *",
+              output_type="digest",
+              period="daily",
+              user_id="",
+          )
+          assert batch["created"] is True, batch
+
+          print("MCP_FREE_TIER_LIMIT_OK")
+      finally:
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["MCP_FREE_TIER_LIMIT_OK"]

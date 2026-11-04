@@ -9,6 +9,8 @@ Covers:
   actionable upgrade hint)
 - Cron ``add-delivery`` schedule-frequency check (daily schedule under a
   weekly free-tier limit → same error)
+- ``add_delivery_schedule`` MCP path consults the same gate (#674): daily
+  under a weekly limit → FREE_TIER_LIMIT envelope; weekly created
 - Premium-tier users are NOT limited (regression)
 - ``ErrorCode.FREE_TIER_LIMIT`` exists (28 → 29 enum values)
 
@@ -486,3 +488,53 @@ class TestCronAddDelivery:
             ],
         )
         assert result.exit_code == 0, f"STDERR: {result.output}"
+
+
+# ---------------------------------------------------------------------------
+# MCP add_delivery_schedule: schedule-frequency check for named users (#674)
+# ---------------------------------------------------------------------------
+
+
+class TestMcpAddDeliverySchedule:
+    """MCP ``add_delivery_schedule`` must consult the SAME frequency-gate
+    seam as the CLI path (#674): a named free user's over-frequency request
+    is rejected with the canonical FREE_TIER_LIMIT envelope, while weekly /
+    batch requests are unchanged.  Removing the wiring from
+    ``_handle_add_delivery_schedule`` turns the blocked case red."""
+
+    def test_add_delivery_free_user_daily_blocked_with_envelope(
+        self, user_db: Path
+    ) -> None:
+        from autoinfo.mcp.tools.scheduling import _handle_add_delivery_schedule
+
+        _free_subscription("u-mcp")
+
+        result = _handle_add_delivery_schedule(
+            domain="medical-research",
+            cron_expression="0 8 * * *",  # fires daily
+            output_type="digest",
+            period="daily",
+            user_id="u-mcp",
+        )
+        assert result["success"] is False, result
+        assert result["error"]["code"] == ErrorCode.FREE_TIER_LIMIT.value
+        assert result["error"]["actionable"] is True
+        assert "upgrade" in result["error"]["message"].lower()
+        assert "weekly" in result["error"]["message"].lower()
+        assert "daily" in result["error"]["message"].lower()
+
+    def test_add_delivery_free_user_weekly_allowed(self, user_db: Path) -> None:
+        from autoinfo.mcp.tools.scheduling import _handle_add_delivery_schedule
+
+        _free_subscription("u-mcp-ok")
+
+        result = _handle_add_delivery_schedule(
+            domain="medical-research",
+            cron_expression="0 8 * * 1",  # weekly (Monday)
+            output_type="digest",
+            period="weekly",
+            user_id="u-mcp-ok",
+        )
+        assert result["created"] is True, result
+        assert result["schedule"]["period"] == "weekly"
+        assert result["schedule"]["user_id"] == "u-mcp-ok"

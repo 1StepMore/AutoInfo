@@ -29,6 +29,7 @@ jobs:
           # Passed via env, not shell interpolation, so titles containing
           # $, backticks, or quotes are inert.
           TITLE: ${{ github.event.pull_request.title }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           set -u
 
@@ -37,12 +38,23 @@ jobs:
           # colon, and the subject must be non-empty.
           REGEX='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: .+'
 
+          # dependabot exempts by AUTHOR, not by title: its PR titles are
+          # "Bump <pkg> from X to Y", which the old title-based pattern
+          # (`dependabot\[*`) could never match, so every dependabot PR
+          # failed this check once until a human retitled it (e.g. ruff
+          # 0.17.3 → chore(deps-dev)). Whoever merges retitles the squash
+          # commit anyway, so the PR title carries no changelog value here.
+          if [ "$AUTHOR" = "dependabot[bot]" ]; then
+            echo "Exempt author (dependabot): $TITLE"
+            exit 0
+          fi
+
           # Bot/automation titles that are expected on main but are not
-          # Conventional Commits. Never block these: dependabot bumps
-          # ("dependabot[bot]: bump ..."), merge commits ("Merge ..."), and
-          # release-please's own release PRs ("Release v1.9.0").
+          # Conventional Commits. Never block these: merge commits
+          # ("Merge ...") and release-please's own release PRs
+          # ("Release v1.9.0").
           case "$TITLE" in
-            dependabot\[*|Merge*|Release*) echo "Exempt title (bot/merge/release): $TITLE"; exit 0 ;;
+            Merge*|Release*) echo "Exempt title (merge/release): $TITLE"; exit 0 ;;
           esac
 
           if [[ "$TITLE" =~ $REGEX ]]; then

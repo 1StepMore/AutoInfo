@@ -297,9 +297,17 @@ _SKELETON_ECHO = re.compile(r"<[a-z][a-z0-9 _-]+>", re.IGNORECASE)
 # #41 FP-4 — real HTML element tags (e.g. <figure>/<div>/<img> leaked from raw
 # rich-text source content, rendered as images) are legitimate, NOT template
 # placeholders.  Only a skeleton echo shaped like a *template* slot
-# ("<finding 1>", "<takeaway>") stays flagged.
+# ("<finding 1>", "<takeaway>") stays flagged.  #677 — the full standard
+# document skeleton (<html>/<head>/<title>/<body>/<base>/<noscript>) is real
+# structure too; whitelisting it must not swallow slot-shaped echoes.
 _HTML_TAG_NAMES = frozenset(
     {
+        "html",
+        "head",
+        "title",
+        "body",
+        "base",
+        "noscript",
         "div",
         "figure",
         "img",
@@ -537,7 +545,12 @@ _LONG_B64_RE = re.compile(r"\b[A-Za-z0-9+/]{40,}={0,2}\b")
 # Broken-reference shapes (#351): [View Source](...) targets that are empty or
 # scheme-less; References entries carrying no URL/identifier-bearing token.
 _VIEW_SOURCE_RE = re.compile(r"\[View Source\]\(([^)]*)\)")
-_REF_URL_TOKEN = re.compile(r"https?://|doi:|pmid:|arxiv:|isbn:", re.IGNORECASE)
+# #677 — any ``scheme://`` is a legitimate identifier (http(s), the internal
+# ``draft://`` / ``kb://`` schemes, ...), plus the bare citation schemes.
+# Bare prose with no identifier token still fails.
+_REF_URL_TOKEN = re.compile(
+    r"[a-z][a-z0-9+.\-]*://|doi:|pmid:|arxiv:|isbn:", re.IGNORECASE
+)
 # Cross-domain noise markers (issue #319) / financial dilution markers.
 _AI_COMMERCIAL_NOISE = (
     "贝达药业",
@@ -1123,11 +1136,16 @@ def _no_code_or_key_leak(text: str, domain: str, product: str) -> AssertionResul
     )
 
 
+def _is_bare_reference_list(text: str) -> bool:
+    """#677 — every non-blank line is a reference entry (no heading needed)."""
+    lines = [line for line in text.splitlines() if line.strip()]
+    return bool(lines) and all(_REF_ENTRY.match(line) for line in lines)
+
+
 def _no_broken_reference(text: str, domain: str, product: str) -> AssertionResult:
     """#351 — no empty ``[View Source]()``, no scheme-less ``[View Source]
     (not a url)`` target, and no References entry without a URL-bearing
-    token (http/https or the legit identifier schemes doi:/pmid:/arxiv:/
-    isbn:)."""
+    token (any ``scheme://`` identifier, or doi:/pmid:/arxiv:/isbn:)."""
     bad: list[str] = []
     for m in _VIEW_SOURCE_RE.finditer(text):
         target = m.group(1).strip()
@@ -1137,9 +1155,16 @@ def _no_broken_reference(text: str, domain: str, product: str) -> AssertionResul
             bad.append(f"[View Source] target {target[:30]!r} has no scheme")
     refs = _REFS_HEADING.search(text)
     if refs:
-        for line in text[refs.start() :].splitlines():
-            if _REF_ENTRY.match(line) and not _REF_URL_TOKEN.search(line):
-                bad.append(f"reference without URL/identifier: {line[:40]!r}")
+        candidates = text[refs.start() :].splitlines()
+    elif _is_bare_reference_list(text):
+        # #677 — a standalone reference list with no ``## References`` heading
+        # is still a reference list; bare entries must not slip through.
+        candidates = text.splitlines()
+    else:
+        candidates = []
+    for line in candidates:
+        if _REF_ENTRY.match(line) and not _REF_URL_TOKEN.search(line):
+            bad.append(f"reference without URL/identifier: {line[:40]!r}")
     return AssertionResult(
         "_no_broken_reference",
         not bad,

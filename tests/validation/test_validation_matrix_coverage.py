@@ -55,6 +55,19 @@ def test_no_placeholder_flags_skeleton_echo() -> None:
     assert not vm._no_placeholder(text, "d", "report").passed
 
 
+def test_no_placeholder_accepts_real_html_structure_tags() -> None:
+    """#677 — the standard HTML document skeleton is real structure, not a
+    template slot; slot-shaped echoes (``<takeaway>``) still fail."""
+    html = (
+        "<html><head><title>t</title><base href='/'>"
+        "<noscript>n</noscript></head><body><h1>x</h1></body></html>"
+    )
+    assert vm._no_placeholder(html, "d", "product").passed
+    assert not vm._no_placeholder("<takeaway>", "d", "product").passed
+    assert not vm._no_placeholder("<summary>", "d", "product").passed
+    assert not vm._no_placeholder("_No entries_", "d", "product").passed
+
+
 def test_report_sections_fallback_without_metadata() -> None:
     """_report_sections falls back to structural checks when no Sections
     metadata line exists (empty shell -> fail, substantive body -> pass)."""
@@ -258,6 +271,26 @@ def test_reference_url_parse_edges() -> None:
         "# T\n\n## References\n\n1. **A** — (arxiv:2301.00001)\n",
         "d",
         "report",
+    ).passed
+
+
+def test_reference_accepts_any_scheme_but_rejects_bare_text() -> None:
+    """#677 — any ``scheme://`` identifier (internal ``draft://`` / ``kb://``
+    included) is legitimate; bare prose with no identifier still fails."""
+    assert not vm._no_broken_reference(
+        "# T\n\n## References\n\n1. Foo bar\n", "d", "report"
+    ).passed
+    # A bare reference list with no heading is still a reference list.
+    assert not vm._no_broken_reference("1. Foo bar\n", "d", "report").passed
+    assert vm._no_broken_reference("1. Foo — draft://a/b\n", "d", "report").passed
+    assert vm._no_broken_reference(
+        "# T\n\n## References\n\n1. Foo — draft://a/b\n", "d", "report"
+    ).passed
+    assert vm._no_broken_reference(
+        "# T\n\n## References\n\n1. Foo — kb://entry/42\n", "d", "report"
+    ).passed
+    assert vm._no_broken_reference(
+        "# T\n\n## References\n\n1. Foo — https://x.y/z\n", "d", "report"
     ).passed
 
 

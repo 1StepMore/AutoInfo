@@ -675,7 +675,7 @@ but the matrix row additionally requires the real call and the artifact.
 | EV-I3 | Metrics | MCP `get_metrics()` and `get_prometheus_metrics()`; REST `curl http://localhost:8741/metrics` | The metrics JSON and the Prometheus text exposition from the REST endpoint | no | observability |
 | EV-I4 | Alert rules | MCP `add_alert_rule(domain, topic_keywords, relevance_threshold, channel, kind)` → `get_alert_rules()` → trigger a rule → `remove_alert_rule(...)` | The rules YAML file (persisted), the alert list JSON, and the dispatch log line when the rule fired | no | webhooks-alerts |
 | EV-I5 | REST API | Start `uvicorn autoinfo.api.server:app --port 8741`; `curl` each endpoint: `GET /health`, `GET /api/v1/entries`, `POST /api/v1/entries`, `GET /api/v1/entries/{id}`, `DELETE /api/v1/entries/{id}`, `GET /api/v1/search`, `GET /dashboard`, `GET /metrics` | The envelope JSON for each endpoint (success + error envelopes) and the dashboard HTML | no | rest-api |
-| EV-I6 | Validation meta-coverage | MCP `list_validation_scenarios()`; `run_validation_scenario` for 186; then `python3 scripts/coverage_audit.py` | The 185-scenario inventory JSON, per-scenario results, and the audit report showing **149/149** covered with zero MISSING | no | meta-validation |
+| EV-I6 | Validation meta-coverage | MCP `list_validation_scenarios()`; `run_validation_scenario` for 187; then `python3 scripts/coverage_audit.py` | The 187-scenario inventory JSON, per-scenario results, and the audit report showing **149/149** covered with zero MISSING | no | meta-validation |
 
 ## 2.6 Step-by-Step Walkthrough
 

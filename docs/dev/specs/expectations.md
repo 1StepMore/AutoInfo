@@ -58,7 +58,7 @@ Expectations are grouped by journey phase.
 | **Agent: MCP server connection** | Agent connects to MCP server via stdio (SSE transport is future work). Calls `health_check` tool to verify connectivity. Tool manifest is auto-discovered via MCP protocol. |
 | **Output format — human** | Plain text help. `--json` flag available globally for machine-readable output. |
 | **Output format — agent** | JSON-RPC over stdio. All tools return structured dicts. Tool descriptions are self-documenting via MCP protocol. |
-| **Error responses** | Unified dual-format (flat + envelope) for backward-compatible consumer migration. `ErrorCode` enum (26 values, all CamelCase — T-S-05) covers NotFound, DomainNotFound, ValidationError, InternalError, and additional codes: `LLMNotConfigured` (LLM guard, v1.8.1), `ProcessingFailed` (processing-run failure), `EmptyResult`, `ConfigNotFound`, `DirectorOnly` (director-gated tools), `ReadOnlyServer` (read-only server guard), `FreeTierLimit` (free-tier usage gating). Four never-emitted codes were retired in T-S-05: `AuthRequired`/`SessionExpired` (no auth path yet — re-add with SSE transport), `RateLimited` (no emitting MCP surface), and `NoCachedItems` (a `{status: "noop"}` success, never an error). Flat format returns `{error_code, message, actionable}`; envelope format returns `{success: false, error: {code, message, actionable}}`. |
+| **Error responses** | Unified dual-format (flat + envelope) for backward-compatible consumer migration. `ErrorCode` enum (29 values, all CamelCase — T-S-05) covers NotFound, DomainNotFound, ValidationError, InternalError, and additional codes: `LLMNotConfigured` (LLM guard, v1.8.1), `ProcessingFailed` (processing-run failure), `EmptyResult`, `ConfigNotFound`, `DirectorOnly` (director-gated tools), `ReadOnlyServer` (read-only server guard), `FreeTierLimit` (free-tier usage gating). Four never-emitted codes were retired in T-S-05: `AuthRequired`/`SessionExpired` (no auth path yet — re-add with SSE transport), `RateLimited` (no emitting MCP surface), and `NoCachedItems` (a `{status: "noop"}` success, never an error). Flat format returns `{error_code, message, actionable}`; envelope format returns `{success: false, error: {code, message, actionable}}`. |
 | **Key info visible** | Human: commands, config location, version. Agent: tool list, resource list, server instructions. |
 
 #### F03 — Configuration Initialization ✅
@@ -805,17 +805,17 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | UX Detail | Specification |
 |-----------|---------------|
 | **Version model** | Same `source_url` collected again → new version created automatically. Previous version retained with full history. Version tracking via git (already exists for 03-Wiki, extends to 01-Raw). |
-| **Version metadata** | Each KB entry tracks: `version: int` (starting at 1), `previous_version_id: UUID?` (link to prior version), `collected_at: datetime`, `updated_at: datetime`. Frontmatter includes all version fields. |
-| **Re-collection flow** | Collection pipeline detects existing entry with same `source_url` → creates versioned Raw entry (`knowledge/<domain>/01-Raw/<collection>/<slug>_v2.md`) → links to previous version in frontmatter (`previous_version: <uuid-v1>`). |
-| **Version comparison** | MCP tool `compare_versions(entry_id, v1, v2)` — returns structured diff: title changes, summary changes, key point additions/removals. Agent uses to highlight "what changed since last collection." |
-| **History pruning** | Retain last N versions per entry (configurable, default: 10). Older versions archived to compressed storage after 90 days. Never automatically deleted without explicit purge. |
+| **Version metadata** | Each KB entry tracks: `version: int` (starting at 1), `previous_version: int` + `supersedes: <entry_id>` (link to prior version), `collected_at: datetime`, `updated_at: datetime`. Frontmatter includes all version fields. |
+| **Re-collection flow** | Collection pipeline detects existing entry with same `source_url` → creates versioned Raw entry (`knowledge/<domain>/01-Raw/<collection>/<slug>_v2.md`) → links to previous version in frontmatter (`previous_version: <int>`, `supersedes: <uuid-v1>`). |
+| **Version comparison** | MCP tool `compare_versions(entry_id, version_a, version_b)` — returns structured diff: title changes, summary changes, key point additions/removals. Agent uses to highlight "what changed since last collection." |
+| **History pruning** | Retain last 5 versions per entry (`KBStore._prune_versions`, `max_versions=5`). Older `.bak` snapshots are pruned automatically; content remains recoverable from git history (`git_sha` recorded per version). |
 
 #### F51 — Stale Content Handling ✅
 
 | UX Detail | Specification |
 |-----------|---------------|
-| **Stale marking** | Entries past domain TTL are automatically marked `freshness: stale` with `staleness_date: <date>`. Marked during processing pipeline or on-demand via `refresh_staleness()` MCP tool. |
-| **Search demotion** | Stale entries ranked lower in hybrid search. Freshness score contributes 20% to overall relevance ranking. Configurable via `search.freshness_weight: 0.2` in domain config. |
+| **Stale marking** | Entries past domain TTL are automatically marked `freshness: stale` with `staleness_date: <date>`. Marked during processing pipeline or on-demand via `mark_stale(entry_id)` MCP tool. |
+| **Search demotion** | Stale entries are demoted to the bottom of hybrid search results (`include_stale=False` default in `search_knowledge_base`); `include_stale=True` mixes them normally. |
 | **Preservation principle** | Stale entries are NEVER deleted. They remain fully accessible via direct entry lookup, explicit search with `--include-stale`, or archived KB view. User or agent must explicitly delete. |
 | **Default visibility** | Standard views (digest generation, summary lists, API feeds) exclude stale entries by default. `--include-stale` flag overrides. Admin views display stale entries with visual indicator (e.g., 🟡 stale badge). |
 | **Re-fresh on re-collection** | When same source is collected again (F50), the new version supersedes the old. The old entry's staleness status becomes irrelevant — it is superseded rather than stale. |
@@ -836,11 +836,11 @@ The research report reveals a clear **polarization** between "engineering-feasib
 | UX Detail | Specification |
 |-----------|---------------|
 | **URL dedup across runs** | Same source URL collected in different runs → detected via exact URL match. Existing entry gets versioned update (F50). |
-| **Cross-source similarity detection** | Items from different sources covering same content → detected via: (1) title TF-IDF cosine similarity > 0.85, (2) content sentence-level Jaccard similarity > 0.7. Flagged as potential cross-source duplicates. |
-| **LLM-assisted merge** | When cross-source duplicates confirmed, agent can invoke `merge_items(primary_id, secondary_ids, mode)` → LLM consolidates metadata (combines sources, reconciles field differences, preserves both source provenance URLs). |
-| **Merge result** | New KB entry with `merged_from: [uuid1, uuid2]`, `sources: [source1, source2]`, consolidated title/summary/key points, combined entity list. Original entries marked `status: superseded` with `superseded_by: new_uuid`. |
+| **Cross-source similarity detection** | Items from different sources covering same content → detected via: (1) PMID / DOI match, (2) fuzzy title similarity (`SequenceMatcher`, threshold 0.85), (3) cross-domain event match (shared proper noun + event word within the near-duplicate window). Flagged as potential cross-source duplicates. |
+| **Merge** | When cross-source duplicates confirmed, agent can invoke `merge_items(item_ids, strategy)` → deterministic merge (`simple` concatenation or `title_first`; no LLM). The merged result is returned for review — it is not automatically saved to the KB. |
+| **Merge result** | `{status, entry, original_items, strategy_used}` — content combined per strategy; nothing is written to the KB automatically, and the original entries are left untouched for the agent to dispose of explicitly. |
 | **Trust boundary** | Merged entries are Draft-tier (promoted by the agent via `promote_kb_draft`, no human gate). Agent cannot auto-merge into Wiki. Merge decision is logged in audit trail with full rationale. |
-| **MCP tools** | `find_similar_items(entry_id, threshold)` — scan KB for similar entries by title + content similarity. `merge_items(primary_id, secondary_ids, mode)` — merge with auto (LLM-driven) or manual (keep primary) mode. |
+| **MCP tools** | `find_similar_items(query, threshold, limit)` — scan KB entries by text similarity. `merge_items(item_ids, strategy)` — deterministic merge (`simple` concatenation or `title_first`); returns the merged result for review. |
 
 ### 3.12 Phase 12: Operational Observability
 
@@ -1220,7 +1220,7 @@ Associated spec files:
 
 - [`expectations.md`](./expectations.md) — F01-F72 founder expectation catalog (this file)
 - [`pipeline.md`](./pipeline.md) — Collection pipeline, KB pipeline, processing & LLM extraction, import, CEFR, cross-collection dedup & merge
-- [`quality-gates.md`](./quality-gates.md) — G0-G5 quality gates, D1-D3 delivery gates: catalog, philosophy, retry strategies, configuration
+- [`quality-gates.md`](./quality-gates.md) — G0-G5 + G7 quality gates, D1-D3 delivery gates: catalog, philosophy, retry strategies, configuration
 - [`delivery.md`](./delivery.md) — Output generation, delivery channels, error recovery & resilience, end user lifecycle
 - [`operations.md`](./operations.md) — Cost governance, data privacy & compliance, knowledge lifecycle (TTL, versioning, decay), observability
 - [`mcp-tools.md`](./mcp-tools.md) — Complete MCP tool inventory (149 tools across 35 categories)

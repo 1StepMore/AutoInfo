@@ -188,7 +188,7 @@ Digest generated as HTML and emailed to subscribers.
 1. Start the FastAPI server: uvicorn autoinfo.api.server:app --port 8741
 2. curl http://localhost:8741/health → {"status": "ok"}
 3. curl http://localhost:8741/api/v1/entries?domain=medical-research → paginated entries
-4. curl -X POST http://localhost:8741/api/v1/search -H "Content-Type: application/json" -d '{"query": "embryo"}'
+4. curl 'http://localhost:8741/api/v1/search?q=embryo' → hits (the route is GET; a POST returns 405)
 ```
 
 Full KB CRUD over HTTP, no auth required (localhost security). Errors use the

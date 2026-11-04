@@ -3,7 +3,7 @@
 > Extracted from `founder-expectations.md §4, §12.13`. See also: F18 (Quality Rating & Filtering), F24-F25 (Output Generation).
 > **B3 lifecycle:** `docs/dev/specs/user-lifecycle-definition.md` §4.3 (B3 Configuration Scope). Quality gate thresholds are configured by B3 as part of the unified director configuration. See also `operations.md §7.1` (B3.1 Unified Director Configuration).
 >
-> **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — this spec covers G0-G5 quality gates (A1-A7 Pipeline) and D1-D3 delivery gates (A4 Products). Cross-reference CD entries in the catalog for gap context.
+> **Keystone matrix:** [`docs/dev/cross-dimensional-catalog.md`](../cross-dimensional-catalog.md) — this spec covers the G0-G5 + G7 quality gates (A1-A7 Pipeline) and D1-D3 delivery gates (A4 Products). Cross-reference CD entries in the catalog for gap context.
 
 Quality gates run automatically on each collection and (for delivery-quality gates) at product output time. They verify output quality and ensure paying customers receive genuinely high-quality products.
 
@@ -133,7 +133,7 @@ At product output time (for PROCESSED products), additional gates verify deliver
 | **D2: Format integrity** | Rendered output parses correctly (valid HTML, valid PDF, valid JSON schema); Markdown additionally passes product self-consistency (#445): a stated self-count must equal the items the same product renders (**hard block**, zero false positives), and a narrative entity the body never states is **flagged/escalated** (never blocked — measured ~27% false-positive rate on real output) | Block delivery (self-count contradiction: unconditional); fall back to plain-text format for parse failures; flag for entity escalation |
 | **D3: Freshness** | All cited items are within configured recency window (default 30 days) | Flag stale citations; optional block per domain config |
 
-**Packaged gate reports**: validation-delivery packaging (`scripts/validation_delivery.py`) additionally persists a per-product `01-QA-GATES/gate-report-<product>.md` (human-readable) + `.json` (agent-consumable) recording that product's D1-D3 delivery-gate and authenticity verdicts, plus a `gate-reports-index.json` whose `rejected` list stays consistent with the package `manifest.json`'s `rejected` key. These packaged reports record delivery-gate outcomes only — G0-G5 run at the process layer and are not recomputed in packaging.
+**Packaged gate reports**: validation-delivery packaging (`scripts/validation_delivery.py`) additionally persists a per-product `01-QA-GATES/gate-report-<product>.md` (human-readable) + `.json` (agent-consumable) recording that product's D1-D3 delivery-gate and authenticity verdicts, plus a `gate-reports-index.json` whose `rejected` list stays consistent with the package `manifest.json`'s `rejected` key. These packaged reports record delivery-gate outcomes only — G0-G5/G7 run at the process layer and are not recomputed in packaging.
 
 ---
 

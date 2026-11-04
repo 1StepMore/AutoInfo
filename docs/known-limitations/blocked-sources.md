@@ -169,7 +169,7 @@ when a source has a public API, RSS feed, or permissive scraping policy.
 #### 微信公众号 (WeChat Official Account)
 - **Type**: Platform API (OAuth 2.0)
 - **Blocking Reason**: WeChat OA Platform API is restricted to account management (for OA owners) and customer service. There is no public API to search or retrieve articles across official accounts. Articles are only accessible within the WeChat app or via individual article URLs (no index, no RSS). Sogou WeChat Search provides partial indexing but is rate-limited and ToS-restricted. China-only platform with regional restrictions.
-- **Alternative**: For organizations that also publish to the open web, general RSS feeds and AutoInfo's web collector (trafilatura + Playwright) can capture cross-posted content. For Chinese news, 36kr (integrated) and Sina Finance RSS provide free alternatives.
+- **Alternative**: For organizations that also publish to the open web, general RSS feeds and AutoInfo's web collector (trafilatura) can capture cross-posted content. For Chinese news, 36kr (integrated) and Sina Finance RSS provide free alternatives.
 - **Feasibility**: Unlikely. WeChat's walled-garden design prevents external indexing. No API for content search. Only individual article URLs (when known) can be fetched via the web collector.
 
 ---

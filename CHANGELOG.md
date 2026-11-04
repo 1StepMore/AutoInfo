@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.15](https://github.com/1StepMore/AutoInfo/compare/v1.21.14...v1.21.15) (2026-11-04)
+
+
+### Bug Fixes
+
+* **delivery:** wire MCP add_delivery_schedule into the free-tier frequency gate ([#674](https://github.com/1StepMore/AutoInfo/issues/674)) ([#686](https://github.com/1StepMore/AutoInfo/issues/686)) ([ccf6bb3](https://github.com/1StepMore/AutoInfo/commit/ccf6bb3466ff4483d950ce1ee90ea4ea1e5c787e))
+
 ## [1.21.14](https://github.com/1StepMore/AutoInfo/compare/v1.21.13...v1.21.14) (2026-11-04)
 
 

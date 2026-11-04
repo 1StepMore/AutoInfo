@@ -53,3 +53,20 @@ repos:
         language: system
         always_run: false
         pass_filenames: false
+
+      # Left-shifts the CI doc-count gates (Drift Guard + DriftGuard test) to
+      # commit time: `scripts/doc_inventory.py --check` fails in CI whenever a
+      # change adds a tool/test/doc without regenerating README counts and
+      # docs/dev/doc-inventory.md — catching it here is a 13s local check
+      # instead of a ~10-min round-trip. Whole-repo state, not per-file, so it
+      # runs unconditionally. The env probe keeps it from false-blocking on
+      # machines where autoinfo is not importable: --check exits 1 for an
+      # environment mismatch exactly like real drift, so without the probe the
+      # hook would fail everywhere the editable install is missing. CI's
+      # Drift Guard remains the enforcement point for those machines.
+      - id: doc-inventory-check
+        name: doc-inventory-check (README counts + doc-inventory.md freshness)
+        entry: 'bash -c ''PY=.venv/Scripts/python.exe; [ -x "$PY" ] || PY=.venv/bin/python; [ -x "$PY" ] || PY=python3; if ! "$PY" -c "import autoinfo" 2>/dev/null; then echo "doc-inventory-check: SKIPPED (autoinfo not importable — environment mismatch, not doc drift; CI Drift Guard still enforces)"; exit 0; fi; "$PY" scripts/doc_inventory.py --check'''
+        language: system
+        always_run: true
+        pass_filenames: false

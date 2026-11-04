@@ -254,13 +254,17 @@ jobs:
           done
 
           if [ "$merged" != true ]; then
-            # Fail loudly (#494). This used to warn and exit 0, so an expired
-            # poll produced a silent half-release: manifest and _version.py
-            # already bumped, no tag, no GitHub release, exit code 0. The
-            # reconcile-release-tag job heals it within one timer tick, so a red
-            # run here is informative rather than harmful.
-            echo "::error::PR #${PR_NUMBER} was not MERGED after $((ATTEMPTS * INTERVAL / 60)) min; the release tag was NOT cut. reconcile-release-tag will cut it, but a release PR still open past the poll bound needs a human."
-            exit 1
+            # De-red the poll timeout (#494 follow-up). History: this used to
+            # warn and exit 0, which made an expired poll a SILENT half-release
+            # (manifest/_version bumped, no tag, no release), so it was changed
+            # to ::error + exit 1. But reconcile-release-tag heals a missed tag
+            # within one timer tick of the merge push, so the red X only added
+            # noise: #670 and #685 both landed minutes after this poll expired
+            # and both releases completed via reconcile/manual dispatch. The
+            # genuinely human-blocking case — workflow runs stuck awaiting
+            # approval — is still failed loudly by the step below (it runs
+            # with always()), so a notice is the right severity here.
+            echo "::notice::PR #${PR_NUMBER} was not MERGED after $((ATTEMPTS * INTERVAL / 60)) min; this poll will not cut the release tag. reconcile-release-tag heals it on the merge push (or next schedule tick). If the PR is stuck on approvals, the step below fails loudly; otherwise check the release PR manually."
           fi
 
           gh workflow run release-please.yml

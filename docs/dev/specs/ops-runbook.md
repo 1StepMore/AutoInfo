@@ -378,7 +378,7 @@ python -m autoinfo.cli output digest --domain {domain} --period daily --dry-run
 ## 3. Monitoring & Alerting
 
 > **Cross-ref:** CD-004 (Cron Reliability & Backup), CD-007 (Delivery Channel Health Monitoring), CD-013 (Live Operations Dashboard).
-> **Current gap:** Prometheus endpoint exists with 8 metrics. No alert rules defined. No PagerDuty/webhook integration. No runbook templates.
+> **Current gap:** Prometheus endpoint exists with 9 metrics. No alert rules defined. No PagerDuty/webhook integration. No runbook templates.
 
 ### 3.1 Prometheus Metrics Reference
 
@@ -398,6 +398,7 @@ See `operations.md` §4.3 for the canonical Prometheus metrics reference (endpoi
 | `delivery_failures_total` | Counter | Failed deliveries — proxy for per-channel health (CD-007) |
 | `billing_stripe_sync_failures_total` | Counter | Billing sync failures (Stripe) |
 | `active_users` | Gauge | Active end-user profile count |
+| `outbox_persist_failures_total` | Counter | Agent notifications lost before outbox persistence |
 
 **Not exported** (spec-only; alerts referencing them cannot fire today):
 

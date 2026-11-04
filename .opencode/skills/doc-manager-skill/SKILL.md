@@ -56,15 +56,15 @@ When you modify code, the listed docs **must** be reviewed and updated:
 
 | Code change | Docs to update | What to update |
 |-------------|----------------|----------------|
-| MCP server — new tool / param / ErrorCode | `AGENTS.md`, `README.md`, `docs/dev/specs/mcp-tools.md`, `docs/skills/autoinfo-skill/SKILL.md`, `docs/skills/autoinfo-skill/onboarding-walkthrough.md`, `docs/dev/mcp-usage-examples.md`, `docs/schemas/*.json` (JSON-LD schemas — M4T35 round-trip validates against them), `CHANGELOG.md` | Tool Discovery + MCP tables, tool count, spec inventory, worked examples, JSON-LD schema pinning, scenarios per `docs/dev/validation-scenario-contract.md` |
+| MCP server — new tool / param / ErrorCode | `AGENTS.md`, `README.md`, `docs/dev/specs/mcp-tools.md`, `.opencode/skills/autoinfo-skill/SKILL.md`, `.opencode/skills/autoinfo-skill/onboarding-walkthrough.md`, `docs/dev/mcp-usage-examples.md`, `docs/schemas/*.json` (JSON-LD schemas — M4T35 round-trip validates against them), `CHANGELOG.md` | Tool Discovery + MCP tables, tool count, spec inventory, worked examples, JSON-LD schema pinning, scenarios per `docs/dev/validation-scenario-contract.md` |
 | CLI — group / flag / parity change | `README.md`, `AGENTS.md`, `docs/dev/cli-mcp-rest-parity.md`, `CHANGELOG.md` | CLI command table (31 groups), flag examples, parity matrix |
 | New collector / source type | `README.md`, `CHANGELOG.md`, `docs/dev/required-api-keys.md`, `docs/known-limitations/blocked-sources.md` | Feature list, Status table (handler count), demo domains, env-var catalog, blocked-source policy (+ `docs/dev/specs/pipeline.md` if collection config changes) |
-| Quality gates (G0-G5 / D1-D3) | `docs/dev/specs/quality-gates.md`, `docs/skills/translator-qa-skill/SKILL.md` (translation QA pipeline — G5 gate), `AGENTS.md`, `README.md`, `CHANGELOG.md` | Gate catalog, hard/soft table, retry philosophy |
+| Quality gates (G0-G5 / D1-D3) | `docs/dev/specs/quality-gates.md`, `.opencode/skills/translator-qa-skill/SKILL.md` (translation QA pipeline — G5 gate), `AGENTS.md`, `README.md`, `CHANGELOG.md` | Gate catalog, hard/soft table, retry philosophy |
 | KB pipeline / KB schema | `AGENTS.md` (Architecture Rules), `docs/dev/specs/pipeline.md`, `docs/dev/specs/data-models.md` (consolidated data-model schemas), `README.md`, `docs/archive/kb-pipeline-reference.md` (archived — only if referenced) | 4-tier rules (01-Raw sole entry, 03-Wiki append-only), schema |
 | LLM extraction / config | `AGENTS.md` (LLM Configuration), `docs/dev/specs/pipeline.md`, `docs/dev/required-api-keys.md`, `README.md` | Provider/model/fallback docs, extraction spec, env-var catalog |
 | Output formats / delivery channels | `README.md`, `AGENTS.md`, `docs/dev/specs/delivery.md`, `CHANGELOG.md` | Format lists, channel matrix (13), output spec |
 | End-user lifecycle / billing | `docs/dev/specs/delivery.md`, `docs/dev/specs/user-lifecycle-definition.md`, `docs/dev/specs/operations.md` (cost, privacy, lifecycle), `docs/dev/enduser-coverage-matrix.md` (maintained mapping; `enduser-capabilities-guide.md` archived 2026-08-23), `AGENTS.md`, `README.md`, `CHANGELOG.md` | User types (B1/B2/B3), subscription tiers, check_access, B1 capabilities |
-| Validation engine / scenarios | `docs/dev/validation-scenario-contract.md`, `docs/dev/specs/end-user-matrix.yaml` (E8 matrix source, consumed by `scripts/coverage_matrix.py`), `docs/archive/autoinfo-validation-master-plan/` (archived), `docs/dev/validation-reports/` (acceptance + evidence, produced by `scripts/validation_delivery.py` / `scripts/validation_report.py`), `AGENTS.md`, `README.md`, `CHANGELOG.md`, `src/autoinfo/mcp/scenarios/` | Scenario counts (171 = 86 + 85 regression), schema fields, per-run acceptance evidence |
+| Validation engine / scenarios | `docs/dev/validation-scenario-contract.md`, `docs/dev/specs/end-user-matrix.yaml` (E8 matrix source, consumed by `scripts/coverage_matrix.py`), `docs/archive/autoinfo-validation-master-plan/` (archived), `docs/dev/validation-reports/` (acceptance + evidence, produced by `scripts/validation_delivery.py` / `scripts/validation_report.py`), `AGENTS.md`, `README.md`, `CHANGELOG.md`, `src/autoinfo/mcp/scenarios/` | Scenario counts (187 = 86 + 101 regression), schema fields, per-run acceptance evidence |
 | Alert rules / agent callbacks | `docs/dev/specs/operations.md` §4.6 (source-health polling; `agent-alerting.md` archived 2026-08-23), `AGENTS.md`, `README.md`, `CHANGELOG.md` | Alert rule config, YAML persistence, dispatch |
 | Research / market intelligence | `docs/dev/research/*` (active research reports, e.g. 综合报告-资讯付费与AI触达研究) | Update only when a research deliverable is added/revised; not code-coupled |
 | Feature addition / scope change | `docs/dev/cross-dimensional-catalog.md` (keystone — mandatory), `docs/dev/new-domain-guide.md`, `docs/dev/specs/multi-tenancy-auth.md`, `docs/dev/specs/ops-runbook.md`, all P0 docs, `CHANGELOG.md` | Cell statuses (🟢/🟡/🔴/🟠), gap-to-spec mapping, domain onboarding, auth/ops implications |
@@ -111,7 +111,7 @@ Before identifying affected docs, decide **whether this change needs an ADR**:
   Status table (must match README), References.
 - `CHANGELOG.md`: entry format `## <version> (<date>)` with
   Added / Changed / Fixed / Infrastructure sections.
-- Skill files (`docs/skills/*/SKILL.md`): tool tables, workflows, constraints,
+- Skill files (`.opencode/skills/*/SKILL.md`): tool tables, workflows, constraints,
   code examples.
 - Spec files (`docs/dev/specs/*.md`): only the spec owning the changed topic.
 

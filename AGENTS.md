@@ -59,7 +59,7 @@ Full KB/collection pipeline detail: `docs/dev/specs/pipeline.md` §1–2; ration
 ### Collection Pipeline
 
 Two phases, separable in time: `collect` (parallel source handlers → raw JSON cache to
-`collections/` → dedup URL→DOI→fuzzy title→semantic → collection log), then `process` (LLM
+`collections/` → dedup URL→PMID/DOI→fuzzy title→cross-domain event → collection log), then `process` (LLM
 extraction with per-task model config → quality gates → 01-Raw KB entries). Every handler
 implements the `Collector` ABC's `fetch_items(ctx)` contract via `collectors/registry.py` —
 adding a source is one class plus one registration, never a dispatch-chain edit.

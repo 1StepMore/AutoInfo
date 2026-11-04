@@ -73,7 +73,7 @@
 | Stage | Description | Entry Point | Exit Criteria |
 |-------|-------------|-------------|---------------|
 | **A1 Collection** | Source handlers fetch items in parallel → dedup → collection log | Source config, cron trigger | Raw JSON cached to `collections/`, dedup applied |
-| **A2 Extraction** | LLM extraction → quality gates (G0-G5) → structured summaries | Cached raw items | Summaries with TL;DR, key points, entities, scores |
+| **A2 Extraction** | LLM extraction → quality gates (G0-G5, G7) → structured summaries | Cached raw items | Summaries with TL;DR, key points, entities, scores |
 | **A3 Knowledge Base** | 4-tier pipeline (01-Raw → 02-Draft → 03-Wiki), search, Q&A, graph | Summaries flagged for KB | KB entries in Raw/Draft/Wiki tiers |
 | **A4 Products** | RAW feeds + PROCESSED assembly (digests, reports, tutorials, alerts) | KB entries, schedule triggers | Product instances with lifecycle state |
 | **A5 Delivery** | Channel routing (SMTP, Telegram, WeChat, Discord, DingTalk, FeiShu, webhook, REST, export) | Product instances, subscription configs | Delivery log entries with SLA tracking |
@@ -114,7 +114,7 @@ Each cell: 🟢 = Fully delivered / complete, 🟡 = Partially delivered / gaps 
 
 | Lifecycle → | B2.1 Discover | B2.2 Connect | B2.3 Configure | B2.4 Operate | B2.5 Monitor | B2.6 Report |
 |-------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **A2 Extraction** | 🟢 `get_domain_schema`, `list_available_models` | 🟢 MCP tools | 🟢 Per-task LLM config, custom extraction fields | 🟢 `process_collection`, quality gates G0-G5 | 🟢 Async job_id polling with progress tracking | 🟢 Config via MCP tools |
+| **A2 Extraction** | 🟢 `get_domain_schema`, `list_available_models` | 🟢 MCP tools | 🟢 Per-task LLM config, custom extraction fields | 🟢 `process_collection`, quality gates G0-G5, G7 | 🟢 Async job_id polling with progress tracking | 🟢 Config via MCP tools |
 
 | Lifecycle → | B3.1 Configure | B3.2 Monitor | B3.3 Intervene | B3.4 Iterate | B3.5 Scale |
 |-------------|:---:|:---:|:---:|:---:|:---:|
@@ -417,7 +417,7 @@ Gaps where code exists but is incomplete, broken by design, or has significant m
 - **Evidence:** `kb.py:4136-4158` — direct lookup by `entry_id`, single `update_frontmatter_field` call. No iteration.
 
 #### CD-027: merge_items Partially Implemented
-- **Description:** `merge_items` MCP exists and uses LLM-assisted merge. But: no conflict resolution strategy, no merge history tracking, no undo capability.
+- **Description:** `merge_items` MCP exists but is deterministic concatenation (`simple` / `title_first`) — no LLM-assisted merge, no conflict resolution strategy, no merge history tracking, no undo capability.
 - **Affected Stages:** A3 (KB)
 - **Affected Users:** B2 (Direct Agent — merge without safety net)
 - **Existing Cross-Ref:** AUD-08
@@ -1064,4 +1064,4 @@ Post-concierge-wave count refresh (source of truth: on-disk reality, re-derived 
 
 ---
 
-*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (15 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap + feasibility verdicts (absorbed from enduser-coverage-matrix, `docs/dev/enduser-coverage-matrix.md`). Last updated 2026-09-13 (counts: 182 scenarios, 149 MCP tools / 35 categories, CLI 31 groups, readonly-mode 4 tools, 01-QA-GATES, free-tier + mvp CLI, REST surface parity). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*
+*End of Cross-Dimensional Catalog. 42 gaps cataloged across 5 types (15 resolved/merged after codebase reality check), with full priority matrix and implementation roadmap + feasibility verdicts (absorbed from enduser-coverage-matrix, `docs/dev/enduser-coverage-matrix.md`). Last updated 2026-09-13 (counts refreshed 2026-11-04: 186 scenarios, 149 MCP tools / 35 categories, CLI 31 groups, readonly-mode 4 tools, 01-QA-GATES, free-tier + mvp CLI, REST surface parity). This is the keystone product definition document — start here, then navigate to the relevant spec in `docs/dev/specs/`.*

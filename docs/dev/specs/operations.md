@@ -387,33 +387,39 @@ Calculated periodically (or on-demand via MCP tool). Used to suggest source addi
 
 When re-collecting a source that was previously collected:
 
-1. New collection creates a new set of Items (new `collected_at`, new `content_hash`)
-2. Each KB entry has a `version` field in frontmatter (integer, starts at 1)
-3. If content changed (different `content_sha`), a new version is created alongside the old (old preserved in git)
+1. Re-collecting a URL already present in the KB bumps the new Item's `version` to `existing.version + 1` and sets `previous_version` / `supersedes=existing.entry_id` (`_collect_from_source`)
+2. Each KB entry carries `version` / `previous_version` / `supersedes` in its frontmatter (integer version, starts at 1)
+3. The superseded entry stays on disk and in git history; the new version is written as its own entry
 4. `get_entry_history(entry_id)` returns all versions
-5. `compare_versions(entry_id, v1, v2)` returns structured diff (added/removed/modified sections)
+5. `compare_versions(entry_id, version_a, version_b)` returns a field-by-field diff
+
+There is no content hash in the model: re-collecting a known URL always bumps
+the version, and dedup decisions are URL/identifier/title based rather than
+content-diff based.
 
 ### 3.4 Cross-Collection Dedup & Merge
 
 | Level | Method | Scope | Cost |
 |-------|--------|-------|------|
 | 1 | URL exact match | All items in collection cache | O(1) |
-| 2 | PMID/DOI/arXiv ID match | All KB tiers + cache | O(1) |
-| 3 | Fuzzy title similarity (Levenshtein, threshold 0.85) | Items within configurable window | O(n) |
-| 4 | Cross-source semantic similarity (LLM) | Level 3 flagged candidates | 1 LLM call per pair |
+| 2 | PMID / DOI match | All KB tiers + cache | O(1) |
+| 3 | Fuzzy title similarity (`SequenceMatcher`, threshold 0.85; G2 windowed at 30 days) | All KB entries | O(n) |
+| 4 | Cross-domain event match (shared proper noun + death/obituary event word within `_NEAR_DUP_WINDOW_DAYS`) | All KB entries | O(n) |
 
-**Merge rule**: Level 4 LLM decides whether to merge (combine source URLs + metadata) or keep separate.
+**Merge rule**: detection is deterministic — there is no LLM duplicate adjudication. A match marks the newer item a duplicate; merging is an explicit agent step (`find_similar_items` → `merge_items`).
 
 ### 3.5 MCP Lifecycle Tools
 
 | Tool | Description |
 |------|-------------|
-| `set_ttl(domain, ttl_days)` | Configure per-domain entry TTL |
-| `compare_versions(entry_id, v1, v2)` | Structured diff between versions |
-| `find_similar_items(entry_id, threshold)` | Semantic similarity search across KB |
-| `merge_items(target_id, source_ids)` | LLM-assisted merge of duplicate entries |
-| `refresh_staleness(domain)` | Re-scan and update stale flags for domain |
-| `get_domain_decay(domain)` | Return decay metrics object |
+| `calculate_freshness_score(entry_id, ttl_days)` | Freshness score (0.0-1.0) from entry age vs TTL |
+| `compare_versions(entry_id, version_a, version_b)` | Structured field-by-field diff between two versions |
+| `mark_stale(entry_id)` | Flag an entry stale |
+| `find_similar_items(query, threshold, limit)` | `SequenceMatcher` similarity scan over KB entries |
+| `merge_items(item_ids, strategy)` | Merge 2+ entries — `simple` concatenation or `title_first` (no LLM) |
+| `get_domain_decay(domain, ttl_days)` | Return decay metrics object |
+
+There is no `set_ttl` / `refresh_staleness` tool: per-domain TTL is the `domains[].ttl_days` field in `.autoinfo/config.yaml` (defaulting per domain via `DOMAIN_DEFAULT_TTL_DAYS`), and staleness is recomputed on read by the tools above.
 
 ### 3.6 Cron Reliability
 
@@ -561,6 +567,7 @@ Available at `http://localhost:8741/metrics` (configurable port):
 | `storage_bytes` | Gauge | KB storage usage (bytes used by knowledge base Markdown files) |
 | `billing_stripe_sync_failures_total` | Counter | stripe_customer_id persistence failures in billing sync |
 | `delivery_failures_total` | Counter | Failed deliveries (agent callback outbox failures) |
+| `outbox_persist_failures_total` | Counter | Agent notifications lost before outbox persistence (unserialisable payload or write failure) |
 
 > **Canonical metrics reference** — `ops-runbook.md` §3.1 points here.
 
@@ -829,7 +836,7 @@ B3 configuration is currently scattered across multiple files and config points.
 |---------------|-----------------|------------|----------------------|
 | **Pricing tiers** | `docs/dev/specs/market-positioning.md` | Tier names (free/premium/enterprise), placeholder prices, feature-to-tier mapping | 🟡 Code-level PricingTier enum. Feature-to-tier mapping not enforced in MCP layer. |
 | **Domain quotas** | Code constants | Max domains per tier, max sources per domain | 🟡 Code constants exist. Not configurable by B3 at runtime. |
-| **Quality thresholds** | `docs/dev/specs/quality-gates.md` | Min source tier per domain, min relevance score, G0-G5 gate mode (hard vs soft) | ✅ Gate config system exists with per-domain configuration. |
+| **Quality thresholds** | `docs/dev/specs/quality-gates.md` | Min source tier per domain, min relevance score, G0-G5/G7 gate mode (hard vs soft) | ✅ Gate config system exists with per-domain configuration. |
 | **Delivery SLA** | `docs/dev/specs/delivery.md` §4 | Max delivery latency per priority (P0 ≤5min, P1 ≤30min, P2 ≤2hr) | ✅ SLA constants exist in delivery system. Not configurable by B3. |
 | **Data retention** | `operations.md` §2.5 | Soft-delete window per tier, auto-cleanup period | ✅ Existing retention constants. |
 | **Source ToS compliance** | `docs/dev/specs/expectations.md` §F46 (source classification; enforced by `docs/dev/specs/quality-gates.md` §G1) | Source access tier classification, per-tier output controls | ✅ G1 gate enforces source tiers. |

@@ -52,7 +52,7 @@ src/autoinfo/data/domains/
 > All 29 source types below mirror `VALID_SOURCE_TYPES` in
 > `src/autoinfo/config.py` — the single source of truth for source type
 > validation. Handlers not listed as a dedicated type (e.g. PubMed,
-> Semantic Scholar, USPTO, web scraping with Playwright) are configured via
+> Semantic Scholar, USPTO) are configured via
 > the generic `api` / `web` types with per-source settings.
 
 | Type | Handler | Use Case |

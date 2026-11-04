@@ -92,5 +92,7 @@ On 2026-11-02 the director decided: **multi-tenancy is not being built.**
 - **Residual risk to track:** `src/autoinfo/api/server.py:100` `allow_origins=["*"]` is safe
   only while the bind address is loopback. Follow-up: emit a startup warning (or refuse to
   start) when `host` is not a loopback address. Not yet filed as an issue — recorded here so
-  it is not lost.
+  it is not lost. **Resolved (#680, 2026-11-04):** the serve path (`python -m
+  autoinfo.api.server`) now refuses a non-loopback bind (exit 2) unless
+  `AUTOINFO_ALLOW_NON_LOOPBACK=1`, and never serves allow-all CORS off loopback.
 - `AGENTS.md` and `GOVERNANCE.md` need no edit: neither promises tenancy anywhere.

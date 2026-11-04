@@ -299,7 +299,7 @@ For the demo ("五脏俱全"), B3 must be able to configure (via code/config):
 |---------------|------------|----------------|
 | **Pricing tiers** | Tier names (`free`/`premium`/`enterprise`), placeholder prices, feature-to-tier mapping | Code-level `PricingTier` enum with placeholder price values |
 | **Domain quotas** | Max domains per tier, max sources per domain | Code constants |
-| **Quality thresholds** | Min source tier per domain, min relevance score, G0-G5 gate behavior (hard vs soft) | Existing gate config system |
+| **Quality thresholds** | Min source tier per domain, min relevance score, G0-G5/G7 gate behavior (hard vs soft) | Existing gate config system |
 | **Delivery SLA** | Max delivery latency per priority (P0/P1/P2) | Existing SLA constants |
 | **Data retention** | Soft-delete window per tier, auto-cleanup period | Existing constants |
 

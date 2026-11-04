@@ -13,7 +13,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 ## Features
 
 - **Multi-source collection** — 30 collector handlers (RSS, REST APIs, web, webhook, email, PDF, PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap) with `fetch_depth: fulltext` and live per-source progress.
-- **4-tier knowledge base** — 00-Inbox (deprecated) → 01-Raw (sole entry) → 02-Draft → 03-Wiki (append-only), with git versioning, `[[wiki links]]`, 4 import formats (PDF/Markdown/HTML/JSON).
+- **4-tier knowledge base** — 00-Inbox (deprecated) → 01-Raw (sole entry) → 02-Draft → 03-Wiki (append-only), with git versioning, `[[wiki links]]`, 4 import formats (Markdown/JSON/CSV/OPML).
 - **Hybrid search & Q&A** — FTS5 keyword + sqlite-vec vector embeddings, faceted filters (incl. `filter_custom_fields` on custom_fields JSON), cross-domain search, and FTS5+LLM Q&A with source citations.
 - **LLM extraction & quality gates** — configurable extraction fields, TL;DR/key points/entities/relevance, G0-G7 gates (G0/G4 hard, G1-G3/G5/G7 soft) + D1-D3 delivery gates, translation QA, and CEFR (EN/ZH/JA).
 - **Product generation** — 8 product families (incl. premium-briefing, enterprise-briefing, magazine-digest) across Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video; digest, report, tutorial, presentation, export.
@@ -36,7 +36,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
 | Quality gates | ✅ 7 hard/soft (G0-G7: G0/G4 hard, G1-G3/G5/G7 soft) + 3 delivery gates (D1-D3) + per-domain config |
 | KB pipeline | ✅ 4-tier KB pipeline (00-Inbox → 01-Raw → 02-Draft → 03-Wiki; note: 00-Inbox is scaffolded but deprecated — 01-Raw is the sole entry point), git versioning + SHA tracking |
-| KB import | ✅ 4 formats (PDF, Markdown, HTML, JSON) → 01-Raw via `import_kb` MCP tool |
+| KB import | ✅ 4 formats (Markdown, JSON, CSV, OPML) → 01-Raw via `import_kb` MCP tool |
 | Search | ✅ Hybrid (FTS5 keyword + sqlite-vec vector), faceted (7 filters + `filter_custom_fields` on custom_fields JSON) |
 | Q&A | ✅ FTS5 + LLM synthesis with source citations |
 | Output generation | ✅ Digest (Markdown/HTML/JSON/Agent/Audio/EPUB/Audiobook), report (Markdown/JSON/HTML/Audio/Agent/Video/EPUB/Audiobook), tutorial (Markdown), presentation (Markdown), export (Markdown/JSON/SQLite/PDF/RSS/CSV/GraphML/Agent/Bundle/Sitemap/EPUB; MOBI 🟡 requires calibre, not CI-covered) (Jinja2 + LLM, Reveal.js CDN, ebooklib EPUB3 + calibre MOBI); 8 product templates incl. premium-briefing/enterprise-briefing/magazine-digest (editorial intro + personality feature story, #313) + per-product LLM synthesis |
@@ -46,7 +46,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Translation | ✅ LLM-based source→target |
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
-| Web UI Dashboard | ✅ Bootstrap 5, collection stats, KB search, source health |
+| Web UI Dashboard | ✅ Bootstrap 5 read-only KB browser (search, domain/tier filters, entry detail, dark mode) |
 | MCP server | ✅ 149 tools across 35 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |

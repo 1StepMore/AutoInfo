@@ -61,7 +61,7 @@ Phase 1 — Fetch:     autoinfo collect --domain X   (MCP: collect_sources(domai
 Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MCP: process_collection(domain=X))
   → Reads cached raw items (from collection cache, not KB)
   → LLM extraction (configurable model per task)
-  → Quality gates (G0-G5)
+  → Quality gates (G0-G5, G7)
   → Creates 01-Raw KB entries (one per validated item)
 ```
 
@@ -69,7 +69,7 @@ Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MC
 
 ### 1.4 Source Handler Implementations
 
-> **Single source of truth**: the `VALID_SOURCE_TYPES` frozenset in `src/autoinfo/config.py` (29 types) is the canonical source-type registry. Adding a type requires updating BOTH the set and `_build_handler` in `src/autoinfo/collectors/__init__.py` — enforced by the parity test in `tests/test_source_dispatch.py`. The 30 handler modules below live in `src/autoinfo/collectors/`.
+> **Single source of truth**: the `VALID_SOURCE_TYPES` frozenset in `src/autoinfo/config.py` (29 types) is the canonical source-type registry. Adding a type requires updating BOTH the set and a `CollectorRegistration` in `src/autoinfo/collectors/registry.py` (`_build_handler` in `src/autoinfo/collect.py` is only the thin lookup) — enforced by the parity test in `tests/collectors/test_source_dispatch.py`. The 30 handler modules below live in `src/autoinfo/collectors/`.
 
 | Source | Implementation | Key behavior |
 |--------|---------------|--------------|
@@ -81,8 +81,8 @@ Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MC
 | **OpenAlex** | OpenAlex REST API | Works, authors, institutions, concepts. |
 | **USPTO** | PatentsView API | Patent metadata, assignee, classification. |
 | **NYT** | NYT Article Search API | Article metadata, query, date range. |
-| **RSS/Atom** | `feedparser` | Standard feed parsing. Proxied via Playwright for JS-rendered feeds. |
-| **Web** | `trafilatura` (primary) + Playwright fallback (JS-rendered, separate `web_playwright.py` handler) | Extracts article body, ignores boilerplate. |
+| **RSS/Atom** | `feedparser` | Standard feed parsing (no browser rendering). |
+| **Web** | `trafilatura` | Extracts article body, ignores boilerplate. (`web_playwright.py` ships a Playwright variant for JS-rendered pages, but the registry maps `web` to `WebHandler` only — there is no automatic fallback.) |
 | **Webhook** | HMAC-signed inbound push | Per-domain webhook receiver, signature verification. |
 | **Email** | IMAP IDLE + polling | Configurable folders. New emails trigger collection. |
 | **PDF** | PyMuPDF (`fitz`) | Text extraction. Layout-aware reading order. Configurable timeout (default 120s). |
@@ -104,25 +104,41 @@ Phase 2 — Process:   autoinfo process --domain X [--model deepseek-chat]   (MC
 | **SEC EDGAR** | SEC EDGAR full-text + filings | Ticker→CIK→filings via EDGAR APIs, UA + 10 req/s (no key) — **M2 (2026-08-05)** |
 | **edX sitemap** | edX course sitemap | Sitemap crawl gated by robots.txt RFC 9309 (no key) — **M2 (2026-08-05)** |
 
-### 1.5 Incremental Collection Tracking
+### 1.5 Collection Run History & Dedup-at-Write
 
-Each source tracks its own collection state in a per-source JSON file:
+Each source appends one record per run to a **list-shaped** per-source JSON
+file, `collections/<domain>/<source>/_runs.json` (`_log_run` in `collect.py`);
+the file is a run ledger, not a cursor:
 
-```yaml
-# collections/<domain>/<source>/_runs.json
-{
-  "source_name": "pubmed",
-  "last_collected_at": "2026-07-20T08:00:00Z",
-  "last_item_id": "39817291",
-  "total_runs": 42,
-  "total_items_collected": 892,
-  "total_errors": 3,
-  "last_error": null,
-  "status": "healthy"
-}
+```json
+[
+  {
+    "collection_id": "col-20261027T072520-5430ee44",
+    "timestamp": "2026-10-27T07:26:00.222305+00:00",
+    "status": "success",
+    "items_found": 20,
+    "items_new": 18,
+    "items_filtered": 0,
+    "items_duplicate": 0,
+    "errors": [],
+    "duration_ms": 1067.0,
+    "trace_ids": ["56f7b8ad-55a1-4cc0-aad4-296811658bdd"]
+  }
+]
 ```
 
-On `collect`, the handler requests **only items newer than** `last_collected_at` (or since `last_item_id` for paginated APIs). `--force-full` ignores this and re-fetches everything, re-running dedup.
+`status` is one of `success`, `error`, `skipped` (app-review gate, pre-request
+validation gate, robots.txt disallow) or `disabled_auto` (consecutive-failure
+auto-disable, #665 — a skip-class outcome that is never counted as `failed`).
+`doctor`, `metrics`, `get_source_health`, `nightly_gap.py` and the auto-disable
+streak counter all read this file.
+
+There is **no timestamp cursor**: every `collect` asks the handler for its
+batch and dedups at write time — cross-date URL match against the source's
+earlier cache directories (`_cache_items`) plus URL / PMID / DOI / fuzzy-title /
+cross-domain-event match against existing KB entries (§7). `--force-full` skips only the KB-entry dedup check
+(`_collect_from_source`), so a URL already in the KB is version-bumped and
+everything else is written; the cache-level cross-date URL skip still applies.
 
 ### 1.6 Fetch Depth & Fulltext Fetching
 
@@ -380,7 +396,7 @@ When the primary model fails (timeout, rate limit, server error), AutoInfo itera
 
 ### 3.5 LLM Concurrency, Rate Limiting & Retry (2026-08-13 llm-concurrency-remediation wave)
 
-Every LLM call route through `llm.call_with_fallback` (llm.py) and inherits the same concurrency controls; gate semantics (G0-G5 thresholds/actions/retry-block) are **unchanged** — limiter and backoff wrap the calls, they do not alter gate outcomes.
+Every LLM call route through `llm.call_with_fallback` (llm.py) and inherits the same concurrency controls; gate semantics (G0-G5, G7 thresholds/actions/retry-block) are **unchanged** — limiter and backoff wrap the calls, they do not alter gate outcomes.
 
 **Per-provider shared rate limiting** — `_PROVIDER_SEMAPHORES` (llm.py) holds one `threading.Semaphore` per `(provider, base_url)`; `AUTOINFO_LLM_MAX_CONCURRENCY` env override (default 4, clamped ≥1) bounds in-flight requests per provider. Enforced across **every** fan-out path: process workers, post-extraction gates, cefr_batch, output grouping, MCP `asyncio.to_thread` handlers, and the fallback chain itself (each chain entry walks under the same limiter). There is no single global process-wide lock.
 
@@ -417,7 +433,7 @@ The resume cursor lives in `autoinfo.db` (`_get_progress_db_path()`, the same SQ
 
 When the cursor is in use, `effective_batch = batch_size if batch_size > 0 else len(pending)`, and `remaining_count` / `is_complete` are computed from the pending set rather than from the cache total.
 
-**One-shot migration** — a pre-#637 domain has a legacy position cursor but an empty ledger. When `_read_processed_ids` returns nothing and `last_processed_index > 0`, the first `legacy_index` cached items are seeded into the ledger via `_mark_processed` ("the first N items in cache order were processed"), after which the domain continues on the id path. At the end of any run with `persist_cursor`, `_write_progress(domain, new_index, total_items)` still updates the legacy row so `get_processing_progress()` keeps returning `{total_items, processed_count, remaining_count, is_complete}` unchanged.
+**One-shot migration** — a pre-#637 domain has a legacy position cursor but an empty ledger. When `_read_processed_ids` returns nothing and `last_processed_index > 0`, the first `legacy_index` cached items are seeded into the ledger via `_mark_processed` ("the first N items in cache order were processed"), after which the domain continues on the id path. The seed prefix is always re-derived from a **default oldest-first walk of the full cache** — `--since-days` / `--newest-first` apply only to the pending list, so a windowed or newest-first run can never seed the wrong items (#663). Ledger/cursor writes retry transient SQLite locks a bounded 3 times and log a final failure at ERROR rather than dropping the row silently. At the end of any run with `persist_cursor`, `_write_progress(domain, new_index, total_items)` still updates the legacy row so `get_processing_progress()` keeps returning `{total_items, processed_count, remaining_count, is_complete}` unchanged.
 
 ### 3.7 Time Window & Ordering: `--since-days` / `--newest-first` (issue #655, v1.21.4)
 
@@ -496,14 +512,20 @@ Output structure:
 
 `import_kb` ingests external documents into 01-Raw:
 
-| Format | Handler | Notes |
-|--------|---------|-------|
-| PDF | PyMuPDF | Layout-aware text extraction |
-| Markdown | Direct read | Frontmatter parsed if present |
-| HTML | trafilatura | Body extraction, boilerplate removal |
-| JSON | Structured parse | Must match Item schema fields |
+`_IMPORT_FORMATS` (`src/autoinfo/importer.py`) accepts exactly four formats:
 
-All imports create 01-Raw entries identical to collected items (same `source_url` — uses a synthetic URL `import://{filename}`, same `source_type` — `import`, subject to the same URL-based dedup rules).
+| Format | Handler | Required fields |
+|--------|---------|-----------------|
+| `markdown` | `import_markdown` | YAML frontmatter with `source_url`, `source_type`, `source_platform`; the body becomes the content |
+| `json` | `import_json` | Array or single object with `title`, `source_url`, `content` |
+| `csv` | `import_csv` | Header row with `title`, `source_url`, `content` |
+| `opml` | `import_opml` | Returns `{type: "source_list", suggestions, action_required}` — source suggestions only, **not** KB entries (nothing is auto-added) |
+
+Entry imports are written with `tier="01-Raw"` and keep the caller-supplied
+`source_url`/`source_type` (defaulting `source_type` to `import` when blank), so
+they are subject to the same URL-based dedup rules as collected items. PDF and
+HTML are not import formats — PDF ingestion is the `pdf` collector, HTML body
+extraction is the `web`/`http_api` collector path (trafilatura).
 
 ---
 
@@ -511,16 +533,19 @@ All imports create 01-Raw entries identical to collected items (same `source_url
 
 **Problem**: The same article may appear from different sources (e.g., PubMed + RSS + email alert).
 
-**Approach**: Multi-level dedup:
+**Approach**: multi-level dedup, implemented by two deterministic checkers (no LLM call):
 
-| Level | Method | Scope | Cost |
-|-------|--------|-------|------|
-| 1 | URL exact match | All items in collection cache | O(1) hash lookup |
-| 2 | PMID/DOI/arXiv ID match | All KB tiers + collection cache | O(1) index lookup |
-| 3 | Fuzzy title similarity (Levenshtein, window=100 chars, threshold=0.85) | Items within configurable window (default 30 days) | O(n) in window |
-| 4 | Cross-source similarity (LLM-based semantic check) | Items flagged at level 3 as potential duplicates | 1 LLM call per candidate pair |
+| Level | Method | Scope |
+|-------|--------|-------|
+| 1 | URL exact match | KB entries, all domains |
+| 2 | PMID / DOI match (from `raw_data`) | KB entries, all domains |
+| 3 | Fuzzy title similarity (`difflib.SequenceMatcher` ratio >= 0.85; G2 applies a configurable 30-day window) | KB entries |
+| 4 | Cross-domain event match (shared proper-noun signature + death/obituary event word within `_NEAR_DUP_WINDOW_DAYS`) | KB entries (catches the same event re-titled in another language) |
 
-**Merge rule**: When duplicate detected at levels 1-3, the newer item is skipped (logged as duplicate). When detected at level 4, an LLM decides whether to merge (append source URLs, combine metadata) or keep separate.
+A separate cache-level check (`_cache_items`) drops any item whose `source_url`
+already exists in an earlier date directory of the same source.
+
+**Merge rule**: a match at any level marks the newer item a duplicate — the write-time checker skips it (logged as duplicate); G2 flags it and stores it per the gate's configured action. There is **no** LLM duplicate adjudication: merging is an explicit, agent-invoked step (`find_similar_items` scans by `SequenceMatcher`, then `merge_items(item_ids, strategy)` with `simple` or `title_first`).
 
 ---
 

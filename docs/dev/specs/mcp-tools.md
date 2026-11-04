@@ -43,7 +43,7 @@
 | **Audit** | `query_audit_log` (immutable audit log query) |
 | **Agent Callbacks** | `set_agent_callback`, `list_agent_callbacks`, `remove_agent_callback` |
 | **Delivery Schedule** | `add_delivery_schedule`, `list_delivery_schedules`, `remove_delivery_schedule` |
-| **Validation** | `list_validation_scenarios` (list available Agent-native scenarios; 143 scenarios (70 functional + 73 regression); each entry carries a `regression: true/false` bool field — regression entries also carry `regression_issue`), `run_validation_scenario` (execute a scenario in-process: each step makes a real MCP/CLI/HTTP call and asserts on the `{success, data}` envelope; `llm_assert` steps run a real model call; env-gated steps report `unconfigured` when BYOK keys are missing — parameters: scenario (required), steps (optional, 1-based indices)), `get_coverage_report` (classify the 126 stage×user cells + 72 founder expectations into exactly one committed state with zero-unclassified enforcement; T-A-02/T-A-07), `run_all_validation_scenarios` (run the full live scenario library as one suite and persist a single aggregate run whose `scenarios[]` array holds every per-scenario result, so `scripts/validation_report.py` renders the whole suite from one run; parameters: save_results (default true), timeout (default 180s); R-S-05). Scenarios in `src/autoinfo/mcp/scenarios/` (functional flat + `regression/` subdirectory, recursive-glob auto-load); authoring contract in `docs/dev/validation-scenario-contract.md`. |
+| **Validation** | `list_validation_scenarios` (list available Agent-native scenarios; 186 scenarios (86 functional + 100 regression); each entry carries a `regression: true/false` bool field — regression entries also carry `regression_issue`), `run_validation_scenario` (execute a scenario in-process: each step makes a real MCP/CLI/HTTP call and asserts on the `{success, data}` envelope; `llm_assert` steps run a real model call; env-gated steps report `unconfigured` when BYOK keys are missing — parameters: scenario (required), steps (optional, 1-based indices)), `get_coverage_report` (classify the 126 stage×user cells + 72 founder expectations into exactly one committed state with zero-unclassified enforcement; T-A-02/T-A-07), `run_all_validation_scenarios` (run the full live scenario library as one suite and persist a single aggregate run whose `scenarios[]` array holds every per-scenario result, so `scripts/validation_report.py` renders the whole suite from one run; parameters: save_results (default true), timeout (default 180s); R-S-05). Scenarios in `src/autoinfo/mcp/scenarios/` (functional flat + `regression/` subdirectory, recursive-glob auto-load); authoring contract in `docs/dev/validation-scenario-contract.md`. |
 
 All tools accept `domain` parameter where applicable. Pagination (`limit`/`offset`/`total_count`) on all list/search tools.
 
@@ -97,15 +97,15 @@ must update this baseline.
 | `pubmed.py` | `api` (name contains "pubmed") | PubMed E-utilities REST API |
 | `rss.py` | `rss` | Generic RSS/Atom feeds |
 | `web.py` | `web` | trafilatura-based web scraping |
-| `web_playwright.py` | `web` (Playwright) | JS-rendered pages |
+| `web_playwright.py` | — (not registry-dispatched) | Playwright variant for JS-rendered pages; the `web` type resolves to `web.py` |
 | `webhook.py` | `webhook` | Inbound HMAC webhook (no `_build_handler` dispatch) |
-| `email_imap.py` | `email` | IMAP email ingestion |
+| `email_imap.py` | `email` / `email_imap` | IMAP email ingestion |
 | `pdf.py` | `pdf` | PyMuPDF PDF parsing |
-| `http_api.py` | `http_api` | Generic REST API (Alpha Vantage, FRED, SEC EDGAR, etc.) |
-| `semantic_scholar.py` | `semantic_scholar` | Semantic Scholar API |
+| `http_api.py` | `api` (wildcard fallback) | Generic REST API (Alpha Vantage, FRED, SEC EDGAR, etc.) |
+| `semantic_scholar.py` | `api` (name contains "semantic") | Semantic Scholar API |
 | `dblp.py` | `dblp` | DBLP computer science bibliography |
 | `openalex.py` | `openalex` | OpenAlex scholarly works |
-| `uspto.py` | `uspto` | USPTO patent search |
+| `uspto.py` | `api` (name contains "uspto") | USPTO patent search |
 | `nyt.py` | `nyt` | NYT API |
 | `reddit.py` | `reddit` | Reddit posts |
 | `spotify.py` | `spotify` | Spotify podcasts |
@@ -120,7 +120,7 @@ must update this baseline.
 | `gdelt.py` | `gdelt` | GDELT DOC 2.0 news events — **v1.8.1** |
 | `hackernews.py` | `hackernews` | Hacker News official Firebase API (two-step fetch) — **v1.8.2** |
 | `huggingface.py` | `huggingface` / `kaggle` | HuggingFace Hub + Kaggle datasets (dual provider) — **v1.8.1** |
-| `unpaywall.py` | `unpaywall` / `core` | Unpaywall + CORE OA fulltext (dual provider) — **v1.8.1** |
+| `unpaywall.py` | `unpaywall` (`core` is config-accepted but not pull-collectable) | Unpaywall + CORE OA fulltext, selected by `provider` (`unpaywall` default / `core`) — **v1.8.1** |
 | `akshare.py` | `akshare` | AKShare open financial data (no key) — **M2 (2026-08-05)** |
 | `sec_edgar.py` | `sec_edgar` | SEC EDGAR filings (ticker→CIK→filings, no key) — **M2 (2026-08-05)** |
 | `edx_sitemap.py` | `edx_sitemap` | edX course sitemap crawl (robots.txt RFC 9309 gate, no key) — **M2 (2026-08-05)** |

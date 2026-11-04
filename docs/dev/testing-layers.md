@@ -109,7 +109,7 @@ AC9 judges two layers separately, and this doc makes the split explicit.
 | Naming | organized by subject, mirroring `src/` (`tests/kb/`, `tests/output/`, `tests/mcp/`, …); no `test_bug_*` filenames | per-scenario `name`, `category`, `pyramid_layer`, `pipeline_stage`, `user_level` |
 | Layer metadata | implicit (subpackage + test kind) | required `pyramid_layer` field |
 | Failure semantics | pytest pass / fail | `passed` / `failed` / `unconfigured`, where `unconfigured` is never a pass |
-| Counts (live) | ~6478 collected tests | 182 scenarios (86 functional + 96 regression) |
+| Counts (live) | ~6721 collected tests | 186 scenarios (86 functional + 100 regression) |
 
 The boundary rule:
 

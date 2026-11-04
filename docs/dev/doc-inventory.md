@@ -14,16 +14,16 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 130 |
-| Total lines | 39408 |
+| Total lines | 39445 |
 | Active files | 98 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
-| Category — adr | 14 files / 872 lines |
-| Category — specs | 12 files / 9866 lines |
+| Category — adr | 14 files / 874 lines |
+| Category — specs | 12 files / 9899 lines |
 | Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 32 files / 11033 lines |
+| Category — docs/dev | 32 files / 11035 lines |
 | Category — docs/root | 8 files / 1615 lines |
 
 ## Inventory
@@ -41,7 +41,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0009-dco-squash-merge-signoff.md` | 103 | adr | active | adr |
 | `adr/0010-mcp-tools-list-omits-output-schema.md` | 47 | adr | active | — |
 | `adr/0011-quality-gate-attempt-semantics.md` | 72 | adr | active | adr |
-| `adr/0012-multi-tenancy-out-of-scope.md` | 96 | adr | active | adr |
+| `adr/0012-multi-tenancy-out-of-scope.md` | 98 | adr | active | adr |
 | `adr/README.md` | 58 | adr | active | adr-index |
 | `adr/TEMPLATE.md` | 32 | adr | active | adr |
 | `agent-infrastructure-audit-2026-10-30.md` | 251 | docs/root | active | — |
@@ -101,7 +101,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/plans/agent-infra-remediation-2026-10-30.md` | 172 | docs/dev | active | — |
 | `dev/plans/agent-oriented-gap-register.md` | 608 | docs/dev | active | plan |
 | `dev/repo-map.md` | 82 | docs/dev | active | — |
-| `dev/required-api-keys.md` | 165 | docs/dev | active | — |
+| `dev/required-api-keys.md` | 167 | docs/dev | active | — |
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
 | `dev/source-diagnosis.md` | 176 | docs/dev | active | — |
 | `dev/specs/data-models.md` | 779 | specs | active | — |
@@ -111,9 +111,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/market-positioning.md` | 404 | specs | active | market-positioning |
 | `dev/specs/mcp-tools.md` | 126 | specs | active | — |
 | `dev/specs/multi-tenancy-auth.md` | 806 | specs | active | — |
-| `dev/specs/operations.md` | 972 | specs | active | — |
-| `dev/specs/ops-runbook.md` | 1040 | specs | active | — |
-| `dev/specs/pipeline.md` | 637 | specs | active | — |
+| `dev/specs/operations.md` | 979 | specs | active | — |
+| `dev/specs/ops-runbook.md` | 1041 | specs | active | — |
+| `dev/specs/pipeline.md` | 662 | specs | active | — |
 | `dev/specs/quality-gates.md` | 210 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
 | `dev/testing-layers.md` | 261 | docs/dev | active | — |

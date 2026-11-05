@@ -190,6 +190,11 @@ SOURCE_CORE_KEYS: frozenset[str] = frozenset(
         "requires_key",
         "requires_app_review",
         "app_review_ack",
+        # Goal doc 2026-11-06 #2: source two-state model.  ``enabled`` was
+        # historically a settings-dict parasite — invisible to the schema,
+        # ``list_sources``, and config round-trips.  It is now a first-class
+        # SourceConfig field; legacy yaml still parses unchanged.
+        "enabled",
     }
 )
 
@@ -338,6 +343,10 @@ class SourceConfig:
     # 显式确认：已就该源完成应用/接口审核（或已确认可正当使用）。
     # 只有它为 True（或环境变量 AUTOINFO_APP_REVIEW_ACK=1）时，该源才允许采集。
     app_review_ack: bool = False
+    # Goal doc 2026-11-06 #2: 显式停用是一等状态（MCP enable_source /
+    # disable_source 维护，写审计）。False = 显式停用，采集层直接排除；
+    # 历史 yaml 里寄生在 settings 的 enabled 键在解析时提升到本字段。
+    enabled: bool = True
     settings: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -358,6 +367,7 @@ class SourceConfig:
         self.requires_key = _as_bool(self.requires_key)
         self.requires_app_review = _as_bool(self.requires_app_review)
         self.app_review_ack = _as_bool(self.app_review_ack)
+        self.enabled = _as_bool(self.enabled)
 
 
 @dataclass
@@ -910,6 +920,7 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
                     requires_key=s.get("requires_key", False),
                     requires_app_review=s.get("requires_app_review", False),
                     app_review_ack=s.get("app_review_ack", False),
+                    enabled=s.get("enabled", True),
                     settings=raw_settings,
                 )
             )
@@ -1544,6 +1555,10 @@ def config_to_dict(config: Config) -> dict[str, Any]:
                     ),
                     # 显式确认也要落盘，否则用户没法按源打开闸门。
                     **({"app_review_ack": s.app_review_ack} if s.app_review_ack else {}),
+                    # 显式停用必须落盘（goal doc 2026-11-06 #2）——否则
+                    # import/save 一转手源就静默复活。默认启用不写（跟随
+                    # requires_key 等「只落非默认值」的既有风格）。
+                    **({"enabled": s.enabled} if not s.enabled else {}),
                     **s.settings,
                 }
                 for s in domain.sources

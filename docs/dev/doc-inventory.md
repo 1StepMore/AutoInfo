@@ -14,14 +14,14 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 131 |
-| Total lines | 39483 |
+| Total lines | 39497 |
 | Active files | 99 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 14 files / 884 lines |
-| Category — specs | 12 files / 9899 lines |
+| Category — specs | 12 files / 9913 lines |
 | Category — validation-reports | 26 files / 5752 lines |
 | Category — docs/dev | 32 files / 11035 lines |
 | Category — docs/root | 9 files / 1643 lines |
@@ -114,7 +114,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/multi-tenancy-auth.md` | 806 | specs | active | — |
 | `dev/specs/operations.md` | 979 | specs | active | — |
 | `dev/specs/ops-runbook.md` | 1041 | specs | active | — |
-| `dev/specs/pipeline.md` | 662 | specs | active | — |
+| `dev/specs/pipeline.md` | 676 | specs | active | — |
 | `dev/specs/quality-gates.md` | 210 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
 | `dev/testing-layers.md` | 261 | docs/dev | active | — |

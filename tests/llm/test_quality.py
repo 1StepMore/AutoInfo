@@ -241,6 +241,33 @@ class TestG2Dedup:
         assert result.passed is True
         assert result.details["is_duplicate"] is False
 
+    def test_url_tracking_param_variant_detected(
+        self, sample_item: Item, sample_kb_entry: KBEntry
+    ) -> None:
+        """The same article re-surfaced with campaign parameters must still
+        be flagged — raw-string comparison let it pass as unique (goal doc
+        2026-11-06 #1)."""
+        item = Item(
+            **{
+                **sample_item.to_dict(),
+                "source_url": "https://example.com/study/123?utm_source=rss&fbclid=AbCd",
+            }
+        )
+        existing = [
+            KBEntry(
+                **{
+                    **sample_kb_entry.to_dict(),
+                    "source_url": "https://example.com/study/123",
+                }
+            )
+        ]
+        g2 = G2Dedup()
+        result = g2.check(item, existing)
+
+        assert result.passed is False
+        assert result.flagged is True
+        assert result.details["matched_by"] == "url"
+
     def test_naive_item_aware_entry_no_crash(
         self, sample_item: Item, sample_kb_entry: KBEntry
     ) -> None:

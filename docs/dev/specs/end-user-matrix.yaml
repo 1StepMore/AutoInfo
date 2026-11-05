@@ -1590,7 +1590,7 @@ report_demand:
       - '**AI 聊天机器人/答案引擎**'
       - '#4 (10%)'
       - D AI 代理
-      - ✅ MCP Server (149 tools)
+      - ✅ MCP Server (151 tools)
       - ✅ Part 3+4
       - ✅
     - id: C5
@@ -1821,7 +1821,7 @@ report_demand:
       cells:
       - '**MCP 工具暴露**'
       - 报告推荐
-      - ✅ 149 tools
+      - ✅ 151 tools
       - ✅ Part 3+4
       - ✅
     - id: E2

@@ -9,6 +9,17 @@ from dataclasses import MISSING, asdict, dataclass, field
 from enum import Enum
 from typing import Any, Literal
 
+# Skip reasons that mean the source is deterministically unable to run
+# (goal doc 2026-11-06, short-term #2).  A run record with one of these
+# reasons is not "resting": the source needs a credential, an app-review
+# acknowledgement, or a robots decision.  These skips therefore count
+# toward the auto-disable failure streak (autoinfo.collect) and are
+# reported as "misconfigured" source health (autoinfo.status) instead of
+# resetting the streak / looking like a healthy rest state.
+UNHEALTHY_SKIP_REASONS: frozenset[str] = frozenset(
+    {"credential_missing", "app_review_required", "robots_disallowed"}
+)
+
 
 @dataclass
 class Item:

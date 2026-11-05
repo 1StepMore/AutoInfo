@@ -219,6 +219,52 @@ def build_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="disable_source",
+            description=(
+                "Explicitly disable a source by its source_id (format: 'domain:name') — "
+                "the canonical way to retire a source that is missing credentials, "
+                "permanently failing, or no longer wanted. Disabled sources are excluded "
+                "from every collection run until enable_source is called; the two-state "
+                "model (enabled / explicitly disabled) replaces silent half-states. "
+                "Pass an actor for the audit trail."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "source_id": {
+                        "type": "string",
+                        "description": "Source identifier in 'domain:name' format (e.g. 'medical-research:pubmed'). Returned by add_source/list_sources.",
+                    },
+                    "actor": {
+                        "type": "string",
+                        "description": "Required. Actor requesting this state change (for the audit trail)",
+                    },
+                },
+                "required": ["source_id", "actor"],
+            },
+        ),
+        Tool(
+            name="enable_source",
+            description=(
+                "Re-enable a previously disabled source by its source_id (format: 'domain:name'). "
+                "Restores the source to the normal collection set. Pass an actor for the audit trail."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "source_id": {
+                        "type": "string",
+                        "description": "Source identifier in 'domain:name' format (e.g. 'medical-research:pubmed'). Returned by add_source/list_sources.",
+                    },
+                    "actor": {
+                        "type": "string",
+                        "description": "Required. Actor requesting this state change (for the audit trail)",
+                    },
+                },
+                "required": ["source_id", "actor"],
+            },
+        ),
+        Tool(
             name="test_source",
             description="Test whether a source URL is reachable and return metadata",
             inputSchema={
@@ -859,6 +905,95 @@ def _handle_remove_source(
     )
 
 
+def _set_source_enabled(
+    source_id: str,
+    enabled: bool,
+    actor: str,
+    action: str,
+) -> dict[str, Any]:
+    """Shared body for enable_source / disable_source (goal doc 2026-11-06 #2).
+
+    Toggling is idempotent (re-setting the same state reports
+    ``changed=False`` and does not rewrite the config or the audit log).
+    The audit entry is best-effort: an audit failure never blocks the
+    config change.
+    """
+    try:
+        config = mcp_context._load_config()
+    except Exception as exc:
+        return mcp_context._error_from_exc(exc, "Failed to load the project configuration")
+
+    parts = source_id.split(":", 1)
+    if len(parts) != 2:
+        return error_response(
+            code=ErrorCode.INVALID_SOURCE_ID,
+            message="source_id must be in format 'domain:name'",
+            actionable=True,
+        )
+    domain_name, source_name = parts
+
+    domain_cfg = mcp_context._find_domain(config, domain_name)
+    if domain_cfg is None:
+        return error_response(
+            code=ErrorCode.DOMAIN_NOT_FOUND,
+            message=f"Domain '{domain_name}' is not configured. Use add_domain(name='{domain_name}') to create it.",
+            actionable=True,
+        )
+
+    for existing in domain_cfg.sources:
+        if existing.name == source_name:
+            if existing.enabled == enabled:
+                return {
+                    "source_id": source_id,
+                    "enabled": existing.enabled,
+                    "changed": False,
+                    "actor": actor,
+                }
+            existing.enabled = enabled
+            mcp_context._save_config(config)
+            try:
+                from autoinfo.audit import append_audit_log
+
+                append_audit_log(
+                    actor=actor or "agent",
+                    action=action,
+                    resource_type="source",
+                    resource_id=source_id,
+                    details={"enabled": enabled},
+                    tool=action,
+                )
+            except Exception:
+                pass
+            return {
+                "source_id": source_id,
+                "enabled": enabled,
+                "changed": True,
+                "actor": actor,
+                "source": {
+                    "name": existing.name,
+                    "type": existing.type,
+                    "url": existing.url,
+                },
+            }
+
+    return error_response(
+        code=ErrorCode.SOURCE_NOT_FOUND,
+        message=f"Source '{source_name}' not found in domain '{domain_name}'",
+        actionable=True,
+    )
+
+
+def _handle_enable_source(source_id: str, actor: str = "agent") -> dict[str, Any]:
+    """Re-enable a disabled source (``domain:name``)."""
+    return _set_source_enabled(source_id, True, actor, "enable_source")
+
+
+def _handle_disable_source(source_id: str, actor: str = "agent") -> dict[str, Any]:
+    """Explicitly disable a source (``domain:name``) — the canonical way to
+    retire a source missing credentials or permanently failing."""
+    return _set_source_enabled(source_id, False, actor, "disable_source")
+
+
 def _handle_test_source(url: str, type: str = "api") -> dict[str, Any]:
     """Test whether a source URL is reachable."""
     type_error = mcp_context._validate_source_type(type)
@@ -950,6 +1085,8 @@ def _handle_list_sources(domain: str) -> dict[str, Any]:
             "quality_tier": s.quality_tier,
             "tos_classification": s.tos_classification,
             "requires_key": s.requires_key,
+            # Goal doc 2026-11-06 #2: the two-state model must be visible.
+            "enabled": s.enabled,
         }
         for s in domain_cfg.sources
     ]

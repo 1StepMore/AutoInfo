@@ -19,24 +19,25 @@ Every collected source item is represented as an `Item`:
 @dataclass
 class Item:
     """A single collected item from any source."""
+
     id: str
     source_name: str
-    source_type: str                  # one of VALID_SOURCE_TYPES (29 types, single source of truth in src/autoinfo/config.py)
+    source_type: str  # one of VALID_SOURCE_TYPES (29 types, single source of truth in src/autoinfo/config.py)
     source_url: str
     title: str
-    content: str                      # main body text
+    content: str  # main body text
     content_type: str = "text"
-    source_platform: str = ""         # e.g. "pubmed", "arxiv", "hn"
-    collected_at: str = ""            # ISO-8601 timestamp (string, not datetime)
+    source_platform: str = ""  # e.g. "pubmed", "arxiv", "hn"
+    collected_at: str = ""  # ISO-8601 timestamp (string, not datetime)
     language: str = ""
     domain: str = ""
-    topic_tags: list[str] = field(default_factory=list)   # matched topic names
-    quality_tier: int = 1             # 1-4, propagated from source config at collect time (G1 input)
+    topic_tags: list[str] = field(default_factory=list)  # matched topic names
+    quality_tier: int = 1  # 1-4, propagated from source config at collect time (G1 input)
     raw_data: dict[str, Any] = field(default_factory=dict)  # source-specific (DOI, PMID, URL)
     version: int = 1
     previous_version: int = 0
     supersedes: str = ""
-    trace_id: str = ""                # UUID assigned at collection, carried through delivery
+    trace_id: str = ""  # UUID assigned at collection, carried through delivery
 ```
 
 ### 1.2 Design Rules
@@ -44,7 +45,7 @@ class Item:
 | Rule | Rationale |
 |------|-----------|
 | **Raw→Processing separation in time** | Fetch task is network-bound; processing task is LLM-bound. If one fails, the other's cached output is preserved. Operator can re-process cached items with a different model without re-fetching. |
-| **Dedup at multiple levels** | URL exact match (fastest) → PMID/DOI canonical match → fuzzy title similarity within window. Each level is cheaper than the next. |
+| **Dedup at multiple levels** | URL canonical match (fastest) → PMID/DOI canonical match → fuzzy title similarity within window. Each level is cheaper than the next. |
 | **DRY run with preview** | `collect_sources(domain=X, dry_run=True)` shows what items would be collected without writing anything. Essential for source configuration debugging. |
 | **Per-item trace_id from collection through delivery** | UUID assigned at Item construction, carried through to KB entry and final product. Used in `trace_item` MCP tool and `autoinfo trace` CLI. |
 | **Items are immutable after creation** | Once an Item is written to a collection cache, it is never mutated. Re-processing reads the cached Item; any re-collection creates a new Item with a new `collected_at` timestamp. This ensures reproducibility. |
@@ -278,13 +279,16 @@ Each extraction run produces:
 @dataclass
 class ExtractionResult:
     """Structured extraction output from LLM processing."""
+
     item_id: str
     title: str = ""
-    tl_dr: str = ""                    # One-sentence summary
+    tl_dr: str = ""  # One-sentence summary
     key_points: list[str] = field(default_factory=list)  # 3-5 bullet points
-    entities: list[dict[str, Any]] = field(default_factory=list)  # Extracted entities — list of dicts (not dict-of-lists)
-    relevance_score: float = 0.0       # populated by G3
-    custom_fields: dict[str, Any] = field(default_factory=dict)   # Domain-specific fields
+    entities: list[dict[str, Any]] = field(
+        default_factory=list
+    )  # Extracted entities — list of dicts (not dict-of-lists)
+    relevance_score: float = 0.0  # populated by G3
+    custom_fields: dict[str, Any] = field(default_factory=dict)  # Domain-specific fields
     usage: dict[str, Any] = field(default_factory=dict)  # LLM token usage metadata
 ```
 
@@ -537,13 +541,23 @@ extraction is the `web`/`http_api` collector path (trafilatura).
 
 | Level | Method | Scope |
 |-------|--------|-------|
-| 1 | URL exact match | KB entries, all domains |
+| 1 | URL canonical match (`autoinfo.urlnorm.canonical_url`: tracking params (`utm_*`, `fbclid`, …), scheme/host case, default ports, fragment, query order and trailing slash normalized — goal doc 2026-11-06 #1) | KB entries, all domains |
 | 2 | PMID / DOI match (from `raw_data`) | KB entries, all domains |
-| 3 | Fuzzy title similarity (`difflib.SequenceMatcher` ratio >= 0.85; G2 applies a configurable 30-day window) | KB entries |
+| 3 | Fuzzy title similarity (`difflib.SequenceMatcher` ratio >= 0.85 over `normalize_title_for_dedup` — casefold + NFKC + punctuation→space; G2 applies a configurable 30-day window) | KB entries |
 | 4 | Cross-domain event match (shared proper-noun signature + death/obituary event word within `_NEAR_DUP_WINDOW_DAYS`) | KB entries (catches the same event re-titled in another language) |
 
-A separate cache-level check (`_cache_items`) drops any item whose `source_url`
-already exists in an earlier date directory of the same source.
+A separate cache-level check (`_cache_items`) drops any item whose canonical
+`source_url` already exists in an earlier date directory of the same source.
+
+**Freshness caliber (goal doc 2026-11-06 #1)**: `created_at` in the SQLite index
+is the **first-ingestion time** — `index_entry` re-stores an entry via UPSERT and
+deliberately leaves `created_at` / `deleted` / `importance` untouched (the
+historical `INSERT OR REPLACE` reset them, refreshing "ingestion time" on every
+re-store). `collected_at` is the **content publication date**. The nightly
+freshness report (`scripts/nightly_gap.py`) therefore counts a true 新增 only
+when the row was first-ingested AND published within the window; duplicate
+re-ingests (`dedup_status='duplicate'`) and stale-content re-ingests are
+reported as separate metrics, never as 新增.
 
 **Merge rule**: a match at any level marks the newer item a duplicate — the write-time checker skips it (logged as duplicate); G2 flags it and stores it per the gate's configured action. There is **no** LLM duplicate adjudication: merging is an explicit, agent-invoked step (`find_similar_items` scans by `SequenceMatcher`, then `merge_items(item_ids, strategy)` with `simple` or `title_first`).
 

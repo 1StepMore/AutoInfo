@@ -92,6 +92,32 @@ def test_streak_skipped_breaks_streak() -> None:
     assert _consecutive_source_failures(runs) == 0
 
 
+def test_streak_unhealthy_skip_counts_toward_streak() -> None:
+    """Goal doc 2026-11-06 #2: 缺凭证这类确定性死亡的 skip 不再清零连败 ——
+    否则天天被 skip 的源永远不会熔断，每晚白过一遍闸门。"""
+    runs = [{"status": "error"} for _ in range(5)] + [
+        {"status": "skipped", "skip_reason": "credential_missing"}
+    ]
+    assert _consecutive_source_failures(runs) == 6
+
+
+def test_streak_unhealthy_skip_legacy_markers_still_count() -> None:
+    """skip_reason 字段落地前的历史记录：从 errors 标记兜底推导。"""
+    runs = [
+        {"status": "error"},
+        {"status": "skipped", "errors": [{"message": "no key", "credential_missing": True}]},
+    ]
+    assert _consecutive_source_failures(runs) == 2
+
+
+def test_streak_inert_skip_still_breaks_streak() -> None:
+    """empty_topic / 无标记的 skip 仍是惰性配置（非死亡）—— 中断连败。"""
+    runs = [{"status": "error"} for _ in range(3)] + [
+        {"status": "skipped", "skip_reason": "empty_topic"}
+    ]
+    assert _consecutive_source_failures(runs) == 0
+
+
 def test_streak_legacy_missing_status_breaks_streak() -> None:
     """历史条目缺 status 按 success 读（与 nightly_gap._run_status 同口径）——
     最新一条是 legacy 条目 ⇒ 不是失败，streak 中断。"""

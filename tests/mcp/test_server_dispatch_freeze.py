@@ -27,9 +27,12 @@ from tests.mcp._source_corpus import MCP_DIR, source_corpus
 
 SERVER_PY = MCP_DIR / "server.py"
 
-# Frozen shape at 2026-09-17 (149 MCP tools).
+# Frozen shape at 2026-09-17 (149 MCP tools); raised to 151 by the
+# two-state source model (goal doc 2026-11-06 #2): disable_source /
+# enable_source handlers live in mcp/tools/sources.py, exactly the
+# "own module" placement this guard's message prescribes.
 FROZEN_DISPATCH_BRANCHES = 149
-FROZEN_HANDLERS = 149
+FROZEN_HANDLERS = 151
 
 _DISPATCH_BRANCH = re.compile(r'^\s*(?:if|elif)\s+name\s*==\s*"', re.MULTILINE)
 _HANDLER_DEF = re.compile(r"^(?:async\s+)?def\s+_handle_\w+\s*\(", re.MULTILINE)
@@ -57,7 +60,7 @@ def test_dispatch_chain_does_not_grow() -> None:
 
 
 def test_handler_set_does_not_grow() -> None:
-    """The handler set may move between modules but must stay at 149."""
+    """The handler set may move between modules but must stay at 151."""
     handlers = sum(len(_HANDLER_DEF.findall(source)) for _path, source in source_corpus())
     assert handlers == FROZEN_HANDLERS, (
         f"the MCP source corpus defines {handlers} `_handle_*` functions (frozen at "

@@ -409,6 +409,27 @@ def _render_report_card(report: MatrixReport) -> None:
             p.get("status", ""),
         )
     console.print(table)
+    # Goal doc 2026-11-06 #3: failing assertions must be attributable from
+    # the console alone — the JSON card always carried products[].assertions
+    # but this human-readable render only showed a per-product status, so
+    # "若干断言失败" could not be traced to a concrete assertion/file.
+    detail_lines: list[str] = []
+    for p in report.products:
+        for a in p.get("assertions") or []:
+            if a.get("passed"):
+                continue
+            issue = str(a.get("issue") or a.get("details") or "").replace("\n", " ")[:160]
+            detail_lines.append(
+                f"[red]x[/red] {p.get('domain', '')}/{p.get('product', '')} :: "
+                f"{a.get('name', '?')} — {issue}"
+            )
+    for line in detail_lines[:30]:
+        console.print(line)
+    if len(detail_lines) > 30:
+        console.print(
+            f"… {len(detail_lines) - 30} more failing assertions "
+            "(full detail in the --json-out report card)"
+        )
     console.print(
         f"total_products={summary.get('total_products')} "
         f"total_asserts={summary.get('total_asserts')} "

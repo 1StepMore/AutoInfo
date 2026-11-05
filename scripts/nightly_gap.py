@@ -367,27 +367,34 @@ def entries_freshness(
 ) -> dict[str, dict[str, Any]]:
     """按域统计产出侧新鲜度（只读，``mode=ro``，绝不写库）。
 
-    返回::
+    口径（目标 2026-11-06 #1 已拍板：**新增 = 首次入库 + 窗口内发布**）::
 
         {domain: {
-            "entries_new_7d": int,                 # created_at >= now-days 的行数
+            "entries_ingested_7d": int,           # created_at >= now-days 的行数（入库动作）
+            "entries_new_7d": int,                # 入库行里的真新增：dedup_status != 'duplicate'
+                                                  #   且 collected_at 不早于 now-days
+            "entries_new_7d_stale_content": int,  # 入库但内容发布时间早于 now-days（旧文重采）
+            "entries_dup_reingested_7d": int,     # 入库时被 G2 判 duplicate 的行数
             "entries_latest_created_at": str|None,
-            "entries_new_7d_stale_content": int,   # 上述行里 collected_at 早于 now-days 的条数
             "entries_latest_collected_at": str|None,
         }}
 
-    要点：入库时间看 ``created_at``；``collected_at`` 是**内容发布时间**，只用于判断
-    新入库的条目是否全是旧内容。软删行（``deleted``）一律不计。DB 不存在时抛
-    ``FileNotFoundError``，由调用方把产出轴标 ``unavailable``（不崩）。
+    要点：入库时间看 ``created_at``；``collected_at`` 是**内容发布时间**，只用来把
+    新入库的条目拆成「真新增 / 旧文重采」。重复入库（``dedup_status='duplicate'``）
+    不算新增，只进 ``entries_dup_reingested_7d``。``collected_at`` 缺失/不可解析时
+    视为无法证明陈旧，计入真新增（保守）。软删行（``deleted``）一律不计。DB 不存在
+    时抛 ``FileNotFoundError``，由调用方把产出轴标 ``unavailable``（不崩）。
     """
     if now is None:
         now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
     result: dict[str, dict[str, Any]] = {
         d: {
+            "entries_ingested_7d": 0,
             "entries_new_7d": 0,
-            "entries_latest_created_at": None,
             "entries_new_7d_stale_content": 0,
+            "entries_dup_reingested_7d": 0,
+            "entries_latest_created_at": None,
             "entries_latest_collected_at": None,
         }
         for d in domains
@@ -401,7 +408,7 @@ def entries_freshness(
 
     placeholders = ",".join("?" for _ in domains)
     sql = (
-        "SELECT domain, created_at, collected_at FROM entries "
+        "SELECT domain, created_at, collected_at, dedup_status FROM entries "
         "WHERE (deleted IS NULL OR deleted = 0) "
         f"AND domain IN ({placeholders})"
     )
@@ -413,7 +420,7 @@ def entries_freshness(
 
     latest_created: dict[str, tuple[datetime, str]] = {}
     latest_collected: dict[str, tuple[datetime, str]] = {}
-    for domain, created_raw, collected_raw in rows:
+    for domain, created_raw, collected_raw, dedup_raw in rows:
         bucket = result.get(str(domain))
         if bucket is None:
             continue
@@ -424,9 +431,13 @@ def entries_freshness(
             if prev is None or created > prev[0]:
                 latest_created[str(domain)] = (created, str(created_raw))
             if created >= cutoff:
-                bucket["entries_new_7d"] += 1
-                if collected is not None and collected < cutoff:
+                bucket["entries_ingested_7d"] += 1
+                if str(dedup_raw or "").strip().lower() == "duplicate":
+                    bucket["entries_dup_reingested_7d"] += 1
+                elif collected is not None and collected < cutoff:
                     bucket["entries_new_7d_stale_content"] += 1
+                else:
+                    bucket["entries_new_7d"] += 1
         if collected is not None:
             prev_c = latest_collected.get(str(domain))
             if prev_c is None or collected > prev_c[0]:
@@ -477,8 +488,17 @@ def outputs_by_domain(outputs: Path) -> dict[str, list[str]]:
     return res
 
 
-def assertions_by_domain(python: str, outputs: Path) -> tuple[dict[str, int], str]:
-    """跑断言扫描器，按产物路径归属到域。返回 ({domain: P0/P1 失败数}, 人读摘要)。"""
+def assertions_by_domain(
+    python: str, outputs: Path
+) -> tuple[dict[str, int], list[dict[str, Any]], str]:
+    """跑断言扫描器，按产物路径归属到域。
+
+    返回 ``({domain: 失败数}, 失败明细, 人读摘要)``。Goal doc 2026-11-06 #3：
+    明细不再丢弃 —— 每条失败带 ``file``/``assertion``/``severity``/``details``
+    （details 截 500 字），随 gap.json 的 ``assertions.failures`` 输出，
+    任一条失败都能定位到具体文件、断言名与原因（此前明细 JSON 写在
+    TemporaryDirectory 里随函数退出删除，只剩每域一个计数）。
+    """
     with tempfile.TemporaryDirectory() as td:
         jp = Path(td) / "assertions.json"
         rc, out, err = _run(
@@ -493,9 +513,10 @@ def assertions_by_domain(python: str, outputs: Path) -> tuple[dict[str, int], st
             timeout=1800,
         )
         if not jp.exists():
-            return {}, f"断言扫描器未产出 JSON（rc={rc}）: {(err or out).strip()[:300]}"
+            return {}, [], f"断言扫描器未产出 JSON（rc={rc}）: {(err or out).strip()[:300]}"
         payload = json.loads(jp.read_text(encoding="utf-8"))
     per: dict[str, int] = {}
+    failures: list[dict[str, Any]] = []
     for f in payload.get("failures") or []:
         path = str(f.get("file") or f.get("path") or "")
         parts = Path(path).parts
@@ -507,13 +528,110 @@ def assertions_by_domain(python: str, outputs: Path) -> tuple[dict[str, int], st
         else:
             dom = parts[-2] if len(parts) >= 2 else "?"
         per[dom] = per.get(dom, 0) + 1
+        failures.append(
+            {
+                "domain": dom,
+                "file": path,
+                "assertion": str(f.get("assertion") or ""),
+                "severity": str(f.get("severity") or ""),
+                "details": str(f.get("details") or "")[:500],
+            }
+        )
     t = payload.get("totals") or {}
     n_assert = len(payload.get("assertions") or [])
     summary = (
         f"断言集 {n_assert} 项；扫描 {payload.get('files_scanned')} 个文件；"
         f"失败合计 {t.get('failures', sum(per.values()))}"
     )
-    return per, summary
+    return per, failures, summary
+
+
+def _frontmatter_value(text: str, key: str) -> str:
+    """Read a single ``key: value`` line from a Markdown YAML frontmatter block."""
+    for line in text.splitlines()[:40]:
+        if line.startswith(f"{key}:"):
+            return line.split(":", 1)[1].strip().strip('"')
+    return ""
+
+
+def kb_failures_ledger(repo_root: Path) -> dict[str, Any]:
+    """统一失败台账：G0/G4 的 ``collections/<domain>/_failed/*.json`` 与
+    CurationGate 的 ``knowledge/_failed/<domain>/*.md``（goal doc 2026-11-06 #3）。
+
+    这两类记录从落地起就带条目级定位，但从未被任何汇总视图消费 ——
+    ``kb.py`` 把 ``_failed`` 当非 tier 目录排除，nightly_gap 只看断言扫描。
+    台账结构（additive；gap.json schema_version 5）::
+
+        {"total": int,
+         "by_domain": {domain: int},
+         "items": [{"source": "collections|knowledge", "domain": str,
+                    "id": str, "gate": str, "reason": str, "file": str}]}
+    """
+    items: list[dict[str, Any]] = []
+
+    # -- G0/G4: collections/<domain>/_failed/<item_id>.json -----------------
+    col_root = repo_root / "collections"
+    if col_root.is_dir():
+        for failed_dir in sorted(col_root.glob("*/_failed")):
+            domain = failed_dir.parent.name
+            for jf in sorted(failed_dir.glob("*.json")):
+                try:
+                    rec = json.loads(jf.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    rec = {}
+                snapshot = rec.get("item_snapshot") or {}
+                reason = ""
+                gate_details = (rec.get("gate_result") or {}).get("details") or {}
+                if isinstance(gate_details, dict):
+                    failed_fields = gate_details.get("failed_fields") or []
+                    if failed_fields:
+                        reason = "; ".join(
+                            sorted(
+                                {
+                                    str(f.get("field", ""))
+                                    for f in failed_fields
+                                    if isinstance(f, dict)
+                                }
+                            )
+                        )
+                    if not reason:
+                        reason = str(
+                            gate_details.get("reason") or gate_details.get("message") or ""
+                        )
+                items.append(
+                    {
+                        "source": "collections",
+                        "domain": str(snapshot.get("domain") or domain),
+                        "id": str(rec.get("item_id") or jf.stem),
+                        "gate": str(rec.get("gate") or ""),
+                        "reason": reason or "(no reason recorded)",
+                        "file": str(jf),
+                    }
+                )
+
+    # -- CurationGate: knowledge/_failed/<domain>/<entry_id>.md -------------
+    kb_root = repo_root / "knowledge" / "_failed"
+    if kb_root.is_dir():
+        for md in sorted(kb_root.glob("*/*.md")):
+            try:
+                text = md.read_text(encoding="utf-8")
+            except OSError:
+                text = ""
+            items.append(
+                {
+                    "source": "knowledge",
+                    "domain": md.parent.name,
+                    "id": _frontmatter_value(text, "entry_id") or md.stem,
+                    "gate": _frontmatter_value(text, "gate") or "CurationGate",
+                    "reason": _frontmatter_value(text, "reasons") or "(no reason recorded)",
+                    "file": str(md),
+                }
+            )
+
+    by_domain: dict[str, int] = {}
+    for it in items:
+        by_domain[it["domain"]] = by_domain.get(it["domain"], 0) + 1
+    return {"total": len(items), "by_domain": by_domain, "items": items}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -569,9 +687,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.skip_assertions:
         per_assert: dict[str, int] = {}
+        assertion_failures: list[dict[str, Any]] = []
         assert_summary = "（已跳过断言扫描）"
     else:
-        per_assert, assert_summary = assertions_by_domain(args.python, Path(args.outputs))
+        per_assert, assertion_failures, assert_summary = assertions_by_domain(
+            args.python, Path(args.outputs)
+        )
+
+    # KB 失败台账（goal doc 2026-11-06 #3）：G0/G4/CurationGate 的条目级
+    # 失败记录首次进入汇总视图。台账读取失败不崩 —— 标空并继续。
+    try:
+        kb_failures = kb_failures_ledger(REPO)
+    except Exception as e:  # pragma: no cover - 防御性：台账绝不阻断差距矩阵
+        kb_failures = {"total": 0, "by_domain": {}, "items": [], "error": str(e)}
 
     rows = []
     for dom in domains:
@@ -603,28 +731,34 @@ def main(argv: list[str] | None = None) -> int:
             missing.append(f"真语料（{entries} 条 < 阈值 {args.min_entries}）")
 
         # 产出轴（#554）：last_run 能证明「有人碰过」，不能证明「有语料进来」。
-        # 入库时间看 created_at；collected_at 只用来判内容是否陈旧。
+        # 入库时间看 created_at；collected_at 只用来把入库拆成「真新增/旧文重采」。
+        # 口径（目标 2026-11-06 #1）：entries_new_7d = 首次入库 + 窗口内发布；
+        # 重复入库与旧文重采都不算新增。FALSE_FRESH=采集空转，LATE_COLLECT=旧文当新鲜。
         freshness_flags: list[str] = []
         if output_axis_status == OUTPUT_AXIS_OK:
             axis = output_axis_data.get(dom, {})
             entries_new_7d: int | None = int(axis.get("entries_new_7d") or 0)
+            ingested_7d: int | None = int(axis.get("entries_ingested_7d") or 0)
+            dup_reingested: int | None = int(axis.get("entries_dup_reingested_7d") or 0)
             latest_created_at = axis.get("entries_latest_created_at")
             stale_content: int | None = int(axis.get("entries_new_7d_stale_content") or 0)
             latest_collected_at = axis.get("entries_latest_collected_at")
-            if s.get("sources_healthy", 0) > 0 and entries_new_7d == 0:
+            if s.get("sources_healthy", 0) > 0 and ingested_7d == 0:
                 freshness_flags.append(FLAG_FALSE_FRESH)
                 missing.append(
                     "真语料（FALSE_FRESH：源 7 天内跑过，但近 7 天 0 条入库 —— 采集在空转）"
                 )
-            if entries_new_7d > 0 and stale_content == entries_new_7d:
+            if ingested_7d > 0 and entries_new_7d == 0:
                 freshness_flags.append(FLAG_LATE_COLLECT)
                 missing.append(
-                    f"真语料（LATE_COLLECT：近 7 天入库 {entries_new_7d} 条，"
-                    "内容发布时间全部早于 7 天前）"
+                    f"真语料（LATE_COLLECT：近 7 天入库 {ingested_7d} 条但无一真新增 —— "
+                    f"旧文重采 {stale_content} 条、重复入库 {dup_reingested} 条）"
                 )
         else:
             # 产出轴不可用：无从判断，既不误判通过也不误判失败。
             entries_new_7d = None
+            ingested_7d = None
+            dup_reingested = None
             latest_created_at = None
             stale_content = None
             latest_collected_at = None
@@ -651,6 +785,8 @@ def main(argv: list[str] | None = None) -> int:
                 output_files=len(files),
                 assertion_failures=n_assert,
                 entries_new_7d=entries_new_7d,
+                entries_ingested_7d=ingested_7d,
+                entries_dup_reingested_7d=dup_reingested,
                 entries_latest_created_at=latest_created_at,
                 entries_new_7d_stale_content=stale_content,
                 entries_latest_collected_at=latest_collected_at,
@@ -672,11 +808,12 @@ def main(argv: list[str] | None = None) -> int:
     total_skipped = sum(r["sources_skipped"] for r in rows)
 
     total_new_7d = sum(int(r["entries_new_7d"] or 0) for r in rows)
+    total_ingested_7d = sum(int(r["entries_ingested_7d"] or 0) for r in rows)
     false_fresh_domains = sum(1 for r in rows if FLAG_FALSE_FRESH in r["freshness_flags"])
     late_collect_domains = sum(1 for r in rows if FLAG_LATE_COLLECT in r["freshness_flags"])
 
     result = {
-        "schema_version": 3,
+        "schema_version": 5,
         "tool": "nightly_gap.py",
         "project": "AutoInfo",
         "dod": "21 域 × (真语料 + 真产物 + 可溯源 + 无占位)",
@@ -684,6 +821,11 @@ def main(argv: list[str] | None = None) -> int:
         "passing_units": len(passing),
         "gap_units": len(gap),
         "assertion_summary": assert_summary,
+        # Goal doc 2026-11-06 #3: 断言失败明细（file/assertion/severity/details）
+        # 随报告落盘 —— 汇总计数可下钻到具体文件与原因。
+        "assertions": {"summary": assert_summary, "failures": assertion_failures},
+        # Goal doc 2026-11-06 #3: G0/G4/CurationGate 失败台账（条目级定位）。
+        "kb_failures": kb_failures,
         "skip_summary": {
             "sources_skipped": total_skipped,
             "by_reason": {k: skip_by_reason[k] for k in sorted(skip_by_reason)},
@@ -693,6 +835,7 @@ def main(argv: list[str] | None = None) -> int:
             "db": str(Path(args.db)),
             "error": output_axis_error,
             "entries_new_7d_total": total_new_7d,
+            "entries_ingested_7d_total": total_ingested_7d,
             "false_fresh_domains": false_fresh_domains,
             "late_collect_domains": late_collect_domains,
         },
@@ -714,7 +857,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     if output_axis_status == OUTPUT_AXIS_OK:
         axis_line = (
-            f"- 产出轴：近 7 天入库合计 {total_new_7d} 条；"
+            f"- 产出轴：近 7 天真新增合计 {total_new_7d} 条（入库 {total_ingested_7d} 条）；"
             f"FALSE_FRESH 域 {false_fresh_domains} 个；"
             f"LATE_COLLECT 域 {late_collect_domains} 个"
         )
@@ -728,7 +871,7 @@ def main(argv: list[str] | None = None) -> int:
         f"- 断言：{assert_summary}",
         "",
         "| 域 | 语料 | 已跑源/总源 | 产物文件 | 断言失败 | 缺什么 | "
-        "近7天入库 | 最新入库 | 内容新鲜度标记 |",
+        "近7天新增/入库 | 最新入库 | 内容新鲜度标记 |",
         "|:---|---:|:---|--:|--:|:---|--:|:---|:---|",
     ]
     for r in rows:
@@ -736,7 +879,10 @@ def main(argv: list[str] | None = None) -> int:
         cov = f"{r['sources_ran']}/{r['sources_total']}"
         if r["sources_skipped"]:
             cov += f"（含 {r['sources_skipped']} 策略跳过）"
-        new_7d = "—" if r["entries_new_7d"] is None else str(r["entries_new_7d"])
+        if r["entries_new_7d"] is None:
+            new_7d = "—"
+        else:
+            new_7d = f"{r['entries_new_7d']}/{r['entries_ingested_7d']}"
         latest_created = r["entries_latest_created_at"] or "—"
         flags = "、".join(r["freshness_flags"]) if r["freshness_flags"] else "—"
         md.append(
@@ -757,6 +903,23 @@ def main(argv: list[str] | None = None) -> int:
                     f"{entry['runs_total']} 次；历史产出 "
                     f"{entry['runs_productive']} 次）{tail}"
                 )
+    # Goal doc 2026-11-06 #3：断言明细与 KB 失败台账进人读报告。
+    if assertion_failures:
+        md += ["", "## 断言失败明细（可归因）", ""]
+        for f in assertion_failures[:200]:
+            md.append(f"- [{f['domain']}] `{f['assertion']}` — {f['file']}：{f['details'][:200]}")
+        if len(assertion_failures) > 200:
+            md.append(
+                f"- …（其余 {len(assertion_failures) - 200} 条见 gap.json 的 assertions.failures）"
+            )
+    if kb_failures["total"]:
+        md += ["", "## KB 失败台账（G0/G4/CurationGate，条目级定位）", ""]
+        for it in kb_failures["items"][:200]:
+            md.append(f"- [{it['domain']}] {it['gate']} — {it['id']}：{it['reason']}")
+        if kb_failures["total"] > 200:
+            md.append(
+                f"- …（其余 {kb_failures['total'] - 200} 条见 gap.json 的 kb_failures.items）"
+            )
     md_text = "\n".join(md) + "\n"
     if args.md_out:
         Path(args.md_out).parent.mkdir(parents=True, exist_ok=True)

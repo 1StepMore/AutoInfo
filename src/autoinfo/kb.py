@@ -514,9 +514,7 @@ def _is_git_ignored(path: str, repo_root: str) -> bool:
             ignored = _git_check_ignore(ancestor, repo_root)
             _GIT_IGNORE_CACHE[key] = ignored
             if ignored:
-                logger.debug(
-                    "Gitignored directory — skipping git version records: %s", ancestor
-                )
+                logger.debug("Gitignored directory — skipping git version records: %s", ancestor)
         if ignored:
             _GIT_IGNORE_CACHE[os.path.join(repo_root, rel_path)] = True
             return True
@@ -759,7 +757,17 @@ class SQLiteIndex:
     # ------------------------------------------------------------------
 
     def index_entry(self, entry: KBEntry) -> None:
-        """Insert or replace *entry* in the SQLite index."""
+        """Insert *entry* into the SQLite index, updating it when present.
+
+        Re-indexing updates the content columns but deliberately leaves
+        ``created_at`` (first-ingestion time), ``deleted`` (soft-delete
+        flag) and ``importance`` untouched.  The historical ``INSERT OR
+        REPLACE`` deleted and re-inserted the row, resetting those columns
+        to their defaults: ``created_at`` jumped to "now" on every
+        re-store — inflating the nightly "近7天新增" count with old
+        content (goal doc 2026-11-06 #1) — and a re-store silently
+        resurrected soft-deleted rows.
+        """
         # Build custom_fields JSON from KBEntry expanded fields
         custom_fields: dict[str, Any] = {}
         custom_fields["author"] = entry.author
@@ -776,7 +784,7 @@ class SQLiteIndex:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO entries
+                INSERT INTO entries
                     (entry_id, title, domain, tier, source_url, source_type,
                      source_platform, collected_at, summary, quality_tier,
                      relevance_score, dedup_status, source_score, file_path, tags,
@@ -784,6 +792,28 @@ class SQLiteIndex:
                      version, previous_version, supersedes)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?)
+                ON CONFLICT(entry_id) DO UPDATE SET
+                    title=excluded.title,
+                    domain=excluded.domain,
+                    tier=excluded.tier,
+                    source_url=excluded.source_url,
+                    source_type=excluded.source_type,
+                    source_platform=excluded.source_platform,
+                    collected_at=excluded.collected_at,
+                    summary=excluded.summary,
+                    quality_tier=excluded.quality_tier,
+                    relevance_score=excluded.relevance_score,
+                    dedup_status=excluded.dedup_status,
+                    source_score=excluded.source_score,
+                    file_path=excluded.file_path,
+                    tags=excluded.tags,
+                    custom_fields=excluded.custom_fields,
+                    language=excluded.language,
+                    user_id=excluded.user_id,
+                    cefr=excluded.cefr,
+                    version=excluded.version,
+                    previous_version=excluded.previous_version,
+                    supersedes=excluded.supersedes
                 """,
                 (
                     entry.entry_id,

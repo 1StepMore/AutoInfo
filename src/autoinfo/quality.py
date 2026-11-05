@@ -37,6 +37,8 @@ from autoinfo.llm import call_with_fallback, parse_json_response
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.prompts import get_prompt
 from autoinfo.self_claims import self_claim_orphan_entities, self_count_contradictions
+from autoinfo.textutil import normalize_title_for_dedup
+from autoinfo.urlnorm import canonical_url
 
 logger = logging.getLogger(__name__)
 
@@ -738,9 +740,12 @@ class G2Dedup:
         if item_dt is None:
             effective_window_days = 0
 
-        # 1. URL match
+        # 1. URL match — canonical form (autoinfo.urlnorm): tracking params /
+        # case / trailing-slash variants of the same article must not pass
+        # as unique (goal doc 2026-11-06 #1)
+        item_url = canonical_url(item.source_url) if item.source_url else ""
         for entry in existing_entries:
-            if entry.source_url and item.source_url and entry.source_url == item.source_url:
+            if entry.source_url and item_url and canonical_url(entry.source_url) == item_url:
                 return QualityResult(
                     gate_name=self.gate_name,
                     passed=False,
@@ -793,7 +798,7 @@ class G2Dedup:
                     )
 
         # 4. Fuzzy title match
-        item_title = (item.title or "").strip().lower()
+        item_title = normalize_title_for_dedup(item.title or "")
         if item_title:
             if effective_window_days:
                 logger.info(
@@ -810,7 +815,7 @@ class G2Dedup:
                         if age_days > effective_window_days:
                             continue
 
-                entry_title = (entry.title or "").strip().lower()
+                entry_title = normalize_title_for_dedup(entry.title or "")
                 if entry_title:
                     similarity = difflib.SequenceMatcher(None, item_title, entry_title).ratio()
                     if similarity >= 0.85:

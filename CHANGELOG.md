@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.23.0](https://github.com/1StepMore/AutoInfo/compare/v1.22.0...v1.23.0) (2026-11-06)
+
+
+### Features
+
+* **gov:** single governance contract + derived facts + one entry point + doctor ([#702](https://github.com/1StepMore/AutoInfo/issues/702)) ([adb3981](https://github.com/1StepMore/AutoInfo/commit/adb3981d73c81e98c86e394ae6a7e5e8dd060c0d))
+
 ## [1.22.0](https://github.com/1StepMore/AutoInfo/compare/v1.21.17...v1.22.0) (2026-11-06)
 
 

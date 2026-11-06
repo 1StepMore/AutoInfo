@@ -78,6 +78,20 @@ exactly how the 2026-09-13 baseline drifted.
 |-------|-------|-------|-----|
 | _(none)_ | 0 | — | Budget emptied 2026-10-12; see the section above for why the three former entries were removed. |
 
+## Machine-readable budget (governance T08)
+
+```known-red-budget
+count = 0
+baseline = "2026-10-12"
+```
+
+The fenced block above is the machine-consumable form of the authoritative
+budget (empty since 2026-10-12). `python -m autoinfo.gov status --only
+known_red --json` parses it and compares `count` with the observed
+failures+errors in `nightly-junit.xml`; `observed > budget` turns the
+known_red gate FAIL. Keep this block in sync with the section above in the
+same change — it must never restate a different number.
+
 **Load-sensitive flake (observed 2026-09-17, not budgeted).** Two failures
 appeared in one run and healed on re-run of the identical selection, so they
 are not identity-locked — they are a separate, newly observed non-hermetic

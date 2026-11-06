@@ -57,6 +57,16 @@ jobs:
       - name: AX metrics gate (M-04/M-05)
         run: python scripts/ax_metrics.py
 
+      # Governance T08: the known-red budget in tests/TRIAGE.md gets a code
+      # consumer — compare the machine-readable `count` against the observed
+      # failures+errors in this run's junit. Report-only here (the nightly
+      # job's own pytest step is the enforcement point); budget=0 with any
+      # observed failure shows known_red state=FAIL in the JSON.
+      - name: Known-red budget check (governance, report-only)
+        if: always()
+        run: |
+          python -m autoinfo.gov status --only known_red --json || true
+
       # Persisted validation-suite run (agent-infra remediation plan
       # 2026-10-30, decision B1): same engine entry as the MCP
       # run_all_validation_scenarios tool; persists the aggregate suite run +

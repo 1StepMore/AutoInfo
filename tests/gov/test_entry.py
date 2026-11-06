@@ -31,7 +31,7 @@ def test_force_pass_is_refused_with_exit_2() -> None:
 
 
 def test_stub_verbs_fail_honestly() -> None:
-    for verb in ("status", "escalate", "negative-control"):
+    for verb in ("escalate", "negative-control", "adr"):
         rc = main([verb, "--json"])
         assert rc == EXIT_ENV, verb
 
@@ -134,3 +134,19 @@ def test_unknown_verb_is_argparse_error() -> None:
     with pytest.raises(SystemExit) as excinfo:
         main(["definitely-not-a-verb"])
     assert excinfo.value.code == 2
+
+
+def test_status_verb_payload_and_exit(capsys: object) -> None:  # noqa: ARG001
+    """cmd_status: report shape + exit 0 on a green tree (T06 coverage)."""
+    rc = main(["status", "--only", "preview_smoke", "--json"])
+    assert rc == EXIT_OK
+    payload = json.loads(getattr(capsys, "readouterr")().out.strip())
+    assert payload["gates"][0]["id"] == "preview_smoke"
+    assert payload["pass_total_excludes_advisory"] is True
+
+
+def test_doctor_verb_is_green(capsys: object) -> None:  # noqa: ARG001
+    rc = main(["doctor", "--json"])
+    assert rc == EXIT_OK
+    payload = json.loads(getattr(capsys, "readouterr")().out.strip())
+    assert "checks" in payload and "p0" in payload

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.21.17](https://github.com/1StepMore/AutoInfo/compare/v1.21.16...v1.21.17) (2026-11-06)
+
+
+### Documentation
+
+* record ADR-0012 amendment and add director goals brief ([#693](https://github.com/1StepMore/AutoInfo/issues/693)) ([f202408](https://github.com/1StepMore/AutoInfo/commit/f202408f419a92cb94f26a609ae619d770e32b3a))
+
 ## [1.21.16](https://github.com/1StepMore/AutoInfo/compare/v1.21.15...v1.21.16) (2026-11-04)
 
 

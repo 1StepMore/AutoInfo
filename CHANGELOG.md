@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.24.0](https://github.com/1StepMore/AutoInfo/compare/v1.23.0...v1.24.0) (2026-11-06)
+
+
+### Features
+
+* **gov:** 8-state status model + swallowed-failure visibility + known-red budget ([#704](https://github.com/1StepMore/AutoInfo/issues/704)) ([d4544ca](https://github.com/1StepMore/AutoInfo/commit/d4544ca6a92f8998d6581ad6d2bfbd9bfc2629c3))
+
 ## [1.23.0](https://github.com/1StepMore/AutoInfo/compare/v1.22.0...v1.23.0) (2026-11-06)
 
 

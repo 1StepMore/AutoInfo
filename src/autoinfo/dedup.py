@@ -19,7 +19,9 @@ from autoinfo.textutil import (
     _NEAR_DUP_WINDOW_DAYS,
     _extract_proper_nouns,
     _has_death_event_word,
+    normalize_title_for_dedup,
 )
+from autoinfo.urlnorm import canonical_url
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +42,23 @@ class DedupChecker:
         verdict = checker.check(my_item, existing)
     """
 
-    def __init__(self, knowledge_dir: str | Path = "knowledge") -> None:
+    def __init__(self, knowledge_dir: str | Path | None = None) -> None:
         """Initialise checker.
 
         Args:
             knowledge_dir: Root path of the knowledge base directory
-                (contains ``<domain>/01-Raw/`` sub-trees).
+                (contains ``<domain>/01-Raw/`` sub-trees).  When omitted the
+                path resolves through :func:`autoinfo.kb._default_kb_base_path`
+                (project-root anchored).  The historical cwd-relative
+                ``"knowledge"`` default silently emptied the existing-entry
+                set whenever the process ran from outside the project root —
+                every item then passed dedup unchecked (goal doc 2026-11-06,
+                short-term #1).
         """
+        if knowledge_dir is None:
+            from autoinfo.kb import _default_kb_base_path
+
+            knowledge_dir = _default_kb_base_path()
         self.knowledge_dir = Path(knowledge_dir)
 
     # ------------------------------------------------------------------
@@ -131,10 +143,14 @@ class DedupChecker:
                     "existing_id": str,     # matched entry ID, or ""
                 }
         """
-        # -- 1. URL exact match -----------------------------------------
-        if item.source_url:
+        # -- 1. URL canonical match --------------------------------------
+        # Compared in canonical form (autoinfo.urlnorm): the same article
+        # re-surfacing with tracking parameters, case or trailing-slash
+        # variants must not re-enter as "new" (goal doc 2026-11-06 #1).
+        item_url = canonical_url(item.source_url) if item.source_url else ""
+        if item_url:
             for entry in existing_entries:
-                if entry.source_url and entry.source_url == item.source_url:
+                if entry.source_url and canonical_url(entry.source_url) == item_url:
                     return {
                         "is_duplicate": True,
                         "matched_by": "url",
@@ -164,10 +180,10 @@ class DedupChecker:
                 }
 
         # -- 3. Fuzzy title match ----------------------------------------
-        item_title = (item.title or "").strip().lower()
+        item_title = normalize_title_for_dedup(item.title or "")
         if item_title:
             for entry in existing_entries:
-                entry_title = (entry.title or "").strip().lower()
+                entry_title = normalize_title_for_dedup(entry.title or "")
                 if entry_title:
                     similarity = difflib.SequenceMatcher(None, item_title, entry_title).ratio()
                     if similarity >= 0.85:

@@ -43,7 +43,8 @@ from autoinfo.config import Config, SourceConfig, get_config_path, load_config
 from autoinfo.cost import CostMeter
 from autoinfo.dedup import DedupChecker
 from autoinfo.defaults import COLLECTIONS_DIR
-from autoinfo.models import CollectionResult, Item, KBEntry
+from autoinfo.models import UNHEALTHY_SKIP_REASONS, CollectionResult, Item, KBEntry
+from autoinfo.urlnorm import canonical_url
 
 logger = logging.getLogger(__name__)
 from autoinfo.logging import get_pipeline_logger  # noqa: E402
@@ -434,11 +435,13 @@ def _resolve_sources(
     silently dropped (issue #296).  When *requested* is ``None``/empty,
     *unknown* is empty and all sources are returned.
 
-    ``enabled: false`` sources are always excluded, whether requested by
-    name or collected as part of the default set (issues #6/#7 — disabled
-    feeds must not be fetched).
+    ``enabled`` is a first-class SourceConfig field (goal doc 2026-11-06 #2):
+    disabled sources are always excluded, whether requested by name or
+    collected as part of the default set (issues #6/#7 — disabled feeds must
+    not be fetched).  The legacy settings-dict ``enabled`` key is still
+    honoured so configs saved before the field existed keep working.
     """
-    active = [s for s in all_sources if bool(s.settings.get("enabled", True))]
+    active = [s for s in all_sources if bool(s.enabled) and bool(s.settings.get("enabled", True))]
     if not requested:
         return active, []
 
@@ -865,17 +868,21 @@ def _collect_from_source(
         logger.debug("CostMeter log_api_call skipped", exc_info=True)
 
     # -- Build source_url lookup for version bumping (F50) -----------------
+    # Keys are canonical URLs (autoinfo.urlnorm): the same article with
+    # tracking parameters / case / trailing-slash variants must hit the
+    # version-bump path, not pass as new (goal doc 2026-11-06 #1).
     url_to_existing: dict[str, KBEntry] = {}
     for entry in existing_entries:
         if entry.source_url:
-            existing_for_url = url_to_existing.get(entry.source_url)
+            key = canonical_url(entry.source_url)
+            existing_for_url = url_to_existing.get(key)
             if existing_for_url is None or entry.version > existing_for_url.version:
-                url_to_existing[entry.source_url] = entry
+                url_to_existing[key] = entry
 
     # -- Apply dedup + version bumping -------------------------------------
     new_items: list[Item] = []
     for item in items:
-        existing = url_to_existing.get(item.source_url) if item.source_url else None
+        existing = url_to_existing.get(canonical_url(item.source_url)) if item.source_url else None
         if existing is not None:
             # Re-collection of same URL — version bump
             item.version = existing.version + 1
@@ -1095,11 +1102,16 @@ def _read_runs(domain: str, source_name: str) -> list[dict[str, Any]]:
 
 
 def _consecutive_source_failures(runs: list[dict[str, Any]]) -> int:
-    """Count trailing ``status="error"`` entries in a run history (#665).
+    """Count trailing unhealthy entries in a run history (#665).
 
     ``disabled_auto`` markers are transparent to the streak (they record the
-    degraded state, not a recovery); any other status — success, skipped,
-    partial — ends it.
+    degraded state, not a recovery).  A ``skipped`` run carrying an
+    unhealthy reason (missing credentials, un-acked app review, robots
+    disallow) no longer resets the streak — a source skipped every night
+    for the same deterministic reason is exactly as dead as one erroring
+    every night (goal doc 2026-11-06 #2; previously any ``skipped`` run
+    reset the count, so a credential-less source could never trip the
+    breaker).  Success/partial/inert skips still end it.
     """
     streak = 0
     for run in reversed(runs):
@@ -1108,6 +1120,11 @@ def _consecutive_source_failures(runs: list[dict[str, Any]]) -> int:
             streak += 1
         elif status == STATUS_DISABLED_AUTO:
             continue
+        elif status == "skipped" and (
+            str(run.get("skip_reason") or "") in UNHEALTHY_SKIP_REASONS
+            or _skip_reason_from_errors(run.get("errors")) in UNHEALTHY_SKIP_REASONS
+        ):
+            streak += 1
         else:
             break
     return streak
@@ -1252,7 +1269,10 @@ def _cache_items(
     # written as a NEW file in the new date dir — inflating raw counts and
     # re-appearing in later digests.  Build a URL set spanning ALL prior date
     # dirs of this source; an item whose URL is already cached is skipped
-    # (the newest copy wins; the older file stays for provenance).
+    # (the newest copy wins; the older file stays for provenance).  URLs are
+    # canonicalized (autoinfo.urlnorm) so tracking-parameter / case /
+    # trailing-slash variants of an already-cached article are caught too
+    # (goal doc 2026-11-06 #1).
     seen_urls: set[str] = set()
     source_root = Path(COLLECTIONS_DIR) / domain / source_name
     if source_root.is_dir():
@@ -1266,7 +1286,7 @@ def _cache_items(
                     # _runs.json (collection history) — only dict item files
                     # carry source_url; a list must be skipped, not crash.
                     if isinstance(data, dict):
-                        seen_urls.add(str(data.get("source_url") or ""))
+                        seen_urls.add(canonical_url(str(data.get("source_url") or "")))
             except (json.JSONDecodeError, OSError):
                 continue
 
@@ -1275,7 +1295,7 @@ def _cache_items(
     for item in items:
         # Cross-date duplicate (same URL collected on an earlier day) — skip;
         # the earlier file already carries it and downstream counts stay unique.
-        if item.source_url and item.source_url in seen_urls:
+        if item.source_url and canonical_url(item.source_url) in seen_urls:
             skipped_duplicate += 1
             continue
         safe_id = str(item.id).replace("/", "_") if item.id else item.id
@@ -1387,6 +1407,30 @@ def _fire_webhooks_sync(
     t.start()
 
 
+def _skip_reason_from_errors(errors: list[dict[str, Any]] | None) -> str:
+    """Derive the structured skip reason from a skip record's error markers.
+
+    The ``skipped`` status is a catch-all bucket (goal doc 2026-11-06 #2):
+    ``credential_missing`` / ``app_review_required`` / ``robots_disallowed``
+    mean the source deterministically cannot run (misconfigured — counts
+    toward the auto-disable streak, reported as unhealthy), while
+    ``empty_topic`` or no marker is an inert configuration.  Returns
+    ``""`` when no known marker is present.
+    """
+    for block in errors or []:
+        if not isinstance(block, dict):
+            continue
+        for marker in (
+            "credential_missing",
+            "app_review_required",
+            "robots_disallowed",
+            "empty_topic",
+        ):
+            if block.get(marker):
+                return marker
+    return ""
+
+
 def _log_run(
     domain: str,
     source_name: str,
@@ -1428,6 +1472,11 @@ def _log_run(
         "errors": errors or [],
         "duration_ms": round(duration_s * 1000, 1),
     }
+    if status == "skipped":
+        # Goal doc 2026-11-06 #2: split the skipped catch-all bucket — the
+        # reason is machine-readable so health checks can tell a
+        # misconfigured source (credential_missing) from a policy skip.
+        entry["skip_reason"] = _skip_reason_from_errors(errors)
     if trace_ids:
         entry["trace_ids"] = trace_ids
 

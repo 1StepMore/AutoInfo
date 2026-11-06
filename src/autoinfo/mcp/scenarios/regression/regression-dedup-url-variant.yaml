@@ -1,0 +1,93 @@
+# Goal doc 2026-11-06 (short-term #1): dedup-grade URL canonicalization.
+# The same article re-surfacing with tracking parameters / case /
+# trailing-slash variants must be caught by BOTH dedup layers
+# (collection-layer DedupChecker and process-layer G2Dedup), and
+# re-indexing an entry must preserve its first-ingestion time
+# (created_at) instead of refreshing it — the mechanism that inflated
+# the nightly "近7天新增" with old content.
+#
+# Deterministic (requires_env: []): a temp knowledge dir + a temp SQLite
+# index are built inside the subprocess's own tempfile directory — no
+# LLM, no network, no repo runtime state touched.  Same pattern as
+# regression-free-tier-limit-mcp.yaml.
+name: regression-dedup-url-variant
+description: "Goal 2026-11-06 #1: canonical-URL dedup catches tracking-param/case/trailing-slash variants in DedupChecker and G2Dedup; index re-store preserves created_at"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B1.2
+regression: true
+regression_issue: "goal doc 2026-11-06 short-term #1 (dedup misses URL variants; created_at refreshed on re-store)"
+requires_env: []
+steps:
+  - name: "DedupChecker + G2Dedup catch URL variants; index_entry preserves created_at"
+    kind: cli
+    command: |-
+      python3 -c '
+      import shutil, sqlite3, tempfile
+      from pathlib import Path
+
+      from autoinfo.dedup import DedupChecker
+      from autoinfo.kb import SQLiteIndex
+      from autoinfo.models import Item, KBEntry
+      from autoinfo.quality import G2Dedup
+
+      tmp = Path(tempfile.mkdtemp(prefix="regression-dedup-url-variant-"))
+      try:
+          def entry(entry_id, url, title):
+              return KBEntry(entry_id=entry_id, title=title, domain="d1",
+                             source_url=url)
+
+          existing = [entry("d1-e1", "https://example.com/a/123",
+                            "Some Headline Here")]
+
+          # 1. Collection-layer DedupChecker: tracking-param variant of the
+          #    same article must match by URL.
+          checker = DedupChecker(knowledge_dir=tmp / "knowledge")
+          verdict = checker.check(
+              Item(id="i1", source_name="rss", source_type="rss",
+                   source_url="https://example.com/a/123?utm_source=rss&fbclid=AbCd",
+                   title="Some Headline Here", content="x" * 80,
+                   collected_at="2026-11-05T00:00:00Z"),
+              existing,
+          )
+          assert verdict["is_duplicate"] is True, verdict
+          assert verdict["matched_by"] == "url", verdict
+
+          # 2. Process-layer G2Dedup: case + trailing-slash variant must
+          #    match by URL too.
+          g2 = G2Dedup()
+          item = Item(id="i2", source_name="rss", source_type="rss",
+                      source_url="HTTPS://EXAMPLE.COM/a/123/",
+                      title="Some Headline Here", content="x" * 80,
+                      collected_at="2026-11-05T00:00:00Z")
+          result = g2.check(item, existing)
+          assert result.passed is False, result.details
+          assert result.details["matched_by"] == "url", result.details
+
+          # 3. index re-store must NOT refresh created_at (first-ingestion
+          #    time) — the INSERT OR REPLACE reset that fed the fake 新增.
+          index = SQLiteIndex(tmp / "idx.db")
+          index.init_db()
+          e = entry("d1-e1", "https://example.com/a/123", "Some Headline Here")
+          index.index_entry(e)
+          conn = sqlite3.connect(str(tmp / "idx.db"))
+          conn.execute(
+              "UPDATE entries SET created_at = ?", ("2020-01-01 00:00:00",)
+          )
+          conn.commit()
+          conn.close()
+          e.title = "Some Headline Here (updated)"
+          index.index_entry(e)
+          row = index.get_entry("d1-e1")
+          assert row["created_at"] == "2020-01-01 00:00:00", row["created_at"]
+          assert row["title"] == "Some Headline Here (updated)"
+
+          print("REGRESSION_DEDUP_URL_VARIANT_OK")
+      finally:
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["REGRESSION_DEDUP_URL_VARIANT_OK"]

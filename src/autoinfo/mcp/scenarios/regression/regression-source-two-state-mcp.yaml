@@ -1,0 +1,116 @@
+# Goal doc 2026-11-06 (short-term #2): the two-state source model.
+# disable_source / enable_source are first-class MCP tools: the state lives
+# on the SourceConfig schema (no settings parasite), persists through a
+# config round-trip on disk, is visible in list_sources, is idempotent, and
+# the state change is attributable (audit log entry with the actor).
+#
+# Deterministic (requires_env: []): a temp project with a hermetic
+# .autoinfo/config.yaml is bootstrapped in the subprocess's temp cwd — no
+# LLM, no network.  Same pattern as regression-free-tier-limit-mcp.yaml.
+name: regression-source-two-state-mcp
+description: "Goal 2026-11-06 #2: MCP disable_source/enable_source flip the schema field, persist to disk, show in list_sources, stay idempotent, and write the audit trail"
+category: edge_case
+pyramid_layer: component
+pipeline_stage: A7
+user_level: B1.2
+regression: true
+regression_issue: "goal doc 2026-11-06 short-term #2 (sources had no explicit disable: enabled was a settings parasite invisible to list_sources and lost on round-trips)"
+requires_env: []
+steps:
+  - name: "disable_source → persisted + visible; enable_source restores; idempotent; audited"
+    kind: cli
+    command: |-
+      python3 -c '
+      import os, shutil, sqlite3, tempfile
+      from pathlib import Path
+
+      import yaml
+
+      from autoinfo.config import load_config
+      from autoinfo.mcp.server import (
+          _handle_disable_source,
+          _handle_enable_source,
+          _handle_list_sources,
+      )
+
+      tmp = Path(tempfile.mkdtemp(prefix="regression-source-two-state-mcp-"))
+      old = os.getcwd()
+      try:
+          os.chdir(tmp)
+          config_dir = tmp / ".autoinfo"
+          config_dir.mkdir(parents=True)
+          cfg = {
+              "project": {"name": "T", "created_at": ""},
+              "llm": {"provider": "openai", "model": "m", "api_key": ""},
+              "domains": [{
+                  "name": "medical-research",
+                  "active": True,
+                  "sources": [{
+                      "name": "pubmed", "type": "api",
+                      "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/",
+                      "quality_tier": 1,
+                  }],
+                  "topics": [],
+              }],
+          }
+          (config_dir / "config.yaml").write_text(
+              yaml.dump(cfg), encoding="utf-8"
+          )
+
+          # 1. disable_source flips the schema field and persists to disk.
+          disabled = _handle_disable_source(
+              "medical-research:pubmed", actor="director:test"
+          )
+          assert disabled["changed"] is True, disabled
+          assert disabled["enabled"] is False, disabled
+          raw = yaml.safe_load(
+              (config_dir / "config.yaml").read_text(encoding="utf-8")
+          )
+          assert raw["domains"][0]["sources"][0]["enabled"] is False, raw
+          assert load_config(
+              config_dir / "config.yaml"
+          ).domains[0].sources[0].enabled is False
+
+          # 2. list_sources exposes the state.
+          listed = _handle_list_sources("medical-research")
+          assert listed["sources"][0]["enabled"] is False, listed
+
+          # 3. Idempotent: re-disable reports changed=False, no rewrite.
+          again = _handle_disable_source(
+              "medical-research:pubmed", actor="director:test"
+          )
+          assert again["changed"] is False, again
+          assert again["enabled"] is False, again
+
+          # 4. enable_source restores.
+          enabled = _handle_enable_source(
+              "medical-research:pubmed", actor="director:test"
+          )
+          assert enabled["changed"] is True, enabled
+          assert enabled["enabled"] is True, enabled
+          assert load_config(
+              config_dir / "config.yaml"
+          ).domains[0].sources[0].enabled is True
+
+          # 5. The state change is attributable — audit log carries the actor.
+          db = tmp / "autoinfo.db"
+          assert db.exists(), "audit db missing"
+          conn = sqlite3.connect(str(db))
+          try:
+              rows = conn.execute(
+                  "SELECT actor FROM audit_log WHERE action = ?",
+                  ("disable_source",),
+              ).fetchall()
+          finally:
+              conn.close()
+          assert rows and rows[-1][0] == "director:test", rows
+
+          print("REGRESSION_SOURCE_TWO_STATE_OK")
+      finally:
+          os.chdir(old)
+          shutil.rmtree(tmp, ignore_errors=True)
+      '
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["REGRESSION_SOURCE_TWO_STATE_OK"]

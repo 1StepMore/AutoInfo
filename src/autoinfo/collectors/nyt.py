@@ -18,7 +18,7 @@ from urllib.parse import quote
 
 import httpx
 
-from autoinfo.collectors.base import BaseHandler, CollectorContext
+from autoinfo.collectors.base import BaseHandler, CollectorContext, SourceFailure
 from autoinfo.models import Item
 
 logger = logging.getLogger(__name__)
@@ -139,17 +139,25 @@ class NYTHandler(BaseHandler):
                 max 200 at a time from the NYT API).
 
         Returns:
-            List of article dicts, each with mapped fields.  Returns
-            an empty list on error.
+            List of article dicts, each with mapped fields.  Raises
+            :class:`SourceFailure` when the credential is missing or the
+            request fails — a silent empty list would masquerade as a
+            healthy source (goal doc 2026-11-06 #2).
         """
         if limit <= 0:
             return []
 
         if not self.api_key:
-            logger.warning(
-                "NYT API key not set. Set AUTOINFO_NYT_API_KEY env var or pass api_key in config."
+            # Goal doc 2026-11-06 #2: a missing credential is NOT a healthy
+            # "0 items" result — the historical silent ``return []`` made the
+            # source look enabled-but-fine while it could never fetch
+            # anything.  Fail as a structured source failure so the run is
+            # recorded skipped/credential_missing and the health check
+            # reports it misconfigured.
+            raise SourceFailure(
+                "credential_missing: NYT API key not set — set "
+                f"{ENV_API_KEY} env var or pass api_key in the source config"
             )
-            return []
 
         # -- Build query parameters --
         params: dict[str, Any] = {

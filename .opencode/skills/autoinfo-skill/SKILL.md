@@ -28,7 +28,7 @@ products (digests, reports, alerts, feeds) to End Users.
 ## Tool Discovery
 
 Not sure what tools exist? Use MCP protocol discovery.
-Full MCP tool catalog: see **AGENTS.md → Tool Discovery Guidance** (149 tools, 35 categories).
+Full MCP tool catalog: see **AGENTS.md → Tool Discovery Guidance** (151 tools, 35 categories).
 
 ## Common Workflows
 
@@ -221,7 +221,7 @@ server restarts, and failed pushes are requeued at process start.
 
 ### Run Agent-native validation
 ```
-list_validation_scenarios() → 187 scenarios (86 functional + 101 regression)
+list_validation_scenarios() → 189 scenarios (86 functional + 103 regression)
 run_validation_scenario(scenario="sources-gap-closure") → {status, summary, steps}
 ```
 Each scenario executes real MCP calls (plus real CLI subprocesses and REST HTTP

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -48,33 +49,53 @@ def clean_feed_text(text: str | None) -> str:
     return text
 
 
+def normalize_title_for_dedup(title: str | None) -> str:
+    """Normalize a headline for fuzzy-title dedup comparison.
+
+    Casefold + NFKC, punctuation/symbols → space, whitespace collapsed,
+    so punctuation noise and full-width variants ("GPT—5", "GPT-5!",
+    full-width colons) compare equal to their plain form.  Site suffixes
+    are deliberately NOT cut: dropping " - Reuters" would collide
+    genuinely different articles from the same outlet — cross-site
+    repost detection is a separate mid-term work item (goal doc
+    2026-11-06, mid-term #3).
+    """
+    if not title:
+        return ""
+    normalized = unicodedata.normalize("NFKC", str(title)).casefold()
+    normalized = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in normalized)
+    return " ".join(normalized.split())
+
+
 # Common geopolitical/institutional phrases whose shared presence is NOT a
 # same-event signal (e.g. two unrelated "New York"-mentioning stories).
 # People names ("Dolly Parton", "Donald Trump") are intentionally absent —
 # a shared person name within a short window IS the event signal.
-_PROPER_NOUN_STOPLIST: frozenset[str] = frozenset({
-    "New York",
-    "United States",
-    "White House",
-    "European Union",
-    "Silicon Valley",
-    "Wall Street",
-    "Los Angeles",
-    "Hong Kong",
-    "San Francisco",
-    "South Korea",
-    "North Korea",
-    "Middle East",
-    "United Nations",
-    "World Health",
-    "Prime Minister",
-    "Federal Reserve",
-    "New York City",
-    "World War",
-    "International Space",
-    "Golden Globe",
-    "Grammy Award",
-})
+_PROPER_NOUN_STOPLIST: frozenset[str] = frozenset(
+    {
+        "New York",
+        "United States",
+        "White House",
+        "European Union",
+        "Silicon Valley",
+        "Wall Street",
+        "Los Angeles",
+        "Hong Kong",
+        "San Francisco",
+        "South Korea",
+        "North Korea",
+        "Middle East",
+        "United Nations",
+        "World Health",
+        "Prime Minister",
+        "Federal Reserve",
+        "New York City",
+        "World War",
+        "International Space",
+        "Golden Globe",
+        "Grammy Award",
+    }
+)
 
 # ≥2-word capitalized sequence — language-agnostic proper-noun extraction
 # ("Dolly Parton", "Donald Trump", "Le Figaro").  Single capitalized words
@@ -125,28 +146,65 @@ def _extract_proper_nouns(title: str) -> list[str]:
 # NOT dissolve into the obituary cluster.
 _DEATH_EVENT_WORDS: dict[str, tuple[str, ...]] = {
     "en": (
-        "died", "has died", "dies", "death of", "death", "deaths", "dead",
-        "passed away", "passes away", "obituary",
+        "died",
+        "has died",
+        "dies",
+        "death of",
+        "death",
+        "deaths",
+        "dead",
+        "passed away",
+        "passes away",
+        "obituary",
     ),
     "fr": (
-        "mort de", "est mort", "est morte", "morte à l'âge", "mort à l'âge",
-        "décédé", "décédée", "décès", "est décédé", "est décédée",
-        "s'éteint", "s'est éteint", "s'est éteinte",
+        "mort de",
+        "est mort",
+        "est morte",
+        "morte à l'âge",
+        "mort à l'âge",
+        "décédé",
+        "décédée",
+        "décès",
+        "est décédé",
+        "est décédée",
+        "s'éteint",
+        "s'est éteint",
+        "s'est éteinte",
     ),
     "es": (
-        "muere", "murió", "ha muerto", "muerte de", "fallece", "falleció",
-        "fallecimiento de", "fallecimiento",
+        "muere",
+        "murió",
+        "ha muerto",
+        "muerte de",
+        "fallece",
+        "falleció",
+        "fallecimiento de",
+        "fallecimiento",
     ),
     "pt": (
-        "morre", "morreu", "morte de", "falece", "faleceu",
+        "morre",
+        "morreu",
+        "morte de",
+        "falece",
+        "faleceu",
         "falecimento de",
     ),
     "it": (
-        "è morta", "è morto", "morte di", "muore", "deceduto", "deceduta",
+        "è morta",
+        "è morto",
+        "morte di",
+        "muore",
+        "deceduto",
+        "deceduta",
         "decesso",
     ),
     "de": (
-        "gestorben", "tod von", "stirbt", "verstorben", "todesfall",
+        "gestorben",
+        "tod von",
+        "stirbt",
+        "verstorben",
+        "todesfall",
     ),
     "zh": ("逝世", "去世", "病逝"),
 }

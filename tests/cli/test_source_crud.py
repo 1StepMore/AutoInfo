@@ -29,6 +29,8 @@ from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.errors import ErrorCode
 from autoinfo.mcp.server import (
     _handle_add_source,
+    _handle_disable_source,
+    _handle_enable_source,
     _handle_list_sources,
     _handle_remove_source,
     _handle_test_source,
@@ -619,3 +621,82 @@ class TestCLIAddSources:
         assert result.exit_code != 0
         output = result.output.lower()
         assert "invalid json" in output or "error" in output
+
+
+# ======================================================================
+# Two-state source model — enable_source / disable_source
+# (goal doc 2026-11-06 #2)
+# ======================================================================
+
+
+class TestSourceEnableDisable:
+    def test_disable_source_flips_field_and_persists(self, tmp_config: Path) -> None:
+        result = _handle_disable_source("medical-research:pubmed", actor="director")
+
+        assert result["changed"] is True
+        assert result["enabled"] is False
+        config = load_config(Path.cwd() / ".autoinfo" / "config.yaml")
+        assert config.domains[0].sources[0].enabled is False
+        # The disabled state must survive a config round-trip on disk.
+        raw = yaml.safe_load((tmp_config / ".autoinfo" / "config.yaml").read_text(encoding="utf-8"))
+        assert raw["domains"][0]["sources"][0]["enabled"] is False
+
+    def test_enable_source_restores(self, tmp_config: Path) -> None:
+        _handle_disable_source("medical-research:pubmed", actor="director")
+
+        result = _handle_enable_source("medical-research:pubmed", actor="director")
+
+        assert result["changed"] is True
+        assert result["enabled"] is True
+        assert (
+            load_config(Path.cwd() / ".autoinfo" / "config.yaml").domains[0].sources[0].enabled
+            is True
+        )
+
+    def test_toggle_is_idempotent(self, tmp_config: Path) -> None:
+        first = _handle_disable_source("medical-research:pubmed", actor="director")
+        second = _handle_disable_source("medical-research:pubmed", actor="director")
+
+        assert first["changed"] is True
+        assert second["changed"] is False
+        assert second["enabled"] is False
+
+    def test_disable_missing_source_errors(self, tmp_config: Path) -> None:
+        result = _handle_disable_source("medical-research:nope", actor="director")
+
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.SOURCE_NOT_FOUND.value
+
+    def test_invalid_source_id_rejected(self, tmp_config: Path) -> None:
+        result = _handle_disable_source("no-colon", actor="director")
+
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.INVALID_SOURCE_ID.value
+
+    def test_list_sources_reports_enabled_state(self, tmp_config: Path) -> None:
+        _handle_disable_source("medical-research:pubmed", actor="director")
+
+        listed = _handle_list_sources("medical-research")
+
+        assert listed["sources"][0]["enabled"] is False
+
+    def test_audit_log_receives_the_state_change(self, tmp_config: Path) -> None:
+        """The state change must be attributable (actor recorded in the audit log)."""
+        import sqlite3
+
+        _handle_disable_source("medical-research:pubmed", actor="director:test")
+
+        db_path = Path.cwd() / "autoinfo.db"
+        assert db_path.exists(), "audit log db was not created by the disable call"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute(
+                "SELECT actor, action, resource_type, resource_id FROM audit_log"
+                " WHERE action = 'disable_source'"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert rows, "disable_source did not write an audit entry"
+        assert rows[-1][0] == "director:test"
+        assert rows[-1][2] == "source"
+        assert rows[-1][3] == "medical-research:pubmed"

@@ -105,13 +105,18 @@ def _created(dt: datetime) -> str:
 
 
 def _make_entries_db(path: Path, rows: list[tuple[str, str, str, int]]) -> Path:
-    """造一个最小 ``entries`` 表：(domain, created_at, collected_at, deleted)。"""
+    """造一个最小 ``entries`` 表：(domain, created_at, collected_at, deleted)。
+
+    ``dedup_status`` 必须在列 —— goal doc 2026-11-06 #1 起新增口径按它
+    排除重复入库行（生产库经 kb.py 迁移始终带该列）。
+    """
     con = sqlite3.connect(path)
     try:
         con.execute(
             "CREATE TABLE entries ("
             "entry_id TEXT PRIMARY KEY, domain TEXT, created_at TEXT, "
-            "collected_at TEXT, deleted INTEGER DEFAULT 0)"
+            "collected_at TEXT, dedup_status TEXT DEFAULT 'unique', "
+            "deleted INTEGER DEFAULT 0)"
         )
         con.executemany(
             "INSERT INTO entries (entry_id, domain, created_at, collected_at, deleted) "
@@ -673,8 +678,12 @@ def test_entries_freshness_counts_new_and_stale_content(tmp_path: Path) -> None:
 
     res = ng.entries_freshness(db, ["d"], now=_NOW_FIXED)["d"]
 
-    assert res["entries_new_7d"] == 2
+    # 新口径（goal doc 2026-11-06 #1）：新增 = 首次入库 + 窗口内发布。
+    # 入库 2 条（1 新内容 + 1 旧内容重采）；旧内容重采不再算「新增」。
+    assert res["entries_ingested_7d"] == 2
+    assert res["entries_new_7d"] == 1
     assert res["entries_new_7d_stale_content"] == 1
+    assert res["entries_dup_reingested_7d"] == 0
     assert res["entries_latest_created_at"] == _created(_NOW_FIXED - timedelta(days=1))
     assert res["entries_latest_collected_at"] == "2026-10-20T10:00:00+00:00"
 
@@ -713,9 +722,13 @@ def test_output_axis_fresh_domain_passes(tmp_path: Path, monkeypatch: pytest.Mon
     unit = payload["units"][0]
     assert unit["missing"] == []
     assert unit["entries_new_7d"] == 1
+    assert unit["entries_ingested_7d"] == 1
     assert unit["freshness_flags"] == []
     assert payload["output_axis"]["status"] == ng.OUTPUT_AXIS_OK
-    assert "产出轴：近 7 天入库合计 1 条；FALSE_FRESH 域 0 个；LATE_COLLECT 域 0 个" in md
+    assert (
+        "产出轴：近 7 天真新增合计 1 条（入库 1 条）；FALSE_FRESH 域 0 个；LATE_COLLECT 域 0 个"
+        in md
+    )
 
 
 def test_output_axis_zero_entries_is_false_fresh(
@@ -778,11 +791,14 @@ def test_output_axis_all_stale_content_is_late_collect(
     assert rc == 1
     unit = payload["units"][0]
     assert unit["passing"] is False
-    assert unit["entries_new_7d"] == 2
+    # 新口径（goal doc 2026-11-06 #1）：旧文重采不算新增 —— 真新增为 0，
+    # 全部落入 stale_content，LATE_COLLECT 按「入库>0 但零真新增」触发。
+    assert unit["entries_new_7d"] == 0
+    assert unit["entries_ingested_7d"] == 2
     assert unit["entries_new_7d_stale_content"] == 2
     assert unit["freshness_flags"] == [ng.FLAG_LATE_COLLECT]
     assert unit["missing"] == [
-        "真语料（LATE_COLLECT：近 7 天入库 2 条，内容发布时间全部早于 7 天前）"
+        "真语料（LATE_COLLECT：近 7 天入库 2 条但无一真新增 —— 旧文重采 2 条、重复入库 0 条）"
     ]
     assert "LATE_COLLECT 域 1 个" in md
 

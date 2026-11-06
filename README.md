@@ -19,7 +19,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Product generation** — 8 product families (incl. premium-briefing, enterprise-briefing, magazine-digest) across Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video; digest, report, tutorial, presentation, export.
 - **Delivery & end users** — 13 delivery channels (SMTP, webhook, REST, file export, Discord, Telegram, WeChat Work/OA, DingTalk, FeiShu, RSS, social publish, push) with retry/fallback, cron schedules, per-user lifecycle/subscription, portal, and delivery logs.
 - **Cost, audit & observability** — per-domain/per-user cost metering and allocation, budget alerts, append-only audit log, per-item trace IDs, structured pipeline logs, Prometheus metrics, and `doctor` diagnostics.
-- **Agent-native surfaces** — 149 MCP tools across 35 categories, 31 CLI groups, REST API (port 8741), read-only MCP mode (4 tools), and 187 validation scenarios (86 functional + 101 regression) that execute real MCP/CLI/REST calls with per-step traces.
+- **Agent-native surfaces** — 151 MCP tools across 35 categories, 31 CLI groups, REST API (port 8741), read-only MCP mode (4 tools), and 189 validation scenarios (86 functional + 103 regression) that execute real MCP/CLI/REST calls with per-step traces.
 - **Data lifecycle & compliance** — source ToS classification/tier controls, soft-delete + restore + 30-day cleanup, tier-based retention, GDPR export/delete, and append-only knowledge lifecycle (TTL/freshness/decay, versioned re-collection).
 - **BYOK & LLM governance** — multi-provider via LiteLLM, per-task model routing, fallback chains, per-provider concurrency limiting with 429/5xx backoff, and a single documented default (`openrouter` + `deepseek/deepseek-chat`).
 
@@ -47,7 +47,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Knowledge graph | ✅ Entity extraction + relation discovery |
 | REST API | ✅ FastAPI CRUD (port 8741, /api/v1/entries, /health, /dashboard) |
 | Web UI Dashboard | ✅ Bootstrap 5 read-only KB browser (search, domain/tier filters, entry detail, dark mode) |
-| MCP server | ✅ 149 tools across 35 categories |
+| MCP server | ✅ 151 tools across 35 categories |
 | Domain management | ✅ `add_domain`/`remove_domain` MCP tools, `autoinfo domain` CLI (add/list/show/remove/activate/deactivate) |
 | Webhook push | ✅ Per-item webhook notification on collection via `set_domain_webhooks`/`get_domain_webhooks` |
 | Scheduled digest | ✅ Cron-based email digest delivery (SMTP + crontab schedule) |
@@ -103,7 +103,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Demo domains | ✅ 21 demo domains (medical-research, ai-commercial, financial-intelligence, tech-ai-developer, language-learning, online-video, financial-news, online-education, legal-compliance, general-news, gaming, b2b, retail, plus english/french/hindi/italian/korean/portuguese/russian/spanish-learning) |
 | Delivery schedules | ✅ add_delivery_schedule, list_delivery_schedules, remove_delivery_schedule MCP tools, cron-integrated |
 
-| Validation scenarios | ✅ 187 scenarios (86 functional + 101 regression in `src/autoinfo/mcp/scenarios/regression/`, `regression: true` key, recursive-glob auto-load) |
+| Validation scenarios | ✅ 189 scenarios (86 functional + 103 regression in `src/autoinfo/mcp/scenarios/regression/`, `regression: true` key, recursive-glob auto-load) |
 | Validation execution | ✅ Per-step `timeout_seconds`; per-step `recovery_steps` + partial-pass (`min_passing`/`pass_ratio`); per-step trace (step_index/duration/arguments/trace_id + llm_meta); root-cause report (`## Blockers` / `## Per-step trace` / `## Regression failures`) |
 | Regression flywheel | ✅ `src/autoinfo/mcp/scenarios/regression/` (98 regression scenarios) + `coverage_audit.py` "Regression scenarios: N" metric + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
 
@@ -114,7 +114,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | LLM fallback chain | ✅ Shared `llm.call_with_fallback` — every LLM call site (extraction + 17 standalone) walks `[primary] + config.llm.fallback`; an empty `provider` inherits the primary provider, an empty `api_key` inherits the primary key only on the same gateway (a cross-endpoint fallback needs its own explicit `${ENV}` key); first successful model wins; per-provider shared rate limiting (`AUTOINFO_LLM_MAX_CONCURRENCY`, default 4) + jittered 429/5xx backoff on every chain entry and all fan-out paths |
 | Dead-source detection | ✅ Semantic Scholar 429 → `SourceFailure` (fail-fast); arXiv rss/bio → rss/q-bio fix |
 | CLI module entry | ✅ `python -m autoinfo.cli` runs the same Typer app; `collect` live per-source progress printer |
-| Test suite | ✅ ~6725 tests collected (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate) + #351 year-assertion tuning / #356 real-product scanner + release-scope gate (#406); order-dependency fixes landed 2026-08-12) |
+| Test suite | ✅ ~6801 tests collected (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate) + #351 year-assertion tuning / #356 real-product scanner + release-scope gate (#406); order-dependency fixes landed 2026-08-12) |
 
 ## Quick Start
 
@@ -148,7 +148,7 @@ AutoInfo is agent-first: every capability is an MCP tool. Connect your agent
 1. **Health** — `health_check()` → `{status, version, tools_count}`
 2. **Discover** — `list_domains()` → `get_domain_schema("<domain>")` → `list_available_models()`
 
-3. **Validate** — `list_validation_scenarios()` (187 scenarios: 86 functional + 101 regression) → `run_validation_scenario(scenario="system-health")`
+3. **Validate** — `list_validation_scenarios()` (189 scenarios: 86 functional + 103 regression) → `run_validation_scenario(scenario="system-health")`
 
 
 Validation is the fastest way to prove the system works: each scenario makes
@@ -170,7 +170,7 @@ curl http://localhost:8741/api/v1/entries?limit=5
 ## Run the AutoInfo MCP server
 
 AutoInfo ships an MCP server (`python -m autoinfo.mcp.server`) that exposes
-149 tools over stdio. Editor configs are already committed for Cursor
+151 tools over stdio. Editor configs are already committed for Cursor
 (`.cursor/mcp.json`), OpenCode (`.opencode/mcp.json`), and Claude Desktop
 (`.claude/claude_desktop_config.json`). They all run
 `python -m autoinfo.mcp.server` and pass `AUTOINFO_LLM_API_KEY` through from
@@ -270,7 +270,7 @@ Sources (RSS/API/Web)
         ├── autoinfo output digest | report | tutorial | export
         ├── REST API (FastAPI, port 8741)
          ├── autoinfo audit | trace | cost | enduser | portal  # v1.6 new
-         └── MCP server (149 tools)
+         └── MCP server (151 tools)
 ```
 
 ## Tech Stack
@@ -280,7 +280,7 @@ Sources (RSS/API/Web)
 | Language | Python ≥ 3.11 |
 | CLI | typer (31 command groups) |
 | REST API | FastAPI + uvicorn (port 8741) |
-| MCP server | mcp (Model Context Protocol) — 149 tools over stdio |
+| MCP server | mcp (Model Context Protocol) — 151 tools over stdio |
 | LLM layer | LiteLLM — multi-provider (OpenRouter, OpenAI-compatible, Ollama, Azure) via BYOK |
 | Storage | SQLite + FTS5 (keyword search) + sqlite-vec (vector embeddings) |
 | KB files | Markdown + python-frontmatter, git-versioned |
@@ -339,14 +339,14 @@ autoinfo serve --agent               # Read-only MCP server over stdio (4 read-o
 autoinfo mvp init|list               # Concierge MVP pilots: provision pilot users + first product
 ```
 
-## MCP Tools (149)
+## MCP Tools (151)
 
 | Category | Tools |
 |----------|-------|
 | **System** | health_check, diagnose_system, get_config, list_available_models, get_tool_count, configure_llm, test_llm_connection |
 | **Discovery** | list_domains, list_available_platforms, get_domain_schema, get_effective_llm_config, list_output_templates, activate_domain, deactivate_domain, get_domain_config |
 | **Domain** | add_domain, remove_domain |
-| **Source** | add_source (idempotent), add_sources (batch), remove_source, test_source (with extract_fields + tier warnings), list_sources, get_source_health, get_feeds |
+| **Source** | add_source (idempotent), add_sources (batch), remove_source, disable_source, enable_source, test_source (with extract_fields + tier warnings), list_sources, get_source_health, get_feeds |
 | **Topic** | add_topic, remove_topic, list_topics, topic_group_add, topic_group_remove, list_keywords, approve_keyword, reject_keyword, suggest_keywords |
 | **Collection** | collect_sources (with dry_run, domain-less), get_collection_progress, get_collection_status, process_collection (with batch, check_factual, check_translation), get_processing_progress, batch_run, clean_cache |
 | **KB** | search_knowledge_base (hybrid, cross-domain, faceted `filter_custom_fields` on custom_fields JSON), get_kb_entry, list_summaries, get_summary, create_kb_entry, create_kb_draft (from Raw only), reject_kb_draft, promote_kb_draft (agent promotion Draft→Wiki), promote_pending, demote_kb_wiki, force_promote, list_kb_tier (01-Raw/02-Draft/03-Wiki), reindex_kb, flag_for_knowledge_base |

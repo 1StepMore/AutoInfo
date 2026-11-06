@@ -1,6 +1,6 @@
 """MCP server — exposes AutoInfo capabilities as MCP tools over stdio.
 
-This is the primary agent-facing interface for AutoInfo. It exposes 149 tools
+This is the primary agent-facing interface for AutoInfo. It exposes 151 tools
 across 35 categories — the full catalog lives in the README "MCP Tools" table
 and is discoverable at runtime via ``list_tools()``.  ``get_tool_count()``
 returns the live count.
@@ -186,7 +186,7 @@ def _decorate_tools(tools: list[Tool]) -> list[Tool]:
 
     ``outputSchema`` is deliberately not attached: the canonical envelope is
     documented once (ADR 0010, ``docs/dev/specs/mcp-tools.md``) instead of
-    being repeated on all 149 tools.  Per-tool schemas are a follow-up (#581).
+    being repeated on all 151 tools.  Per-tool schemas are a follow-up (#581).
     """
     for tool in tools:
         _inject_param_aliases(tool)
@@ -491,7 +491,7 @@ def _envelope_result(
 
 
 # #581 phase 2: data-driven dispatch.  Handler + invocation mode, in the
-# same category order as the former if/elif chain (149 tools).  Keep this
+# same category order as the former if/elif chain (151 tools).  Keep this
 # table in lock-step with ``_full_tool_list`` (enforced by
 # tests/mcp/test_tool_dispatch_registry.py).
 _TOOL_DISPATCH: dict[str, tuple[str, str]] = {
@@ -510,10 +510,12 @@ _TOOL_DISPATCH: dict[str, tuple[str, str]] = {
     "add_domain": ("_handle_add_domain", "kwargs"),
     "remove_domain": ("_handle_remove_domain", "kwargs"),
     "get_domain_config": ("_handle_get_domain_config", "kwargs"),
-    # -- Source Management (5) ----------------------------------------
+    # -- Source Management (7) ----------------------------------------
     "add_source": ("_handle_add_source", "kwargs"),
     "add_sources": ("_handle_add_sources", "kwargs"),
     "remove_source": ("_handle_remove_source", "kwargs"),
+    "disable_source": ("_handle_disable_source", "kwargs"),
+    "enable_source": ("_handle_enable_source", "kwargs"),
     "test_source": ("_handle_test_source", "kwargs"),
     "list_sources": ("_handle_list_sources", "kwargs"),
     # -- Topic Management (6) -----------------------------------------
@@ -1092,6 +1094,8 @@ from autoinfo.mcp.tools.sources import _handle_add_sources as _handle_add_source
 from autoinfo.mcp.tools.sources import _handle_add_topic as _handle_add_topic
 from autoinfo.mcp.tools.sources import _handle_approve_keyword as _handle_approve_keyword
 from autoinfo.mcp.tools.sources import _handle_collect_sources as _handle_collect_sources
+from autoinfo.mcp.tools.sources import _handle_disable_source as _handle_disable_source
+from autoinfo.mcp.tools.sources import _handle_enable_source as _handle_enable_source
 from autoinfo.mcp.tools.sources import (
     _handle_get_collection_progress as _handle_get_collection_progress,
 )

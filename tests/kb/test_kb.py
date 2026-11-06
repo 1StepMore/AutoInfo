@@ -97,14 +97,10 @@ class TestSQLiteIndex:
         import sqlite3
 
         conn = sqlite3.connect(str(db_path))
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         assert ("entries",) in tables
 
-        indexes = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index'"
-        ).fetchall()
+        indexes = conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
         index_names = {r[0] for r in indexes}
         assert "idx_domain" in index_names
         assert "idx_collected_at" in index_names
@@ -118,6 +114,42 @@ class TestSQLiteIndex:
         assert retrieved["title"] == sample_entry.title
         assert retrieved["domain"] == sample_entry.domain
         assert retrieved["source_url"] == sample_entry.source_url
+
+    def test_reindex_preserves_created_at_deleted_importance(
+        self, db_path: Path, index: SQLiteIndex, sample_entry: KBEntry
+    ) -> None:
+        """Re-indexing updates content columns but must NOT reset
+        ``created_at`` (first-ingestion time), ``deleted`` or ``importance``
+        — the historical INSERT OR REPLACE deleted and re-inserted the row,
+        resetting those to defaults: created_at jumped to "now" on every
+        re-store (inflating the nightly 近7天新增 with old content, goal doc
+        2026-11-06 #1) and a re-store silently resurrected soft-deleted
+        rows."""
+        import sqlite3
+
+        index.index_entry(sample_entry)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute(
+                "UPDATE entries SET created_at = '2020-01-01 00:00:00',"
+                " importance = 5, deleted = 1 WHERE entry_id = ?",
+                (sample_entry.entry_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        sample_entry.title = "Updated title after re-index"
+        sample_entry.version = 2
+        index.index_entry(sample_entry)
+
+        retrieved = index.get_entry(sample_entry.entry_id)
+        assert retrieved is not None
+        assert retrieved["title"] == "Updated title after re-index"
+        assert retrieved["version"] == 2
+        assert retrieved["created_at"] == "2020-01-01 00:00:00"
+        assert retrieved["deleted"] == 1
+        assert retrieved["importance"] == 5
 
     def test_index_entry_tags_stored_as_json(
         self, index: SQLiteIndex, sample_entry: KBEntry
@@ -407,10 +439,19 @@ class TestKBStore:
         fm = yaml.safe_load(raw[3:end])
 
         required = [
-            "title", "domain", "tier", "entry_id",
-            "source_url", "source_type", "source_platform",
-            "collected_at", "summary", "tags",
-            "quality_tier", "relevance_score", "dedup_status",
+            "title",
+            "domain",
+            "tier",
+            "entry_id",
+            "source_url",
+            "source_type",
+            "source_platform",
+            "collected_at",
+            "summary",
+            "tags",
+            "quality_tier",
+            "relevance_score",
+            "dedup_status",
             "language",
         ]
         for field in required:

@@ -20,7 +20,9 @@ from unittest.mock import ANY, patch
 import pytest
 import yaml
 
-from autoinfo.collect import CacheWriteResult, _cache_items
+import autoinfo.collect as collect_mod
+from autoinfo.collect import CacheWriteResult, _cache_items, _log_run, _resolve_sources
+from autoinfo.config import SourceConfig
 from autoinfo.dedup import DedupChecker
 from autoinfo.models import Item, KBEntry
 from tests._ansi import strip_ansi
@@ -39,10 +41,11 @@ class TestDedupChecker:
         source_url: str = "",
         pmid: str = "",
         doi: str = "",
+        title: str = "Test Entry",
     ) -> KBEntry:
         return KBEntry(
             entry_id=entry_id,
-            title="Test Entry",
+            title=title,
             domain="medical-research",
             source_url=source_url,
             custom_fields={"pmid": pmid, "doi": doi},
@@ -54,13 +57,14 @@ class TestDedupChecker:
         source_url: str = "",
         pmid: str = "",
         doi: str = "",
+        title: str = "Test Item",
     ) -> Item:
         return Item(
             id=item_id,
             source_name="pubmed",
             source_type="api",
             source_url=source_url,
-            title="Test Item",
+            title=title,
             content="Test content",
             collected_at="2026-07-20T00:00:00Z",
             raw_data={"pmid": pmid, "doi": doi},
@@ -118,6 +122,72 @@ class TestDedupChecker:
         result = checker.check(item, existing)
         # No URL match because item has no URL, but also no DOI/PMID match
         assert result["is_duplicate"] is False
+
+    # -- URL canonical match (goal doc 2026-11-06 #1) ------------------------
+
+    def test_url_tracking_param_variant_detected_as_duplicate(self):
+        """The same article re-surfaced with campaign parameters must be
+        caught — raw-string comparison let it through as "new"."""
+        checker = DedupChecker()
+        item = self.make_item(
+            item_id="new-item",
+            source_url="https://example.com/article/123?utm_source=rss&fbclid=AbCdEf",
+        )
+        existing = [
+            self.make_entry(
+                entry_id="existing-001",
+                source_url="https://example.com/article/123",
+            ),
+        ]
+
+        result = checker.check(item, existing)
+        assert result["is_duplicate"] is True
+        assert result["matched_by"] == "url"
+        assert result["existing_id"] == "existing-001"
+
+    def test_url_case_and_trailing_slash_variant_detected_as_duplicate(self):
+        checker = DedupChecker()
+        item = self.make_item(
+            item_id="new-item",
+            source_url="HTTPS://EXAMPLE.COM/article/123",
+        )
+        existing = [
+            self.make_entry(
+                entry_id="existing-001",
+                source_url="https://example.com/article/123/",
+            ),
+        ]
+
+        result = checker.check(item, existing)
+        assert result["is_duplicate"] is True
+        assert result["matched_by"] == "url"
+
+    def test_canonicalization_does_not_over_merge_distinct_articles(self):
+        """Canonicalization must not merge genuinely different URLs."""
+        checker = DedupChecker()
+        item = self.make_item(
+            item_id="new-item",
+            source_url="https://example.com/article/124?utm_source=rss",
+        )
+        existing = [
+            self.make_entry(
+                entry_id="existing-001",
+                source_url="https://example.com/article/123",
+            ),
+        ]
+
+        assert checker.check(item, existing)["is_duplicate"] is False
+
+    def test_fuzzy_title_punctuation_noise_still_matches(self):
+        """Case + punctuation noise ("GPT—5" vs "GPT-5!") must not defeat
+        the fuzzy-title layer (normalized via normalize_title_for_dedup)."""
+        checker = DedupChecker()
+        item = self.make_item(item_id="new-item", title="OpenAI Announces GPT-5!")
+        existing = [self.make_entry(entry_id="existing-001", title="openai announces gpt—5")]
+
+        result = checker.check(item, existing)
+        assert result["is_duplicate"] is True
+        assert result["matched_by"] == "fuzzy_title"
 
     # -- PMID match ---------------------------------------------------------
 
@@ -1265,6 +1335,28 @@ class TestCacheItemsCrossDateDedup:
             "cross-date duplicate URL re-written under a later date dir"
         )
 
+    def test_same_url_with_tracking_params_skipped_across_dates(self, tmp_path, monkeypatch):
+        """A tracking-parameter variant of an already-cached URL must be
+        skipped by the cross-date dedup too (goal doc 2026-11-06 #1)."""
+        monkeypatch.chdir(tmp_path)
+        prior_dir = tmp_path / "collections" / "tech" / "gh-trending" / "2026-08-24"
+        prior_dir.mkdir(parents=True)
+        (prior_dir / "a.json").write_text(
+            json.dumps({"id": "a", "source_url": "https://example.com/1", "title": "A"}),
+            encoding="utf-8",
+        )
+
+        item_a = _make_item("a3")
+        item_a.source_url = "https://example.com/1?utm_source=rss&fbclid=AbCd"
+        _cache_items([item_a], "tech", "gh-trending")
+
+        today_files = list(
+            (tmp_path / "collections" / "tech" / "gh-trending" / date.today().isoformat()).glob(
+                "*.json"
+            )
+        )
+        assert today_files == [], "URL variant of a cached article written as a new file"
+
     def test_unique_urls_all_written(self, tmp_path, monkeypatch):
         """No prior dirs -> every item is written (no false positives)."""
         monkeypatch.chdir(tmp_path)
@@ -1320,3 +1412,77 @@ class TestCacheItemsWriteAccounting:
 
         assert result.written == 1
         assert result.skipped_duplicate == 1
+
+
+# ======================================================================
+# Two-state source model — _resolve_sources + skip_reason ledger
+# (goal doc 2026-11-06 #2)
+# ======================================================================
+
+
+class TestResolveSourcesEnabled:
+    """``enabled`` is a first-class SourceConfig field; the legacy
+    settings-dict key is still honoured for pre-existing configs."""
+
+    @staticmethod
+    def _src(name: str, **kwargs) -> SourceConfig:
+        return SourceConfig(name=name, type="rss", url=f"https://example.com/{name}", **kwargs)
+
+    def test_disabled_field_excluded(self):
+        resolved, unknown = _resolve_sources([self._src("a", enabled=False), self._src("b")], None)
+        assert [s.name for s in resolved] == ["b"]
+        assert unknown == []
+
+    def test_legacy_settings_enabled_still_honored(self):
+        legacy = self._src("legacy", settings={"enabled": False})
+        resolved, _ = _resolve_sources([legacy], None)
+        assert resolved == []
+
+    def test_requested_disabled_source_excluded_not_unknown(self):
+        resolved, unknown = _resolve_sources([self._src("a", enabled=False)], ["a"])
+        assert resolved == []
+        assert unknown == []
+
+
+class TestSkipReasonLedger:
+    """The ``skipped`` catch-all bucket carries a machine-readable
+    ``skip_reason`` so health checks can tell a misconfigured source from a
+    policy skip."""
+
+    def _runs(self, tmp_path: Path, domain: str, source: str) -> list[dict]:
+        runs_path = tmp_path / domain / source / "_runs.json"
+        return json.loads(runs_path.read_text(encoding="utf-8"))
+
+    def test_log_run_records_credential_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(collect_mod, "COLLECTIONS_DIR", str(tmp_path))
+        _log_run(
+            "d1",
+            "s1",
+            "col-1",
+            0,
+            0,
+            status="skipped",
+            errors=[{"message": "no key", "credential_missing": True}],
+        )
+        runs = self._runs(tmp_path, "d1", "s1")
+        assert runs[-1]["skip_reason"] == "credential_missing"
+
+    def test_log_run_unmarked_skip_has_empty_reason(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(collect_mod, "COLLECTIONS_DIR", str(tmp_path))
+        _log_run(
+            "d1",
+            "s1",
+            "col-1",
+            0,
+            0,
+            status="skipped",
+            errors=[{"message": "handler build failed"}],
+        )
+        runs = self._runs(tmp_path, "d1", "s1")
+        assert runs[-1]["skip_reason"] == ""
+
+    def test_log_run_success_has_no_skip_reason(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(collect_mod, "COLLECTIONS_DIR", str(tmp_path))
+        _log_run("d1", "s1", "col-1", 3, 2, status="success")
+        runs = self._runs(tmp_path, "d1", "s1")
+        assert "skip_reason" not in runs[-1]

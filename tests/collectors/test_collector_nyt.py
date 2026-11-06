@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 
 from autoinfo.collectors.nyt import NYTHandler
 
@@ -254,20 +255,32 @@ class TestNYTFetch:
 
 
 class TestNYTNoApiKey:
-    """Tests for behaviour when no API key is configured."""
+    """No API key configured — a structured failure, never fake health.
+
+    Goal doc 2026-11-06 #2: the historical silent ``return []`` recorded a
+    ``success`` run with 0 items, i.e. an enabled-but-never-working
+    half-state that every health view read as fine.  The missing-credential
+    case now raises SourceFailure(credential_missing) so the run is
+    recorded as a skip with a machine-readable reason.
+    """
 
     @patch("autoinfo.collectors.nyt.httpx.get")
-    def test_fetch_no_api_key_returns_empty(self, mock_get: MagicMock) -> None:
-        """When no API key is set, fetch returns empty list and logs warning."""
+    def test_fetch_no_api_key_raises_source_failure(self, mock_get: MagicMock) -> None:
+        from autoinfo.collectors.base import SourceFailure
+
         handler = NYTHandler({})
-        items = handler.fetch(limit=10)
-        assert items == []
+        with pytest.raises(SourceFailure) as excinfo:
+            handler.fetch(limit=10)
+        assert "credential_missing" in excinfo.value.reason
 
     @patch("autoinfo.collectors.nyt.httpx.get")
     def test_fetch_no_api_key_does_not_make_request(self, mock_get: MagicMock) -> None:
         """When no API key, no HTTP request should be made."""
+        from autoinfo.collectors.base import SourceFailure
+
         handler = NYTHandler({})
-        handler.fetch(limit=10)
+        with pytest.raises(SourceFailure):
+            handler.fetch(limit=10)
         mock_get.assert_not_called()
 
 
@@ -744,3 +757,25 @@ class TestNYTToItem:
         assert item.content == ""
         assert item.source_url == ""
         assert isinstance(item.raw_data, dict)
+
+
+# ---------------------------------------------------------------------------
+# Missing credential is a structured failure, not a silent empty result
+# (goal doc 2026-11-06 #2)
+# ---------------------------------------------------------------------------
+
+
+class TestMissingCredentialFailsLoudly:
+    def test_fetch_without_key_raises_source_failure(self) -> None:
+        """The historical silent ``return []`` recorded a healthy success with
+        0 items — an enabled-but-never-working half-state.  A missing
+        credential must surface as SourceFailure(credential_missing)."""
+        import pytest as _pytest
+
+        from autoinfo.collectors.base import SourceFailure
+
+        handler = NYTHandler({})  # no api_key config, no env var
+        with _pytest.raises(SourceFailure) as excinfo:
+            handler.fetch(limit=5)
+        assert "credential_missing" in excinfo.value.reason
+        assert "AUTOINFO_NYT_API_KEY" in excinfo.value.reason

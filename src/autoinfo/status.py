@@ -22,7 +22,7 @@ from autoinfo.config import (
     load_config,
 )
 from autoinfo.kb import SQLiteIndex
-from autoinfo.models import SourceHealth
+from autoinfo.models import UNHEALTHY_SKIP_REASONS, SourceHealth
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -55,9 +55,7 @@ def show_status(domain: str | None = None) -> dict[str, Any]:
     """
     config_path = get_config_path()
     if config_path is None:
-        raise FileNotFoundError(
-            "No configuration found. Run 'autoinfo init' first."
-        )
+        raise FileNotFoundError("No configuration found. Run 'autoinfo init' first.")
     config = load_config(config_path)
 
     # -- Resolve which domains to report on ---------------------------------
@@ -91,6 +89,7 @@ def show_status(domain: str | None = None) -> dict[str, Any]:
                 total_entries = len(fs_files)
                 # Estimate today: count files whose path contains today's date
                 from datetime import date
+
                 today_str = date.today().isoformat()
                 items_today = sum(1 for f in fs_files if today_str in f.name)
 
@@ -136,20 +135,27 @@ def _collect_source_health(
     status of each source.  A source is considered *healthy* if it has at
     least one successful run and the most recent run is within the last
     7 days.  Otherwise it is *stale* or *unknown*.
+
+    Goal doc 2026-11-06 #2 adds two explicit degraded states so the report
+    no longer hides them behind "stale"/"unknown":
+
+    * ``disabled_auto`` — the #665 breaker tripped (trailing runs all
+      failed); the source sends no requests until ``force_enable``.
+    * ``misconfigured`` — the latest run was skipped for a deterministic
+      reason in :data:`UNHEALTHY_SKIP_REASONS` (missing credential,
+      un-acked app review, robots disallow).  These sources need an
+      explicit decision (provide the credential or disable the source),
+      not a nightly retry.
     """
     health: list[dict[str, Any]] = []
 
     for src in source_configs:
-        runs_file = (
-            autoinfo_dir.parent
-            / "collections"
-            / domain_name
-            / src.name
-            / "_runs.json"
-        )
+        runs_file = autoinfo_dir.parent / "collections" / domain_name / src.name / "_runs.json"
 
         status: str
         last_run: str = ""
+        last_status: str = ""
+        skip_reason: str = ""
         total_runs: int = 0
 
         if runs_file.is_file():
@@ -157,8 +163,18 @@ def _collect_source_health(
                 runs = json.loads(runs_file.read_text(encoding="utf-8"))
                 total_runs = len(runs)
                 if total_runs > 0:
-                    last_run = runs[-1].get("timestamp", "")
-                    if _is_recent(last_run, days=7):
+                    last_entry = runs[-1] if isinstance(runs[-1], dict) else {}
+                    last_run = str(last_entry.get("timestamp", ""))
+                    last_status = str(last_entry.get("status", ""))
+                    skip_reason = str(last_entry.get("skip_reason", ""))
+                    if last_status == "disabled_auto":
+                        status = "disabled_auto"
+                    elif last_status == "skipped" and (
+                        skip_reason in UNHEALTHY_SKIP_REASONS
+                        or _runs_skip_reason_from_markers(last_entry) in UNHEALTHY_SKIP_REASONS
+                    ):
+                        status = "misconfigured"
+                    elif _is_recent(last_run, days=7):
                         status = "healthy"
                     else:
                         status = "stale"
@@ -174,11 +190,33 @@ def _collect_source_health(
                 "name": src.name,
                 "status": status,
                 "last_run": last_run,
+                "last_status": last_status,
+                "skip_reason": skip_reason,
                 "total_runs": total_runs,
             }
         )
 
     return health
+
+
+def _runs_skip_reason_from_markers(run_entry: dict[str, Any]) -> str:
+    """Fallback skip-reason derivation for run records written before
+    ``skip_reason`` existed: read the marker keys from ``errors`` directly
+    (same marker vocabulary as :func:`autoinfo.collect._skip_reason_from_errors`,
+    duplicated here because importing the collectors package into the
+    status module would drag in the whole collection stack)."""
+    for block in run_entry.get("errors") or []:
+        if not isinstance(block, dict):
+            continue
+        for marker in (
+            "credential_missing",
+            "app_review_required",
+            "robots_disallowed",
+            "empty_topic",
+        ):
+            if block.get(marker):
+                return marker
+    return ""
 
 
 def _is_recent(timestamp: str, days: int = 7) -> bool:
@@ -251,9 +289,7 @@ def get_source_health(source_id: str) -> dict[str, Any]:
         return health.to_dict()
 
     try:
-        runs: list[dict[str, Any]] = json.loads(
-            runs_path.read_text(encoding="utf-8")
-        )
+        runs: list[dict[str, Any]] = json.loads(runs_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         health.status = "error"
         return health.to_dict()

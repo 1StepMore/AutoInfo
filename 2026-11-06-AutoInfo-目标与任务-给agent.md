@@ -1,0 +1,107 @@
+# AutoInfo · 目标与任务 v2（给 coding agent · 2026-11-06）
+
+> 定位：通用信息追踪 / 知识库平台 —— 多领域采集 → 抽取 → 沉淀。
+> 本版是 2026-11-05 版的**定稿**：已完成现状调查与合理性评估，4 个口径决策已拍板（见下表）。
+> 只给目标与验收标准，**具体怎么实现、怎么拆解，交给 coding agent 判断**。
+> 各目标附的「已知事实」（file:line）是 2026-11-05/06 调查的证据，供参考、省去重新摸底，**不构成实现指令**。
+
+## 已拍板的口径决策（不再讨论）
+
+| 决策点 | 结论 |
+|--------|------|
+| 「近7天新增」权威口径 | **首次入库 + 窗口内发布**：新增 = 内容发布于近 7 天、且首次进入 KB 的条目；重复入库 / 旧文重采一律不计入 |
+| 运行态熔断 `disabled_auto` | **保留 + 台账化**：「显式停用」专指配置层（人 / agent 经 MCP 工具设定）；熔断是运行态降级，必须可见、可恢复、进状态报告 |
+| 缺凭证源收敛 | **强制二选一**：补 key 或显式停用；「启用但缺凭证」在健康检查中报红；同时消灭「缺 key 静默返回空列表记 success」的假健康 |
+| 失败清零范围 | **断言失败 + `_failed/` 台账**：nightly_gap 断言失败可归因清零；G0/G4/CurationGate 的 `_failed/` 记录纳入统一失败台账 |
+
+---
+
+## 短期目标 1：收录的「新增」必须真新鲜、不重复
+
+### 目标
+1. 「近7天新增」按已拍板口径统计，重复入库不计入。
+2. 同一篇旧文章再次被采集时，站内去重必须拦住（含同 URL 变体、同内容近同标题）。
+3. 同一 KB entry 被重复写入时，「首次入库时间」不得被刷新。
+
+### 验收标准
+- [ ] 回归用例：同一文章 URL 带/不带 utm 参数、尾斜杠差异 → 第二次采集不得作为新条目进入 KB（拦住，或明确标记 duplicate 且不计入新增）
+- [ ] 回归用例：同一 entry 重复 store → `created_at` 保持首次入库时间
+- [ ] `nightly_gap` 的 `entries_new_7d` 不含 `dedup_status='duplicate'` 行；重复入库只出现在独立指标里
+- [ ] 两套「新增」口径（nightly_gap 按 `created_at` vs `get_collection_stats` 按 `collected_at`）语义一致，或明确文档化各自分工
+- [ ] 真实语料上的清零确认在持有语料的 nightly Linux 机上完成（本机 `autoinfo.db` 是验证库，entries 0 行，验收用例必须自造数据）
+
+### 已知事实（调查证据 2026-11-05）
+- URL 去重是原始字符串相等，全仓无 URL 归一化（utm/尾斜杠/协议，grep 零命中）：`src/autoinfo/dedup.py:134`、`src/autoinfo/quality.py:741`
+- 模糊标题 char 级 SequenceMatcher≥0.85，归一化仅 `strip().lower()`：`src/autoinfo/dedup.py:166`
+- URL 命中已有条目时不拦截，version+1 照样进 `new_items`：`src/autoinfo/collect.py:867-895`
+- `DedupChecker()` 相对路径 `knowledge/`，cwd 不在项目根时静默全放行：`src/autoinfo/dedup.py:43`、`src/autoinfo/collect.py:265`
+- G2 是建议性门：判 duplicate 照样 store 且计入 `kb_entries_created`：`src/autoinfo/process.py:1613-1643`
+- `index_entry` 用 `INSERT OR REPLACE` 且列清单不含 `created_at` → 重写刷新入库时间：`src/autoinfo/kb.py:779-786`（表定义 `kb.py:573`，`DEFAULT CURRENT_TIMESTAMP`）
+- `nightly_gap` 按 `created_at` 计新增、不排除 duplicate：`scripts/nightly_gap.py:403-427`
+- 第二套口径：`get_collection_stats` 按 `collected_at` 分桶：`src/autoinfo/kb.py:1662-1675`
+- #182 修过 weekly digest 同型 bug（`kb.py:853-861`，注释原文 "pulled OLD articles into weekly digests"），nightly_gap 是漏网之鱼
+- 跨站转载现状：只有讣告类窄路径（`dedup.py:222-274`）+ 产物层折叠（相同 `source_url` 永不合并，`output/entries.py:796`）；无内容指纹（属中期，不在本轮）
+
+---
+
+## 短期目标 2：数据源二态化——正常采集 or 显式停用
+
+### 目标
+每个源在配置层只有「正常采集」或「显式停用」两种合法状态；其余一切（缺凭证、失败、熔断、app-review 未确认）必须收敛到这两种之一，或作为**运行态**清晰可见、可恢复、进台账。
+
+### 验收标准
+- [ ] `enabled` 成为源配置 schema 的一等字段（不再寄生 settings dict），`list_sources` 可见
+- [ ] 提供 MCP 工具 `enable_source` / `disable_source`（写审计日志），显式停用经工具完成
+- [ ] `skipped` 杂物桶拆分：`credential_missing` / `app_review_required` / `robots_disallowed` / `empty_topic` 各自可区分
+- [ ] 「启用但缺凭证」在健康检查 / status 中报红；消灭 NYT 式「缺 key 静默返回 `[]` 记 success」的假健康
+- [ ] `disabled_auto` 可见可恢复：进状态报告与台账；修复「skipped 打断熔断计数」漏洞（天天 skip 的源永不熔断）
+- [ ] 存量半状态源完成收敛（补 key 注释 / 显式停用 / 修复）；demo 域 yaml 与 live config 的漂移（如 uspto demo=`false` / live=unset）一并清理
+- [ ] 状态机迁移有回归场景 + 单元测试
+
+### 已知事实
+- `enabled` 寄生 settings：`src/autoinfo/config.py:184-196`（`SOURCE_CORE_KEYS` 不含 enabled）、`collect.py:441`；`list_sources` 不返回它：`src/autoinfo/mcp/tools/sources.py:944-955`
+- skipped 杂物桶：`collect.py:1390-1427`；缺凭证 precheck：`collect.py:677-709`、`collectors/http_api.py:164`
+- 熔断：7 连错 → `disabled_auto`：`collect.py:69-70,1116`（设计原则 #665「只动采集尝试、永不改配置，配置归人」）；skipped 打断计数：`collect.py:1097-1109`
+- NYT 假健康：`src/autoinfo/collectors/nyt.py` fetch 缺 key 仅 warning 后返回 `[]`
+- MCP 工具缺口：源管理现有 add/add_sources/remove/test/list/collect_sources，**无 enable/disable**（`mcp/tools/sources.py:27-629`）
+- 本机实测（2026-11-05）：27 个有运行记录的源 = 14 success / 13 error，另 11 源 never-ran（tech-ai-developer 全部 10 个）；nightly 机台账另有 `credential_missing` 与 Bilibili `app_review_required` 案例；`docs/dev/validation-reports/capability-27x3/source-diagnosis.csv` 的 bucket（satisfied/degraded/failing/never-attempted/configured-off）即多态混乱的现成台账
+- status.py 另算一套 healthy/stale/unknown，与运行层/熔断层口径不齐：`src/autoinfo/status.py:133-183`
+
+---
+
+## 短期目标 3：质量问题可观测、可归因、清零
+
+### 目标
+任何一条质量失败都能定位到 **具体文件/条目 + 域/单元 + 原因**；断言失败与 `_failed/` 记录进统一失败台账；最终把失败清零。
+
+### 验收标准
+- [ ] `nightly_gap` 保留断言明细（哪几条断言、哪个文件、什么原因），汇总与明细可下钻；明细 JSON 不再随临时目录丢弃
+- [ ] `validate --matrix` 控制台/HTML 至少可见 domain/product/断言名/文件
+- [ ] G0/G4/CurationGate 的 `_failed/` 记录被统一失败台账消费（当前无任何汇总视图读它们）
+- [ ] 现存失败清零：`nightly_gap` 断言失败 = 0；`_failed/` 台账为空或每条有处置记录（清零确认在 nightly 机上完成）
+- [ ] 交付物下游同步适配（`pkg-AutoInfo` 的 gap_cells.csv 等消费 gap.json schema）
+
+### 已知事实
+- ★丢失点 1（目标抱怨的直接来源）：`scripts/nightly_gap.py:498-509` 把带 path/assertion/severity/details 的失败清单折叠成 {域: 计数}，明细 JSON 写在 `TemporaryDirectory` 随函数退出删除
+- 丢失点 2：`src/autoinfo/cli/validate.py:394-443` 控制台/HTML 只渲染 Domain×Product×Status
+- 丢失点 3：`scripts/validation_report.py:52-61` Blockers detail 截 200 字符
+- 丢失点 4：`_failed/` 从未被汇总消费（`src/autoinfo/kb.py:465` 把 `_failed` 当非 tier 目录排除）
+- 底层明细齐全：`AssertionResult`（`src/autoinfo/validation_matrix.py:51-72`，带 name/severity/domain/product/details）；G0/G4 `_failed/<item_id>.json`（`process.py:913-960`、`quality.py:1557-1594`）；CurationGate 拒绝记录（`kb.py:3812-3860`）
+
+---
+
+## 中期目标（本轮不实现，保持视野）
+- 新鲜度治理：存量语料健康度（「有真语料」）与「内容是新采的」分开度量、分开告警
+- 采集源健康与生命周期：该恢复的恢复、该退役的退役，失败自愈或降级
+- 同一内容跨站转载的重复治理（内容指纹，如 simhash/minhash）
+- 文档与实现对齐（规格别落后于代码）
+
+## 边界（MUST NOT）
+- **不碰 AutoMedia**（另一条线在做）。
+- 运行时工件（`collections/` `knowledge/` `autoinfo.db` `nightly/`）不得手改来修行为——改 `src/`。603/555 语料在另一台 nightly Linux 机上；**本机验收必须自造数据**。
+- `AGENTS.md` 全部约束继续生效：MCP 工具优先、03-Wiki append-only、`.autoinfo/config.yaml` 不手改、merge 用 `--squash` + DCO 签署等。
+- 不触发 collectors 重构 P1→P0 trigger（不加源、不加域，只改现有行为）。
+- 修 bug 必须带回归场景（`CONTRIBUTING.md` 强制）；README Status 表计数如变更需 `scripts/doc_inventory.py` 重生成。
+
+## 实施说明（非约束）
+三个短期目标相互独立，可并行或任意顺序；每个目标独立成 PR、独立验收。已知事实与验收标准如有出入，以代码现状为准并回报修订。

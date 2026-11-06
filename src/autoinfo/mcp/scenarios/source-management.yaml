@@ -76,6 +76,34 @@ steps:
       success: true
       data_has: ["results", "total", "succeeded", "errored"]
 
+  # Two-state model (goal doc 2026-11-06 #2): disable/enable round-trip on
+  # the temporary source — the config edit must be visible in list_sources
+  # and reversible, with the actor recorded for the audit trail.
+  - name: "disable_source explicitly disables the test source"
+    tool: disable_source
+    arguments:
+      source_id: "medical-research:__val_test_src__"
+      actor: "validation-scenario"
+    expect:
+      success: true
+      data_has: ["source_id", "enabled", "changed"]
+
+  - name: "list_sources shows the source as disabled"
+    tool: list_sources
+    arguments:
+      domain: medical-research
+    expect:
+      success: true
+
+  - name: "enable_source restores the test source"
+    tool: enable_source
+    arguments:
+      source_id: "medical-research:__val_test_src__"
+      actor: "validation-scenario"
+    expect:
+      success: true
+      data_has: ["source_id", "enabled", "changed"]
+
   - name: "remove_source cleans up the single test source"
     tool: remove_source
     arguments:

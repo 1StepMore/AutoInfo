@@ -13,8 +13,18 @@ import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from autoinfo.cli.collect import app as collect_app
 from tests._ansi import strip_ansi
+
+
+@pytest.fixture(autouse=True)
+def _hermetic(tmp_path, monkeypatch):
+    """Pin config discovery to ``tmp_path`` so no real config leaks in."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    yield
 
 
 def _write_config(tmp_path, domains: list[dict[str, Any]]) -> None:

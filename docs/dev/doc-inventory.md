@@ -13,23 +13,24 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 130 |
-| Total lines | 39445 |
-| Active files | 98 |
+| Total files | 131 |
+| Total lines | 39483 |
+| Active files | 99 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
-| Category — adr | 14 files / 874 lines |
+| Category — adr | 14 files / 884 lines |
 | Category — specs | 12 files / 9899 lines |
 | Category — validation-reports | 26 files / 5752 lines |
 | Category — docs/dev | 32 files / 11035 lines |
-| Category — docs/root | 8 files / 1615 lines |
+| Category — docs/root | 9 files / 1643 lines |
 
 ## Inventory
 
 | Relative path | Lines | Category | Status | Doc-type |
 |---------------|------:|----------|--------|----------|
+| `2026-11-05-AutoInfo-目标与任务-给agent.md` | 28 | docs/root | active | — |
 | `adr/0001-kb-pipeline-raw-sole-entry.md` | 41 | adr | active | adr |
 | `adr/0002-draft-to-wiki-agent-promotion.md` | 46 | adr | active | adr |
 | `adr/0003-llm-fallback-chain.md` | 44 | adr | active | adr |
@@ -41,7 +42,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0009-dco-squash-merge-signoff.md` | 103 | adr | active | adr |
 | `adr/0010-mcp-tools-list-omits-output-schema.md` | 47 | adr | active | — |
 | `adr/0011-quality-gate-attempt-semantics.md` | 72 | adr | active | adr |
-| `adr/0012-multi-tenancy-out-of-scope.md` | 98 | adr | active | adr |
+| `adr/0012-multi-tenancy-out-of-scope.md` | 108 | adr | active | adr |
 | `adr/README.md` | 58 | adr | active | adr-index |
 | `adr/TEMPLATE.md` | 32 | adr | active | adr |
 | `agent-infrastructure-audit-2026-10-30.md` | 251 | docs/root | active | — |

@@ -58,6 +58,8 @@ VERBS: frozenset[str] = frozenset(
         "delete",
         "demote",
         "diagnose",
+        "disable",
+        "enable",
         "export",
         "extract",
         "find",

@@ -13,4 +13,14 @@ scripts.
 
 from __future__ import annotations
 
-__all__ = ["contract", "facts", "scan", "artifacts", "adjudicate", "doctor", "platform"]
+__all__ = [
+    "adjudicate",
+    "artifacts",
+    "contract",
+    "doctor",
+    "facts",
+    "platform",
+    "scan",
+    "sources",
+    "status",
+]

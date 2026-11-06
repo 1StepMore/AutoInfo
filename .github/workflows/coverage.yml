@@ -76,6 +76,7 @@ jobs:
           pytest -m "not real_api" --cov=src/autoinfo --cov-report=term-missing -q 2>&1 | tee coverage-pytest.log
           mv .coverage .coverage.pr
       - name: Measure base coverage (merge-base worktree)
+        id: base
         run: |
           set -uo pipefail
           # Only worth the second ~9m run when there IS a gated module.
@@ -103,6 +104,14 @@ jobs:
           if [ "$_base_rc" -ne 0 ]; then
             echo "NOTE: base suite exited $_base_rc at $BASE_SHA; coverage still measured."
           fi
+          # Governance T07: this exit code used to be swallowed — the step
+          # can never fail (immutable history), so a red base was invisible.
+          # Persist it as a step output AND a machine-readable artifact so
+          # `gov status` can show the gate as DEGRADED instead of silent.
+          echo "base_suite_exit=$_base_rc" >> "$GITHUB_OUTPUT"
+          mkdir -p "$GITHUB_WORKSPACE/.autoinfo/gov"
+          printf '{"base_suite_exit": %s, "base_sha": "%s"}\n' "$_base_rc" "$BASE_SHA" \
+            > "$GITHUB_WORKSPACE/.autoinfo/gov/coverage-base.json"
           cp .coverage "$GITHUB_WORKSPACE/.coverage.base"
           echo "Base coverage measured at $BASE_SHA"
       - name: Gate coverage on changed modules (baseline-aware)
@@ -112,6 +121,13 @@ jobs:
             --pr-data .coverage.pr \
             --base-data .coverage.base \
             --base-sha "$BASE_SHA"
+      # Governance T07: make a swallowed base-suite failure VISIBLE without
+      # adding a failure condition. The step is report-only (`|| true`): the
+      # gate shows DEGRADED with base_suite_exit=<n> when the base was red.
+      - name: Report base-suite exit (governance, report-only)
+        if: always()
+        run: |
+          python3 -m autoinfo.gov status --only coverage_base --json || true
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
         with:
@@ -121,5 +137,6 @@ jobs:
             coverage-base-pytest.log
             .coverage.pr
             .coverage.base
+            .autoinfo/gov/coverage-base.json
           retention-days: 7
           if-no-files-found: ignore

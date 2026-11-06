@@ -35,9 +35,8 @@ VERBS = (
     "scripts",
 )
 
-#: Verbs implemented in later PRs (plan T06-T17); registered, honestly stubbed.
+#: Verbs implemented in later PRs (plan T09-T17); registered, honestly stubbed.
 _LATER_PR: dict[str, str] = {
-    "status": "T06 (PR-B) — 8-state status model",
     "escalate": "T12 (PR-D) — human escalations",
     "run": "T15 (PR-D) — profile probes",
     "acceptance": "T12 (PR-D) — acceptance report instrument",
@@ -165,6 +164,28 @@ def cmd_doctor(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return data, EXIT_OK
 
 
+def cmd_status(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from autoinfo.gov import artifacts
+    from autoinfo.gov import facts as facts_mod
+    from autoinfo.gov import status as status_mod
+    from autoinfo.gov.contract import ContractError, load
+
+    try:
+        contract = load()
+        facts = facts_mod.derive_all(contract)
+    except (ContractError, facts_mod.FactsError) as exc:
+        return (
+            _env_error(str(exc), "run from the repo root with the project venv interpreter"),
+            EXIT_ENV,
+        )
+    report = status_mod.status(
+        contract,
+        facts | {"_input_hash": artifacts.input_hash(contract.version, facts)},
+        only=args.only,
+    )
+    return report, status_mod.exit_code(report)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m autoinfo.gov",
@@ -199,8 +220,17 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--json", action="store_true", help="emit one JSON line")
     doctor.set_defaults(func=cmd_doctor)
 
+    status_cmd = sub.add_parser("status", help="8-state status model over every contract gate")
+    status_cmd.add_argument("--json", action="store_true", help="emit one JSON line")
+    status_cmd.add_argument("--only", help="restrict the report to one gate id")
+    status_cmd.add_argument(
+        "--simulate",
+        choices=["offline", "no-service", "no-key"],
+        help="degraded-environment simulation (lands in T16)",
+    )
+    status_cmd.set_defaults(func=cmd_status)
+
     stub_verbs = (
-        "status",
         "escalate",
         "acceptance",
         "negative-control",

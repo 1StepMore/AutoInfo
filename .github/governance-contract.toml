@@ -179,6 +179,13 @@ required = false
 advisory = false
 source = "tests/TRIAGE.md"
 
+[gates.coverage_base]
+kind = "gate"
+required = false
+advisory = false
+source = ".github/workflows/coverage.yml#Measure base coverage"
+not_run_allowed_reason = "base-suite exit is only measured on coverage.yml (PR CI) runs"
+
 # ---------------------------------------------------------------------------
 # Profiles — capability boundary (T15). One contract, two runtime profiles.
 # `gov run --mode <profile> --probe <action>` decides via autoinfo.gov.policy.

@@ -43,6 +43,9 @@ from . import (
     validate,
     validation,
 )
+from . import (
+    gov as gov_module,
+)
 from ._output import (
     detect_global_json,
     emit_error_envelope,
@@ -137,6 +140,14 @@ def main(
 
 # Register subcommand modules as top-level commands
 app.command()(init_func)
+# Governance thin forward (T04): a single passthrough command, NOT a sub-app —
+# keeps the derived cli_groups fact at 31 and forwards argv verbatim to the
+# only entry point, `python -m autoinfo.gov`.
+app.command(
+    name="gov",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    help="Governance verbs (thin forward to `python -m autoinfo.gov`)",
+)(gov_module.gov)
 app.add_typer(doctor.app, name="doctor")
 app.add_typer(
     collect.app,

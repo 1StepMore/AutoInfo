@@ -1,9 +1,9 @@
 .PHONY: install dev-install test lint clean stripe-mock backup validate battery doc-check
 
-# Interpreter binding (issue #424): gates resolve to the project venv instead of
-# whatever bare python3 is first on PATH, where a missing autoinfo surfaces as a
-# bogus documentation-drift red rather than an environment error.
-PY := $(shell test -x .venv/bin/python && echo .venv/bin/python || echo python3)
+# No platform probing here (plan 1.1.2): the Makefile is a POSIX-thin alias
+# layer. `PY ?= python3` is the un-probed default; interpreter discovery for
+# governance tooling lives in ONE place — autoinfo.gov.platform.resolve_python.
+PY ?= python3
 
 install:
 	pip install -e .
@@ -66,11 +66,12 @@ validate:
 battery:
 	$(PY) scripts/agent_review/battery.py $(DIR) $(if $(SEMANTIC),--semantic,)
 
-# Documentation drift gate (issue #240, #540 follow-up): the generated
-# end-user coverage view, the demo-domains table (README, generated from
-# sources.yaml), and the doc inventory must all match their generators.
-# Non-zero if any drifts, so CI/humans catch hand-edits before they compound.
+# Documentation drift gate (issue #240, #540 follow-up): the governance
+# contract check (derived facts + whole-repo scan + ADR consumer sync) plus the
+# generated end-user coverage view and the demo-domains table (README,
+# generated from sources.yaml). Non-zero if any drifts, so CI/humans catch
+# hand-edits before they compound. Same command on Windows and WSL (T04).
 doc-check:
-	$(PY) scripts/doc_inventory.py --check || exit 1
+	$(PY) -m autoinfo.gov check --json || exit 1
 	$(PY) scripts/coverage_matrix.py --check-enduser-doc docs/dev/enduser-coverage-matrix.md || exit 1
 	$(PY) scripts/gen_demo_domains_table.py --check || exit 1

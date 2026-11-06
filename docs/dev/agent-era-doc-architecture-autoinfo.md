@@ -54,7 +54,7 @@
 **The 8 drift-prone facts** (checked README ↔ skill; AGENTS.md is pointer-only, so its
 values are skipped): MCP tools **151** / MCP categories **35** / CLI groups **31** /
 delivery channels **13** / validation scenarios **189** (86 functional + 103 regression) /
-demo domains **21** / LLM-required tools **16** / test count **~6786**. All 8 are
+demo domains **21** / LLM-required tools **16** / test count **~6850**. All 8 are
 checker-gated twice: `doc_inventory --check` and the full-repo scan in
 `python -m autoinfo.gov check` (contract: `.github/governance-contract.toml`,
 baseline refreshed 2026-11-06).

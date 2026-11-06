@@ -1,0 +1,213 @@
+# AutoInfo governance contract — single machine-readable authority (plan
+# autoinfo-governance-remediation-2026-11-06, T02).
+#
+# Everything governance-shaped reads THIS file: `python -m autoinfo.gov` (the
+# only entry point), CI steps, pre-commit, and humans. Code, docs and CI must
+# reference it, never restate its values.
+#
+# Change rules (P1/R3): any change to this file requires a PR; semantic changes
+# to [authority] / [facts] / [gates] / [decisions] additionally require an ADR
+# (see docs/adr/0014 once landed). Bump [meta].version on any structural change.
+
+[meta]
+version = 2
+owner = "maintainer"
+
+# ---------------------------------------------------------------------------
+# Authority order — when two surfaces state the same fact, the earliest entry
+# wins (`gov adjudicate` resolves by this list; T02/DoD #4). "runtime:src" and
+# the derived-facts artifacts always beat any document.
+# ---------------------------------------------------------------------------
+[authority]
+order = [
+    "runtime:src+derived_facts",
+    "README.md#status",
+    "docs/adr/*",
+    "docs/dev/specs/*",
+    "AGENTS.md",
+    "other_docs",
+]
+
+# ---------------------------------------------------------------------------
+# Facts — every count-style fact is DERIVED from code (P2: derived over
+# declared). Each fact names its derive function (importable, verified by
+# `gov contract check`) and the patterns used to catch stale restatements in
+# docs. A line matching a pattern with a different number than the derived
+# value is drift (`gov check`), unless the line carries the ignore marker or
+# the file is excluded below.
+# ---------------------------------------------------------------------------
+[facts.mcp_tools]
+derive = "autoinfo.gov.facts:mcp_tools"
+pattern = '(?<![A-Za-z0-9])(\d+)\s+(?:MCP\s+)?tools?\b'
+expects = ["mcp_tools"]
+
+[facts.cli_groups]
+derive = "autoinfo.gov.facts:cli_groups"
+pattern = '(?<![A-Za-z0-9])(\d+)\s+CLI\s+(?:command\s+)?groups?\b'
+expects = ["cli_groups"]
+[[facts.cli_groups.match]]
+pattern = '(?<![A-Za-z0-9])(\d+)\s+command groups?\b'
+expects = ["cli_groups"]
+[[facts.cli_groups.match]]
+pattern = 'cli/\s*\((?P<v>\d+)\s+groups?\b'
+expects = ["cli_groups"]
+
+[facts.validation_scenarios]
+derive = "autoinfo.gov.facts:validation_scenarios"
+pattern = '(?<![A-Za-z0-9])(\d{3,})\s+(?:validation\s+)?scenarios?\b'
+expects = ["validation_scenarios.total"]
+[[facts.validation_scenarios.match]]
+pattern = '(?<![A-Za-z0-9])(\d+)\s+scenario files?\b'
+expects = ["validation_scenarios.total"]
+[[facts.validation_scenarios.match]]
+pattern = '(?<![A-Za-z0-9])(\d+)\s+functional\s*\+\s*(\d+)\s+regression'
+expects = ["validation_scenarios.functional", "validation_scenarios.regression"]
+
+[facts.tests]
+derive = "autoinfo.gov.facts:tests"
+pattern = '(?<![A-Za-z0-9])~(?P<v>\d{3,})\s+tests?\b'
+expects = ["tests"]
+
+[facts.demo_domains]
+derive = "autoinfo.gov.facts:demo_domains"
+pattern = '(?<![A-Za-z0-9])(\d+)\s+demo domains?\b'
+expects = ["demo_domains"]
+
+[facts.delivery_channels]
+derive = "autoinfo.gov.facts:delivery_channels"
+pattern = '(?<![A-Za-z0-9])(\d+)\s+(?:delivery\s+)?channels?\b'
+expects = ["delivery_channels"]
+
+[facts.llm_required_tools]
+derive = "autoinfo.gov.facts:llm_required_tools"
+pattern = '(?<![A-Za-z0-9])(\d+)\s+LLM-required\s+tools?\b'
+expects = ["llm_required_tools"]
+
+[facts.adr_count]
+derive = "autoinfo.gov.facts:adr_count"
+pattern = '(?<![A-Za-z0-9])(\d+)\s+ADRs?\b'
+expects = ["adr_count"]
+
+# ---------------------------------------------------------------------------
+# Scan — P3: default-ON whole-repo scan of every git-tracked *.md, with named
+# exclusions (each with a written reason) and a line-level ignore marker.
+# Never re-grow a whitelist: a new exclusion needs a reason here, and a stale
+# historical line opts out per-line with the marker, never by deleting it.
+# ---------------------------------------------------------------------------
+[scan]
+include = ["*.md"]
+ignore_marker = "counts-ignore"
+
+[[scan.exclude]]
+path = "docs/archive/**"
+reason = "historical snapshots legitimately preserve old strings (doc-manager convention 1.7)"
+
+[[scan.exclude]]
+path = "docs/dev/validation-reports/**"
+reason = "dated validation-run reports record the state as of that run"
+
+[[scan.exclude]]
+path = "docs/dev/plans/**"
+reason = "dated point-in-time plans and goal contracts are historical work records"
+
+[[scan.exclude]]
+path = "docs/dev/epics/**"
+reason = "dated point-in-time audit verdicts (same rationale as guard.yml's epics exclusion)"
+
+[[scan.exclude]]
+path = "docs/project-evaluation-2026-09-06.md"
+reason = "dated point-in-time evaluation verdict (2026-09-06)"
+
+[[scan.exclude]]
+path = "docs/agent-infrastructure-audit-2026-10-30.md"
+reason = "dated point-in-time audit verdict (2026-10-30)"
+
+[[scan.exclude]]
+path = "docs/adr/0005-*.md"
+reason = "ADR decision records preserve decision-time values"
+
+[[scan.exclude]]
+path = "docs/adr/0010-*.md"
+reason = "ADR decision records preserve decision-time values"
+
+[[scan.exclude]]
+path = "docs/adr/0011-*.md"
+reason = "ADR decision records preserve decision-time values"
+
+[[scan.exclude]]
+path = "CHANGELOG.md"
+reason = "release history; numbers were true at each release"
+
+[[scan.exclude]]
+path = "tests/TRIAGE.md"
+reason = "failure-triage record; values were true at recording time; the known-red budget block is parsed by gov sources, not count-scanned"
+
+# ---------------------------------------------------------------------------
+# Gates — every gate has a state from the 8-value enum (PASS | FAIL | NOT_RUN |
+# STALE | UNMEASURED | ADVISORY | UNCONFIGURED | DEGRADED), evidence, and a
+# required/advisory flag. There is no `unknown` (P4). ADVISORY never counts
+# into counts.pass and never blocks.
+# ---------------------------------------------------------------------------
+[gates.facts_parity]
+kind = "gate"
+required = true
+advisory = false
+source = "autoinfo.gov.facts:check"
+
+[gates.ruff_full]
+kind = "advisory"
+required = false
+advisory = true
+source = ".github/workflows/ci.yml#Ruff on full source"
+
+[gates.derived_parity]
+kind = "gate"
+required = false
+advisory = false
+source = ".github/workflows/guard.yml#derived-facts"
+not_run_allowed_reason = "wired report-only into guard.yml (T09); flips to required after the observation period"
+
+[gates.preview_smoke]
+kind = "advisory"
+required = false
+advisory = true
+source = "scripts/preview_smoke.sh"
+
+[gates.known_red]
+kind = "budget"
+required = false
+advisory = false
+source = "tests/TRIAGE.md"
+
+# ---------------------------------------------------------------------------
+# Profiles — capability boundary (T15). One contract, two runtime profiles.
+# `gov run --mode <profile> --probe <action>` decides via autoinfo.gov.policy.
+# ---------------------------------------------------------------------------
+[profiles.cloud]
+allow = ["read:repo", "write:workspace", "run:gov-*"]
+deny = ["git:push-protected", "secret:read", "path:outside-workspace"]
+
+[profiles.local]
+allow = ["*"]
+deny = []
+
+# ---------------------------------------------------------------------------
+# Platform — interpreter discovery lives in ONE place (gov.platform), the
+# Makefile carries no platform branches, and the tree is LF end-of-line.
+# ---------------------------------------------------------------------------
+[platform]
+python_candidates = [".venv/Scripts/python.exe", ".venv/bin/python", "python3", "python"]
+eol = "lf"
+
+# ---------------------------------------------------------------------------
+# Conflicts — documented divergences between agent rules and human rules.
+# ---------------------------------------------------------------------------
+[conflicts]
+pr-size = { agents = "fewer-larger", humans = "small-focused" }
+
+# ---------------------------------------------------------------------------
+# Decisions — ADR consumer sync (T10). Each decision names its ADR and the
+# consumers that must reference it; `gov adr check` flags UNSYNCED when an
+# anchor goes missing. Filled in PR-C together with ADR-0013/0014.
+# ---------------------------------------------------------------------------
+[decisions]

@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.22.0](https://github.com/1StepMore/AutoInfo/compare/v1.21.17...v1.22.0) (2026-11-06)
+
+
+### Features
+
+* **kb,sources,quality:** goals 1-3 — true-fresh dedup, two-state sources, attributable failures ([#700](https://github.com/1StepMore/AutoInfo/issues/700)) ([1cbc18a](https://github.com/1StepMore/AutoInfo/commit/1cbc18ad76fea97ca1dd29b66a7cbb3bdcf01b8a))
+
+
+### Documentation
+
+* align declared counts with code truth (governance remediation T01) ([#699](https://github.com/1StepMore/AutoInfo/issues/699)) ([3367527](https://github.com/1StepMore/AutoInfo/commit/3367527df28438698bbd97f50e99eda207c765b3))
+
 ## [1.21.17](https://github.com/1StepMore/AutoInfo/compare/v1.21.16...v1.21.17) (2026-11-06)
 
 

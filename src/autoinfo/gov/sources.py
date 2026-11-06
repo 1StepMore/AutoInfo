@@ -277,6 +277,38 @@ def read_coverage_base(contract: Contract, derived: dict[str, Any]) -> dict[str,
     }
 
 
+def read_escalations(contract: Contract, derived: dict[str, Any]) -> dict[str, Any]:
+    """escalations: an open human escalation is an unresolved gate — never PASS.
+
+    PENDING and OVERDUE both mean the director still owes a decision (G6):
+    the gate is FAIL until the store is empty. The escalation's own state
+    (PENDING vs OVERDUE) is carried per-item by `gov escalate`.
+    """
+    from autoinfo.gov import artifacts
+    from autoinfo.gov import escalate as escalate_mod
+
+    open_items = escalate_mod.pending(contract.root)
+    if not open_items:
+        return {
+            "state": "PASS",
+            "reason": "",
+            "missing": [],
+            "evidence": artifacts.evidence(contract.root, contract.version, derived),
+            "open_escalations": 0,
+        }
+    overdue = [e["item"] for e in open_items if e["escalation"]["state"] == "OVERDUE"]
+    return {
+        "state": "FAIL",
+        "reason": f"{len(open_items)} open human escalation(s)"
+        + (f" (OVERDUE: {', '.join(overdue)})" if overdue else "")
+        + " — a human decision is owed; never folded into PASS",
+        "missing": [],
+        "evidence": None,
+        "open_escalations": len(open_items),
+        "overdue": overdue,
+    }
+
+
 READERS: dict[str, Callable[[Contract, dict[str, Any]], dict[str, Any]]] = {
     "facts_parity": read_facts_parity,
     "ruff_full": read_ruff_full,
@@ -284,6 +316,7 @@ READERS: dict[str, Callable[[Contract, dict[str, Any]], dict[str, Any]]] = {
     "preview_smoke": read_preview_smoke,
     "known_red": read_known_red,
     "coverage_base": read_coverage_base,
+    "escalations": read_escalations,
 }
 
 

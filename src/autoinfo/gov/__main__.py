@@ -35,11 +35,8 @@ VERBS = (
     "scripts",
 )
 
-#: Verbs implemented in later PRs (plan T12-T17); registered, honestly stubbed.
+#: Verbs implemented in later PRs (plan T14/T17); registered, honestly stubbed.
 _LATER_PR: dict[str, str] = {
-    "escalate": "T12 (PR-D) — human escalations",
-    "run": "T15 (PR-D) — profile probes",
-    "acceptance": "T12 (PR-D) — acceptance report instrument",
     "negative-control": "T17 (PR-E) — negative-control harness",
     "confidence": "T17 (PR-E) — E2/E3 confidence grading",
     "scripts": "T14 (PR-E) — scripts/ registry",
@@ -181,8 +178,92 @@ def cmd_status(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         contract,
         facts | {"_input_hash": artifacts.input_hash(contract.version, facts)},
         only=args.only,
+        simulate=args.simulate,
     )
     return report, status_mod.exit_code(report)
+
+
+def cmd_run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from autoinfo.gov import artifacts, policy
+    from autoinfo.gov.contract import ContractError, load
+
+    try:
+        contract = load()
+    except ContractError as exc:
+        return _env_error(str(exc), "run from the repository root"), EXIT_ENV
+    log_dir = artifacts.artifact_dir(contract.root)
+    if args.diff_profiles:
+        diffs = policy.diff_profiles(contract.profiles)
+        data: dict[str, Any] = {"diff": diffs, "profiles": sorted(contract.profiles)}
+        return data, EXIT_OK if not diffs else EXIT_RED
+    if not args.mode or not args.probe:
+        return (
+            _env_error(
+                "run needs --mode <profile> --probe <action> (or --diff-profiles)",
+                "e.g. run --mode cloud --probe git:push-protected --json",
+            ),
+            EXIT_ENV,
+        )
+    decision = policy.decide(contract.profiles, args.mode, args.probe, log_dir=log_dir)
+    rc = EXIT_OK if decision["allowed"] else EXIT_RED
+    return decision, rc
+
+
+def cmd_escalate(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from autoinfo.gov import escalate as escalate_mod
+    from autoinfo.gov import sources
+    from autoinfo.gov.contract import ContractError, load
+
+    try:
+        contract = load()
+    except ContractError as exc:
+        return _env_error(str(exc), "run from the repository root"), EXIT_ENV
+    if args.pending:
+        open_items = escalate_mod.pending(contract.root)
+        data: dict[str, Any] = {"pending": open_items, "count": len(open_items)}
+        rc = EXIT_RED if any(e["escalation"]["state"] == "OVERDUE" for e in open_items) else EXIT_OK
+        return data, rc
+    if not args.item:
+        return (
+            _env_error(
+                "escalate needs --item <id> (or --pending)",
+                "e.g. escalate --item acceptance-1.21.17",
+            ),
+            EXIT_ENV,
+        )
+    try:
+        record = escalate_mod.escalate(
+            contract,
+            item=args.item,
+            role=args.role,
+            channel=args.channel,
+            deadline=args.deadline,
+        )
+    except escalate_mod.EscalationError as exc:
+        return {
+            "success": False,
+            "error": {
+                "code": "ESCALATION_REFUSED",
+                "message": str(exc),
+                "actionable": "route to a human receiver role",
+            },
+        }, EXIT_ENV
+    gate_raw = sources.read_gate("escalations", contract, {})
+    record["gate"] = {"id": "escalations", "state": gate_raw["state"], "reason": gate_raw["reason"]}
+    overdue = record["escalation"]["state"] == "OVERDUE"
+    rc = EXIT_RED if overdue or gate_raw["state"] == "FAIL" else EXIT_OK
+    return record, rc
+
+
+def cmd_acceptance(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from autoinfo.gov import acceptance as acceptance_mod
+
+    del args
+    try:
+        data = acceptance_mod.check()
+    except (FileNotFoundError, ImportError, ValueError) as exc:
+        return _env_error(str(exc), "run from the repository root"), EXIT_ENV
+    return data, EXIT_OK if data["success"] else EXIT_RED
 
 
 def cmd_adr(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -249,9 +330,22 @@ def build_parser() -> argparse.ArgumentParser:
     adr.add_argument("--json", action="store_true", help="emit one JSON line")
     adr.set_defaults(func=cmd_adr)
 
+    escalate = sub.add_parser("escalate", help="route a human decision (receiver+deadline, T12)")
+    escalate.add_argument("--item", help="escalation item id, e.g. acceptance-1.21.17")
+    escalate.add_argument(
+        "--role", default="human.director", help="receiver role (never executor.profile)"
+    )
+    escalate.add_argument("--channel", default="github-issue", help="receiver channel")
+    escalate.add_argument("--deadline", help="ISO-8601 deadline (default: now+7d)")
+    escalate.add_argument("--pending", action="store_true", help="list open escalations")
+    escalate.add_argument("--json", action="store_true", help="emit one JSON line")
+    escalate.set_defaults(func=cmd_escalate)
+
+    acceptance = sub.add_parser("acceptance", help="acceptance-instrument bridge check (T12)")
+    acceptance.add_argument("--json", action="store_true", help="emit one JSON line")
+    acceptance.set_defaults(func=cmd_acceptance)
+
     stub_verbs = (
-        "escalate",
-        "acceptance",
         "negative-control",
         "confidence",
         "scripts",
@@ -261,12 +355,12 @@ def build_parser() -> argparse.ArgumentParser:
         stub.add_argument("--json", action="store_true", help="emit one JSON line")
         stub.set_defaults(func=None)
 
-    run = sub.add_parser("run", help="profile probe runner (lands in T15)")
+    run = sub.add_parser("run", help="profile probe runner — policy decision only (T15)")
     run.add_argument("--mode", help="profile name (cloud|local)")
     run.add_argument("--probe", help="probe id, e.g. git:push-protected")
     run.add_argument("--diff-profiles", action="store_true")
     run.add_argument("--json", action="store_true", help="emit one JSON line")
-    run.set_defaults(func=None)
+    run.set_defaults(func=cmd_run)
 
     return parser
 

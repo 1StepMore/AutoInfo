@@ -67,6 +67,13 @@ jobs:
         run: |
           python -m autoinfo.gov status --only known_red --json || true
 
+      # Governance T12: open human escalations must stay visible and must
+      # age — an OVERDUE escalation is red here, never silently folded.
+      - name: Open human escalations (governance, report-only)
+        if: always()
+        run: |
+          python -m autoinfo.gov escalate --pending --json || true
+
       # Persisted validation-suite run (agent-infra remediation plan
       # 2026-10-30, decision B1): same engine entry as the MCP
       # run_all_validation_scenarios tool; persists the aggregate suite run +

@@ -46,7 +46,7 @@ make test
 make lint
 ```
 
-- `make test` runs the full suite (`pytest -v`). The suite is roughly 6867
+- `make test` runs the full suite (`pytest -v`). The suite is roughly 6891
   tests; every test is bounded by pytest-timeout at 180 seconds so a hang
   fails fast instead of stalling the run.
 - `make lint` runs `ruff check src/ tests/` followed by `mypy src/`.

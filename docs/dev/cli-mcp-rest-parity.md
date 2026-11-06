@@ -9,7 +9,7 @@ three commands:
 | Surface | Derivation command |
 |---------|-------------------|
 | CLI | `.venv/bin/autoinfo --help` + per-group `autoinfo <group> --help` (31 groups, all subcommands) |
-| MCP | `list_tools()` on `autoinfo.mcp.server` (149 tools, runtime registry) |
+| MCP | `list_tools()` on `autoinfo.mcp.server` (151 tools, runtime registry) |
 | REST | `python3 scripts/surface_parity.py` — enumerates `autoinfo.api.server:app` and expands the `_IncludedRouter` deferral through `original_router.routes` + `include_context.prefix` (previously `app.routes` + the three router objects: routes/portal/storefront) |
 
 Derivation date: 2026-08-05 (re-derived 2026-09-05 after the concierge wave:
@@ -400,7 +400,7 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 
 | Capability | CLI | MCP | REST | Status | Notes |
 |------------|-----|-----|------|--------|-------|
-| List validation scenarios | `autoinfo validation list [--summary]` | `list_validation_scenarios` | — | MCP + CLI (validation list) | 187 scenarios (86 functional + 101 regression) |
+| List validation scenarios | `autoinfo validation list [--summary]` | `list_validation_scenarios` | — | MCP + CLI (validation list) | 189 scenarios (86 functional + 103 regression) |
 | Run validation scenario | — | `run_validation_scenario` | — | MCP-only | Scenario steps may invoke CLI/REST internally |
 
 ### REST-only endpoints (no CLI / MCP counterpart)

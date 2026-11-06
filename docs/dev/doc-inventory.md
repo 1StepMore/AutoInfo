@@ -14,16 +14,16 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 131 |
-| Total lines | 39497 |
+| Total lines | 39526 |
 | Active files | 99 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 14 files / 884 lines |
-| Category — specs | 12 files / 9913 lines |
+| Category — specs | 12 files / 9940 lines |
 | Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 32 files / 11035 lines |
+| Category — docs/dev | 32 files / 11037 lines |
 | Category — docs/root | 9 files / 1643 lines |
 
 ## Inventory
@@ -81,7 +81,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `demo-release-standard.md` | 43 | docs/root | active | — |
 | `dev/AutoInfo-development-brief-v4.md` | 310 | docs/dev | active | — |
 | `dev/acceptance-framework.md` | 508 | docs/dev | active | — |
-| `dev/agent-era-doc-architecture-autoinfo.md` | 96 | docs/dev | active | reference |
+| `dev/agent-era-doc-architecture-autoinfo.md` | 100 | docs/dev | active | reference |
 | `dev/agent-era-doc-architecture.md` | 282 | docs/dev | active | instruction |
 | `dev/autoinfo-business-validation-20260902.md` | 293 | docs/dev | active | — |
 | `dev/autoinfo-corrections-20260904.md` | 439 | docs/dev | active | — |
@@ -106,7 +106,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |
 | `dev/source-diagnosis.md` | 176 | docs/dev | active | — |
 | `dev/specs/data-models.md` | 779 | specs | active | — |
-| `dev/specs/delivery.md` | 1288 | specs | active | — |
+| `dev/specs/delivery.md` | 1315 | specs | active | — |
 | `dev/specs/end-user-matrix.yaml` | 1926 | specs | active | — |
 | `dev/specs/expectations.md` | 1228 | specs | active | — |
 | `dev/specs/market-positioning.md` | 404 | specs | active | market-positioning |
@@ -117,7 +117,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/pipeline.md` | 676 | specs | active | — |
 | `dev/specs/quality-gates.md` | 210 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
-| `dev/testing-layers.md` | 261 | docs/dev | active | — |
+| `dev/testing-layers.md` | 259 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 96 | validation-reports | active | — |

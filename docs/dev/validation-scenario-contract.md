@@ -391,7 +391,7 @@ every scenario in `scenarios/regression/` must carry `regression: true` and a
   cron-schedules, collection-monitor, collect-failure-recovery, llm-failure-recovery
 - **KB**: kb-access, kb-draft, kb-versioning, kb-graph, kb-import-export,
   kb-lifecycle, kb-extraction, kb-promote (E8: Draft→Wiki promotion end to end),
-  kb-tier-matrix (AC4, 2026-08-16: 13 demo domains × 3 KB tiers matrix coverage)
+  kb-tier-matrix (AC4, 2026-08-16: 13 demo domains × 3 KB tiers matrix coverage) <!-- counts-ignore: historical AC4 matrix run (13 was true on 2026-08-16) -->
 - **Output**: output-digest-report, output-ebook, output-tutorial-presentation,
   output-simplify-recommend, output-discovery, output-column, output-agent-interaction,
   output-video (2026-08-13, LLM-gated: report video format rendered end to end)

@@ -255,7 +255,7 @@ If a source is blocked, document it here with the blocking reason, any alternati
 ## Mainland-CN reachability pass (2026-08-24, issues #6/#7)
 
 Live 3-level probe (DNS → TCP:443 → HTTP) from a mainland-CN network
-(2026-08-24) over all 13 demo domains, using the collector's real bot UA
+(2026-08-24) over all 13 demo domains, using the collector's real bot UA <!-- counts-ignore: historical 2026-08-24 probe run (13 was true then) -->
 (`AutoInfo/1.8`). Key insight: **browser-UA 403s are false positives** — the
 collector's bot UA gets 200 on microsoft-newsroom, wired, crunchbase-news,
 HN-firebaseio, SEC-EDGAR. The genuinely unreachable set is small and is now

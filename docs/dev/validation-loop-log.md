@@ -86,7 +86,7 @@
 - **同步 backup/main `2e1052d`**（+1 commit / 295 文件 / +11833 / -2262）：62-gap agent-oriented register（7 waves / 41 tasks）、场景 138→159、诚实化 harness（error-audit truth gate、checkpoint/resume、per-step timeout）、agent-native surface（canonical envelope + outputSchema 全覆盖、CLI/REST/build/vendor parity）、新增 `scripts/ax_metrics.py` / `category_pyramid_coverage.py` / `build_release_check.py` / `docs/dev/testing-layers.md`。本地 `--ff-only` 至该 sha，三方校验一致（本地 = backup/main = gh api）。
 - **CI 覆盖缺口（本轮前提）**：`AutoInfo_BackUp` 的 GitHub Actions 为 `enabled=false`（维护者有意保留——等主仓解禁；9 月末复核，若仍不解禁则把 backup 提升为 main 并开启）→ commit `2e1052d` 在 CI 侧**零覆盖**（check-runs=0；最近一次 run 为 2026-08-22，且当时含 `CI failure` / `Release failure`）。本轮因此由验证侧在本地**替代 CI** 复跑全部门。
 - **本地替代复跑的门（全绿，逐条实跑）**：
-  - `scripts/doc_inventory.py --check` → pass（149 tools / 35 categories / 5215 tests 全部 match，无 stray 文件）
+  - `scripts/doc_inventory.py --check` → pass（149 tools / 35 categories / 5215 tests 全部 match，无 stray 文件） <!-- counts-ignore: dated log entry, values true at log time -->
   - `scripts/category_pyramid_coverage.py` → 159 场景扫描、14/20 cell 有场景、0 unclassified
   - `scripts/stage_user_coverage.py` → 126 cells / 126 classified、72 expectations / 72 classified、0 unclassified（`STATUS: OK`）
   - `scripts/error_message_audit.py` → 220 个错误调用点、raw-exception 站点 **0**、缺 fix hint **0**
@@ -210,7 +210,7 @@
 - `pytest tests/output/test_tutorial_no_placeholder.py` → 7 passed
 - `pytest tests/cli/test_cli_json_parity.py` → 8 passed；`python3 -m autoinfo.cli --json cost dashboard --days abc` → 合法 envelope + exit 2
 - `pytest tests/validation/test_known_red_budget_single_source.py` → 2 passed
-- 场景库 161（86 functional + 75 regression），两个新回归场景可解析
+- 场景库 161（86 functional + 75 regression），两个新回归场景可解析 <!-- counts-ignore: dated log entry, values true at log time -->
 
 ### 复盘（fix-retro @ 2026-09-14）
 **本轮修了什么**（审查 + 修复轮：2026-09-13 轮新增的 6 个 issue 全部闭环）:

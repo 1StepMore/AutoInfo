@@ -288,8 +288,8 @@ This is the standard. Everything else — tests, architecture, source curation �
 | True Test | ✅ 13-point agent-verifiable checklist — all pass |
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
-| Tests | ✅ ~6146 tests across 100+ test files (includes new collector tests) |
-| MCP tools | ✅ 149 tools across 35 categories |
+| Tests | ✅ ~6786 tests across 100+ test files (includes new collector tests) |
+| MCP tools | ✅ 151 tools across 35 categories |
 | Technical decisions | ✅ 34 categories documented, all implemented |
 | CLI commands | ✅ 31 command groups |
 
@@ -350,7 +350,7 @@ Doctor:              autoinfo doctor
 
 This document was designed to be **honest**. Not to make the project look good, but to make it **actually good**. The expectations in §3 are deliberately high — because the project's promise is ambitious.
 
-The project started from zero (v0.1, July 18 2026) and reached v1.8 in 7 days of intensive development. Over 18K+ lines of Python, 35+ modules, ~2942 tests (includes new collector tests), and 141 MCP tools later — **a systematic gap analysis (2026-07-26) finds: 55/72 expectations fully implemented (✅), 6/72 partially implemented (🟡), 11/72 not implemented (❌). All 6 quality gates (G0-G5) and 3 delivery gates (D1-D3) are fully implemented. All 13 True Test criteria pass**. The product model (RAW + PROCESSED products), production-grade quality gates (hard/soft split), commercial scope, and delivery infrastructure are fully specified and operational. v1.6 closes all 13 residual v1.5+ gaps and delivers all 17 new development expectations across End User Lifecycle (F36-F40), Cost Governance (F41-F45), Data Privacy (F46-F48), Knowledge Lifecycle (F49-F53), and Operational Observability (F54-F57) — including multi-channel delivery, immutable audit logging, structured pipeline logging, per-item traceability, cost metering and allocation, budget alerts, source ToS compliance, soft-delete and GDPR retention, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), enhanced diagnostics, and Prometheus metrics.
+The project started from zero (v0.1, July 18 2026) and reached v1.8 in 7 days of intensive development. Over 18K+ lines of Python, 35+ modules, ~2942 tests (includes new collector tests), and 141 MCP tools later — **a systematic gap analysis (2026-07-26) finds: 55/72 expectations fully implemented (✅), 6/72 partially implemented (🟡), 11/72 not implemented (❌). All 6 quality gates (G0-G5) and 3 delivery gates (D1-D3) are fully implemented. All 13 True Test criteria pass**. The product model (RAW + PROCESSED products), production-grade quality gates (hard/soft split), commercial scope, and delivery infrastructure are fully specified and operational. v1.6 closes all 13 residual v1.5+ gaps and delivers all 17 new development expectations across End User Lifecycle (F36-F40), Cost Governance (F41-F45), Data Privacy (F46-F48), Knowledge Lifecycle (F49-F53), and Operational Observability (F54-F57) — including multi-channel delivery, immutable audit logging, structured pipeline logging, per-item traceability, cost metering and allocation, budget alerts, source ToS compliance, soft-delete and GDPR retention, knowledge lifecycle (TTL, versioned re-collection, decay metrics, cross-collection dedup & merge), enhanced diagnostics, and Prometheus metrics. <!-- counts-ignore: historical v1.8 chronicle (2026-07-26 values) -->
 
 v1.3.1 (hot on the heels of v1.3) hardened three resilience gaps: **LLM extraction crash on `None` content** (silent SQLite indexing failure — fixed with `TypeError` guards and `extraction_failed` detection), **KBEntry quality flags transparency** (quality gate results persisted in model, frontmatter, and search), and **filesystem fallback** when the SQLite index is empty (all KBStore query methods fall back to `knowledge/<domain>/**/*.md` scanning, providing identical dict shape to SQLite results).
 
@@ -453,7 +453,7 @@ Stripe billing integration and the PROCESSED product template system (8 Jinja2 p
 - `docs/dev/specs/delivery.md` — Output generation, delivery channels, error recovery, end user lifecycle
 - `docs/dev/specs/operations.md` — Cost governance, data privacy, knowledge lifecycle, observability
 - `docs/dev/specs/market-positioning.md` — Priority matrix, competitive landscape, pricing, personas
-- `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (149 tools, 35 categories)
+- `docs/dev/specs/mcp-tools.md` — Complete MCP tool inventory (151 tools, 35 categories)
 - `docs/dev/specs/data-models.md` — Consolidated data model schemas
 - `docs/dev/specs/user-lifecycle-definition.md` — **Root spec**: B1/B2/B3 user types and complete lifecycle definitions
 - `docs/dev/specs/multi-tenancy-auth.md` — Multi-tenancy, authentication, rate limiting, admin dashboard (architectural design; deferred until SSE transport)

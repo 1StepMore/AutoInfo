@@ -224,7 +224,7 @@ class DeliveryChannel(ABC):
 | **Webhook** | `webhook` | URL, HMAC secret (opt), retry config | < 10s |
 | **REST API** | `rest_api` | Base URL, API key | < 5s |
 | **Local File Export** | `file_export` | Output directory | < 1s |
-| **RSS Feed** ✅ | `rss` | Output directory, feed config (title, description, ttl). RSS 2.0 channel with `<enclosure>` + `itunes:*` namespace for podcast feed generation (C11). | < 30s |
+| **RSS Feed** ✅ | `rss` | Output directory, feed config (title, description, ttl). RSS 2.0 channel with `<enclosure>` + `itunes:*` namespace for podcast feed generation (C11). | < 30s | <!-- counts-ignore: false positive — "2.0 channel" is the RSS spec version, not a channel count -->
 | **Social Publish** ✅ | `social_publish` | Platform credentials, post template | < 10s |
 | **Push** ✅ | `push` | Generic HTTP POST endpoint (`push_endpoint` or `${PUSH_ENDPOINT}` env var), optional Bearer token (`push_token` or `${PUSH_TOKEN}`) | < 10s |
 
@@ -256,10 +256,11 @@ _RETRY_BACKOFF: list[float] = [1.0, 5.0, 30.0]
 @dataclass
 class DeliveryResult:
     """Result of delivering a product through a specific channel."""
+
     product_id: str
     channel: str
     status: Literal["success", "failed", "partial"]
-    timestamp: str = ""                # ISO-8601 timestamp (string)
+    timestamp: str = ""  # ISO-8601 timestamp (string)
     recipient_count: int = 0
     error: str | None = None
 ```
@@ -320,15 +321,16 @@ Every delivery attempt (success or failure) is recorded in `DeliveryLog`:
 @dataclass
 class DeliveryLog:
     """A single delivery attempt record (append-only log)."""
-    log_id: str                        # "dlog_{uuid8}"
-    subscription_id: str               # FK to Subscription
+
+    log_id: str  # "dlog_{uuid8}"
+    subscription_id: str  # FK to Subscription
     channel: str
-    message_type: str                  # e.g. "digest" | "report" | "alert"
-    status: str                        # "success" | "failed" | "retrying" | "pending" ...
+    message_type: str  # e.g. "digest" | "report" | "alert"
+    status: str  # "success" | "failed" | "retrying" | "pending" ...
     attempt_count: int = 0
-    last_attempt: str = ""             # ISO-8601 timestamp (string)
+    last_attempt: str = ""  # ISO-8601 timestamp (string)
     error_message: str = ""
-    sla_tier: str = "standard"         # "critical" | "standard" | "bulk"
+    sla_tier: str = "standard"  # "critical" | "standard" | "bulk"
 ```
 
 ---
@@ -343,13 +345,18 @@ class DeliveryLog:
 @dataclass
 class UserProfile:
     """End-user profile with lifecycle status (trial→active→suspended→cancelled)."""
-    user_id: str                       # "usr_{uuid8}" — identity is implicit via user_id (no identity_anchor field in code)
+
+    user_id: (
+        str  # "usr_{uuid8}" — identity is implicit via user_id (no identity_anchor field in code)
+    )
     name: str
     email: str = ""
-    status: str = "trial"              # "trial" | "active" | "suspended" | "cancelled"
-    tier: str = "free"                 # "free" | "premium" | "enterprise"
-    delivery_preferences: dict[str, Any] = field(default_factory=dict)  # freeform dict — no typed DeliveryPreferences class
-    created_at: str = ""               # ISO-8601 (string)
+    status: str = "trial"  # "trial" | "active" | "suspended" | "cancelled"
+    tier: str = "free"  # "free" | "premium" | "enterprise"
+    delivery_preferences: dict[str, Any] = field(
+        default_factory=dict
+    )  # freeform dict — no typed DeliveryPreferences class
+    created_at: str = ""  # ISO-8601 (string)
     updated_at: str = ""
     trial_ends_at: str = ""
     trial_started_at: str = ""
@@ -362,26 +369,32 @@ class UserProfile:
     stripe_customer_id: str = ""
     stripe_subscription_id: str = ""
 
+
 # ── Spec-only target models (no dataclass in src/autoinfo/models.py) ──
 @dataclass
 class DeliveryPreferences:
-    channels: dict[str, list[ChannelConfig]]  # channel_type → [config per subscription? maybe per user?]
+    channels: dict[
+        str, list[ChannelConfig]
+    ]  # channel_type → [config per subscription? maybe per user?]
     quiet_hours: QuietHours | None = None
     max_daily_digests: int = 1
     preferred_format: str = "markdown"  # "markdown" | "html" | "text"
 
+
 @dataclass
 class ChannelConfig:
     channel_type: str
-    recipient: str                   # email address, chat_id, webhook URL
+    recipient: str  # email address, chat_id, webhook URL
     enabled: bool = True
+
 
 @dataclass
 class QuietHours:
-    start: str                       # "22:00"
-    end: str                         # "07:00"
+    start: str  # "22:00"
+    end: str  # "07:00"
     timezone: str = "UTC"
-    only_urgent: bool = False        # If True, only urgent alerts during quiet hours
+    only_urgent: bool = False  # If True, only urgent alerts during quiet hours
+
 
 @dataclass
 class Subscription:
@@ -389,38 +402,45 @@ class Subscription:
     CD-024 fields: tier, channels, domains, products, platform_limit, domain_limit,
     raw_access, processed_access.
     """
-    subscription_id: str             # "sub_{uuid8}"
-    user_id: str                     # FK to UserProfile
-    plan: str = "free"               # "free" | "premium" | "enterprise"
-    status: str = "active"           # "active" | "paused" | "cancelled"
-    start_date: str = ""             # ISO-8601 (string)
+
+    subscription_id: str  # "sub_{uuid8}"
+    user_id: str  # FK to UserProfile
+    plan: str = "free"  # "free" | "premium" | "enterprise"
+    status: str = "active"  # "active" | "paused" | "cancelled"
+    start_date: str = ""  # ISO-8601 (string)
     end_date: str = ""
     auto_renew: bool = True
     price_monthly: float = 0.0
     currency: str = "USD"
     features: dict[str, Any] = field(default_factory=dict)
-    created_at: str = ""             # ISO-8601 (string)
+    created_at: str = ""  # ISO-8601 (string)
     updated_at: str = ""
-    tier: str = "free"               # CD-024: product-gating tier
-    channels: list[str] = field(default_factory=list)   # CD-024: 13 canonical channel types
-    domains: list[str] = field(default_factory=list)    # CD-024: subscribed domains
-    products: list[str] = field(default_factory=list)   # CD-024: subscribed products
-    platform_limit: int = 1          # CD-024: max platforms
-    domain_limit: int = 1            # CD-024: max domains
-    raw_access: bool = False         # CD-024: RAW product access
-    processed_access: bool = True    # CD-024: PROCESSED product access
+    tier: str = "free"  # CD-024: product-gating tier
+    channels: list[str] = field(default_factory=list)  # CD-024: 13 canonical channel types
+    domains: list[str] = field(default_factory=list)  # CD-024: subscribed domains
+    products: list[str] = field(default_factory=list)  # CD-024: subscribed products
+    platform_limit: int = 1  # CD-024: max platforms
+    domain_limit: int = 1  # CD-024: max domains
+    raw_access: bool = False  # CD-024: RAW product access
+    processed_access: bool = True  # CD-024: PROCESSED product access
+
 
 class UserStatus(Enum):
     TRIAL = "trial"
     ACTIVE = "active"
     SUSPENDED = "suspended"
     CANCELLED = "cancelled"
+
+
 # Note: spec-only enum — models.py stores UserProfile.status as a plain str; no enum exists in code.
+
 
 class SubscriptionStatus(Enum):
     ACTIVE = "active"
     PAUSED = "paused"
     CANCELLED = "cancelled"
+
+
 # Note: spec-only enum — models.py stores Subscription.status as a plain str.
 ```
 
@@ -507,12 +527,13 @@ class SubscriptionStatus(Enum):
 ```python
 class ProductState(Enum):
     """Management lifecycle of a product instance."""
-    DRAFT = "draft"           # Being authored — not visible to end users
-    PENDING = "pending"       # Awaiting review/approval before activation
-    ACTIVE = "active"         # Available for delivery — normal operating state
-    PAUSED = "paused"         # Temporarily suspended — no new deliveries
-    ARCHIVED = "archived"     # Moved to long-term storage — still accessible
-    DEPRECATED = "deprecated" # No longer supported — may be removed in future
+
+    DRAFT = "draft"  # Being authored — not visible to end users
+    PENDING = "pending"  # Awaiting review/approval before activation
+    ACTIVE = "active"  # Available for delivery — normal operating state
+    PAUSED = "paused"  # Temporarily suspended — no new deliveries
+    ARCHIVED = "archived"  # Moved to long-term storage — still accessible
+    DEPRECATED = "deprecated"  # No longer supported — may be removed in future
 ```
 
 | State | Description | Allowed Transitions | Visible to End User? | Deliverable? |
@@ -657,7 +678,7 @@ Products do not exist independently — they are derived from KB entries, which 
 
 ### 5.4 Product Archive & User Access
 
-Users access their historical products through the **End User Portal** (§4.4 MCP tools, `autoinfo portal` CLI command):
+Users access their historical products through the **End User Portal** (§4.4 MCP tools, `autoinfo portal` CLI command): <!-- counts-ignore: false positive — "4.4" is a section number, not a tool count -->
 
 | Access Type | Scope | Implementation |
 |-------------|-------|----------------|
@@ -716,28 +737,31 @@ While v1 does not implement explicit consumption tracking for all channels, the 
 @dataclass
 class ConsumptionEvent:
     """A single consumption signal from an end user interacting with a delivered product."""
-    event_id: str                        # "cevt_{uuid8}"
-    product_id: str                      # FK to Product (generated instance)
-    user_id: str                         # FK to UserProfile
-    subscription_id: str                 # FK to Subscription
-    delivery_log_id: str                 # FK to DeliveryLog (the delivery this consumption relates to)
+
+    event_id: str  # "cevt_{uuid8}"
+    product_id: str  # FK to Product (generated instance)
+    user_id: str  # FK to UserProfile
+    subscription_id: str  # FK to Subscription
+    delivery_log_id: str  # FK to DeliveryLog (the delivery this consumption relates to)
     event_type: ConsumptionEventType
-    timestamp: str                       # ISO 8601
-    channel: str                         # Channel through which consumption occurred
+    timestamp: str  # ISO 8601
+    channel: str  # Channel through which consumption occurred
     metadata: dict[str, Any] = field(default_factory=dict)  # channel-specific data
-    trace_id: str = ""                   # Links to collection trace
+    trace_id: str = ""  # Links to collection trace
+
 
 class ConsumptionEventType(Enum):
     """Types of consumption events."""
-    DELIVERED = "delivered"              # Product successfully delivered (already in DeliveryLog)
-    OPENED = "opened"                    # User opened/accessed the product (read receipt)
-    READ_COMPLETE = "read_complete"      # User scrolled to end / spent sufficient time
-    CLICKED = "clicked"                  # User clicked a link within the product
-    SHARED = "shared"                    # User shared the product with others
-    SAVED = "saved"                      # User bookmarked/saved the product
-    FEEDBACK = "feedback"                # User provided explicit feedback (rating, reaction)
-    DISMISSED = "dismissed"              # User dismissed/ignored the product (negative signal)
-    EXPIRED = "expired"                  # Product aged beyond consumption window
+
+    DELIVERED = "delivered"  # Product successfully delivered (already in DeliveryLog)
+    OPENED = "opened"  # User opened/accessed the product (read receipt)
+    READ_COMPLETE = "read_complete"  # User scrolled to end / spent sufficient time
+    CLICKED = "clicked"  # User clicked a link within the product
+    SHARED = "shared"  # User shared the product with others
+    SAVED = "saved"  # User bookmarked/saved the product
+    FEEDBACK = "feedback"  # User provided explicit feedback (rating, reaction)
+    DISMISSED = "dismissed"  # User dismissed/ignored the product (negative signal)
+    EXPIRED = "expired"  # Product aged beyond consumption window
 ```
 
 ### 6.2 Consumption Signals by Channel
@@ -809,15 +833,16 @@ subscriptions                      product_instances
 @dataclass
 class ChannelHealth:
     """Health status for a single delivery channel."""
-    channel_type: str                    # "smtp", "telegram", "wechat_oa", etc. — one of 13 canonical channels
+
+    channel_type: str  # "smtp", "telegram", "wechat_oa", etc. — one of 13 canonical channels
     status: ChannelHealthStatus
-    health_score: float                  # 0.0–100.0 (composite score)
+    health_score: float  # 0.0–100.0 (composite score)
 
     # Recent performance
     delivery_count_24h: int = 0
     success_count_24h: int = 0
     failure_count_24h: int = 0
-    success_rate_24h: float = 0.0        # success_count / delivery_count
+    success_rate_24h: float = 0.0  # success_count / delivery_count
 
     # Latency (milliseconds)
     avg_latency_ms: float = 0.0
@@ -830,19 +855,20 @@ class ChannelHealth:
     consecutive_failures: int = 0
 
     # Config
-    failure_threshold: int = 5           # Consecutive failures before auto-suspend
+    failure_threshold: int = 5  # Consecutive failures before auto-suspend
     latency_threshold_ms: float = 30000.0  # P95 latency above which channel is degraded
     suspended: bool = False
     suspended_at: str = ""
     suspended_reason: str = ""
 
+
 class ChannelHealthStatus(Enum):
-    HEALTHY = "healthy"                  # Green — all KPIs normal
-    DEGRADED = "degraded"               # Yellow — elevated latency or intermittent failures
-    FAILING = "failing"                  # Orange — approaching failure threshold
-    SUSPENDED = "suspended"             # Red — auto-suspended due to threshold breach
-    DISABLED = "disabled"               # Gray — manually disabled by operator
-    UNKNOWN = "unknown"                  # No recent delivery data
+    HEALTHY = "healthy"  # Green — all KPIs normal
+    DEGRADED = "degraded"  # Yellow — elevated latency or intermittent failures
+    FAILING = "failing"  # Orange — approaching failure threshold
+    SUSPENDED = "suspended"  # Red — auto-suspended due to threshold breach
+    DISABLED = "disabled"  # Gray — manually disabled by operator
+    UNKNOWN = "unknown"  # No recent delivery data
 ```
 
 ### 7.2 Auto-Suspend Mechanism
@@ -967,13 +993,14 @@ Each delivery channel requires a specific format schema. The enforcement layer v
 @dataclass
 class ChannelFormatContract:
     """Schema contract that a product must satisfy for a given channel."""
+
     channel_type: str
-    required_fields: list[str]           # Fields that MUST be present in the product
-    optional_fields: list[str]           # Fields that MAY be present
-    field_types: dict[str, type]         # Expected Python types for each field
-    max_content_length: int | None       # None = no limit
-    supported_formats: list[str]         # "markdown", "html", "plain_text", "json"
-    format_transforms: dict[str, str]    # field → transform function name
+    required_fields: list[str]  # Fields that MUST be present in the product
+    optional_fields: list[str]  # Fields that MAY be present
+    field_types: dict[str, type]  # Expected Python types for each field
+    max_content_length: int | None  # None = no limit
+    supported_formats: list[str]  # "markdown", "html", "plain_text", "json"
+    format_transforms: dict[str, str]  # field → transform function name
 ```
 
 ### 9.2 Channel Format Contracts Table

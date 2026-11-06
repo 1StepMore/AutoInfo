@@ -183,7 +183,7 @@ AGENTS.md 与验收框架已确认:AutoInfo 的 direct user 是 **Agent**(agent-
 
 ## §4 维度 3:Validation 与 agent-as-tester 最佳实践
 
-> 本地现状基线:agent-as-tester 是**最成熟的维度**——AC1-AC9 判据 + validation-scenario-contract 机制 + 186 场景(86 functional + 100 regression)+ 2 次实跑 + 诚实性机制(unconfigured/RED-GREEN/SUSPECT)。业界先例确认这不是孤例(Anthropic evals、τ-bench、AutoCover、SpecOps 都是同行)。
+> 本地现状基线:agent-as-tester 是**最成熟的维度**——AC1-AC9 判据 + validation-scenario-contract 机制 + 189 场景(86 functional + 103 regression)+ 2 次实跑 + 诚实性机制(unconfigured/RED-GREEN/SUSPECT)。业界先例确认这不是孤例(Anthropic evals、τ-bench、AutoCover、SpecOps 都是同行)。
 
 ### D3-1 agent-as-tester 业界先例确认 🔬
 
@@ -349,7 +349,7 @@ AGENTS.md 与验收框架已确认:AutoInfo 的 direct user 是 **Agent**(agent-
 | [Anthropic — Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) | 📐 | D2 原则 |
 | [Anthropic — Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents) | 📐/🔬(40% 描述改进) | D2-1 |
 | [Anthropic — Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) | 📐 | D2-1(高信号字段) |
-| [MCP spec(2025-06-18 tools)](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) | 📐 | D2-2 |
+| [MCP spec(2025-06-18 tools)](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) | 📐 | D2-2 | <!-- counts-ignore: false positive — "18 tools" is the MCP spec URL date, not a tool count -->
 | [MCP 2026-07-28 RC + Tasks extension](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/);[Tasks spec](https://tasks.extensions.modelcontextprotocol.io/specification/draft/tasks);[SEP-2663](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md) | 📐(draft) | D2-3 |
 | [AWS MCP tool design](https://aws.amazon.com/blogs/machine-learning/mcp-tool-design-practical-approaches-and-tradeoffs/)(2026-07-09) | 📐 | D2-1 |
 | [Webhooks vs Polling for Long-Running Agent Tasks](https://dreaming.press/posts/webhooks-vs-polling-for-long-running-agent-tasks.html)(2026-07)| 🟢 📐 | D2-3 |

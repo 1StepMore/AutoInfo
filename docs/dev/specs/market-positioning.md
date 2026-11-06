@@ -187,7 +187,7 @@ Pricing is defined by product type and tier, not by platform features:
 | **Financial Terminal** | Alpha Vantage Premium: $49.99/mo | 同花顺 iFinD: ~¥8,000/yr | Wind: ~¥680/mo (retail); ¥数万-数十万/yr (institutional) | Bloomberg: $2,665/user/mo ($32K/yr); Refinitiv: $2K-$8K+/user/mo | Largest spread: $50-$32K+/mo |
 | **Business News/Deep Analysis** | NYT Basic: $17/mo | WSJ: $44.99/mo; 财新: ¥498/yr | FT: £75/mo ($100+/mo); The Information: $199/yr | Bloomberg Terminal: $32K/yr (includes news) | WTP 5-10× for financial vs general news |
 | **Professional Knowledge** | Medium: $5/mo | 知乎盐选: ~¥19/mo; 得到: ¥199-365/yr | Coursera Plus: $59/yr; DataCamp: $25/mo | Coursera Enterprise: ~$1,000/org/yr; Degreed: custom | B2B ARPU significantly higher |
-| **AI Tools** | ChatGPT Plus: $20/mo; Perplexity Pro: $20/mo | Claude Pro: $20/mo; Gemini Advanced: $20/mo | ChatGPT Team: $25/user/mo; Copilot Pro: $30/mo | ChatGPT Enterprise: custom; Claude Max: $200/mo | AI subs averaging 4 tools/person = ~$66/mo |
+| **AI Tools** | ChatGPT Plus: $20/mo; Perplexity Pro: $20/mo | Claude Pro: $20/mo; Gemini Advanced: $20/mo | ChatGPT Team: $25/user/mo; Copilot Pro: $30/mo | ChatGPT Enterprise: custom; Claude Max: $200/mo | AI subs averaging 4 tools/person = ~$66/mo | <!-- counts-ignore: external market statistic (consumer AI subscriptions), not an AutoInfo surface count -->
 | **Developer/Tech** | GitHub Free | Substack paid newsletters: $5-15/mo | Stack Overflow Teams: $12/user/mo | GitHub Enterprise: $21/user/mo | Low ARPU but high volume |
 | **Academic Research** | arXiv: Free | PubMed: Free; OpenAlex: Free | IEEE: $30+/mo (personal); Scopus: institutional | Elsevier/SciVal: $10K-$100K+/yr (institutional) | Open access is the norm; premium is institutional |
 | **Newsletter/Creator** | Substack free | Substack paid: $5-15/mo | 52 newsletters earning $500K+/yr | Substack Pro advances: $100K-$500K | Creator-led model with platform take rate 10% |
@@ -362,7 +362,7 @@ The research report identifies a critical structural gap:
 | **Audio digest** | Avg price ¥30-80, repurchase rate 41% | ✅ Supported — TTS audio digest via `format='audio'` + audiobook (`format='audiobook'`) shipped | 🔴 High — 14% user preference, 42% payment intent for news podcasts |
 | **Short video summary** | 75.7% of paid learning sessions (2022); 72% user penetration (2024) | ❌ Not yet supported (text-only) | 🟡 Medium — requires TTS + video generation pipeline |
 | **Newsletter (email)** | Substack 8.4M paid (+68%); 52 newsletters earning $500K+/yr | ✅ SMTP sending supported; Agent-generated digest | ✅ High — core delivery channel |
-| **RSS Feed as product** | RSS adoption +34% YoY (2026); 400M+ podcasts distributed via RSS | ✅ Supported — RSS 2.0 delivery channel (C11 podcast RSS) + `export_kb(format='rss')` shipped | ✅ High — standard format for both human and agent consumption |
+| **RSS Feed as product** | RSS adoption +34% YoY (2026); 400M+ podcasts distributed via RSS | ✅ Supported — RSS 2.0 delivery channel (C11 podcast RSS) + `export_kb(format='rss')` shipped | ✅ High — standard format for both human and agent consumption | <!-- counts-ignore: false positive — "2.0 channel" is the RSS spec version, not a channel count -->
 | **Structured data API** | Bloomberg $2,665/user/mo; Alpha Vantage $49.99/mo; Wind ¥680/mo | ✅ REST API + webhook + bulk export | ✅ Core RAW product delivery |
 | **Agent-native output** | ChatGPT 10B MAU; Perplexity 100M+ MAU (2026 Q2) | ✅ MCP tools for KB search + digest generation | ✅ Highest growth channel — agent-mediated delivery is the 2026 inflection point |
 
@@ -376,7 +376,7 @@ Current (AI summary era):
   Publisher API/feed/RSS → AI Agent (ChatGPT/Perplexity/Claude/Gemini) → User prompt → Summary/answer (attribution + link)
 
 AutoInfo's Position:
-  Source (Tier A/B/C) → AutoInfo Collection → KB Pipeline (Raw→Draft→Wiki) 
+  Source (Tier A/B/C) → AutoInfo Collection → KB Pipeline (Raw→Draft→Wiki)
     → RAW Products (API/Webhook/Export) → Agent/Human consumption
     → PROCESSED Products (Digest/Report/Tutorial) → Agent-mediated delivery
     → AI Training Data License (v2+) → Enterprise model training

@@ -74,7 +74,7 @@ jobs:
           # Validation scenarios 44 -> 47 (M7T52). Any current-state doc still
           # saying "44 scenarios" is stale.
           if grep -rInF $EXCLUDE "44 scenarios" docs/ README.md AGENTS.md; then
-            echo "::error::stale count found: '44 scenarios' (current: 47)"
+            echo "::error::stale count found: '44 scenarios'"
             FAILED=1
           fi
 

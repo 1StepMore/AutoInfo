@@ -19,7 +19,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Product generation** — 8 product families (incl. premium-briefing, enterprise-briefing, magazine-digest) across Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video; digest, report, tutorial, presentation, export.
 - **Delivery & end users** — 13 delivery channels (SMTP, webhook, REST, file export, Discord, Telegram, WeChat Work/OA, DingTalk, FeiShu, RSS, social publish, push) with retry/fallback, cron schedules, per-user lifecycle/subscription, portal, and delivery logs.
 - **Cost, audit & observability** — per-domain/per-user cost metering and allocation, budget alerts, append-only audit log, per-item trace IDs, structured pipeline logs, Prometheus metrics, and `doctor` diagnostics.
-- **Agent-native surfaces** — 151 MCP tools across 35 categories, 31 CLI groups, REST API (port 8741), read-only MCP mode (4 tools), and 189 validation scenarios (86 functional + 103 regression) that execute real MCP/CLI/REST calls with per-step traces.
+- **Agent-native surfaces** — 151 MCP tools across 35 categories, 31 CLI groups, REST API (port 8741), read-only MCP mode (4-tool subset), and 189 validation scenarios (86 functional + 103 regression) that execute real MCP/CLI/REST calls with per-step traces.
 - **Data lifecycle & compliance** — source ToS classification/tier controls, soft-delete + restore + 30-day cleanup, tier-based retention, GDPR export/delete, and append-only knowledge lifecycle (TTL/freshness/decay, versioned re-collection).
 - **BYOK & LLM governance** — multi-provider via LiteLLM, per-task model routing, fallback chains, per-provider concurrency limiting with 429/5xx backoff, and a single documented default (`openrouter` + `deepseek/deepseek-chat`).
 
@@ -105,7 +105,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 
 | Validation scenarios | ✅ 189 scenarios (86 functional + 103 regression in `src/autoinfo/mcp/scenarios/regression/`, `regression: true` key, recursive-glob auto-load) |
 | Validation execution | ✅ Per-step `timeout_seconds`; per-step `recovery_steps` + partial-pass (`min_passing`/`pass_ratio`); per-step trace (step_index/duration/arguments/trace_id + llm_meta); root-cause report (`## Blockers` / `## Per-step trace` / `## Regression failures`) |
-| Regression flywheel | ✅ `src/autoinfo/mcp/scenarios/regression/` (98 regression scenarios) + `coverage_audit.py` "Regression scenarios: N" metric + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
+| Regression flywheel | ✅ `src/autoinfo/mcp/scenarios/regression/` (103 regression scenarios) + `coverage_audit.py` "Regression scenarios: N" metric + `.github/ISSUE_TEMPLATE/bug_report.md` mandatory 回归场景 field |
 
 | Validation delivery | ✅ `scripts/validation_delivery.py` builds 01-RAW/02-PROCESSED/03-KB/04-MATRIX/06-REJECTED + validation-report.md + manifest.json (per-file authenticity + D1-D3 gates + UX metrics UX_OK/completion_rate ≥ 0.8) + 01-QA-GATES/ gate reports (per-product `gate-report-<product>.{md,json}` + `gate-reports-index.json`) |
 | End-user coverage matrix (E8) | ✅ `scripts/coverage_matrix.py` + `docs/dev/specs/end-user-matrix.yaml`; surfaced as 04-MATRIX + coverage-gaps.json |

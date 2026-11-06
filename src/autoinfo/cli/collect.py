@@ -180,6 +180,9 @@ def collect(
             if sources:
                 _check_requested_sources(results)
 
+            # -- No source succeeded at all → non-zero exit (B14) ----------
+            _fail_if_no_source_succeeded(results, dry_run=dry_run)
+
             # -- Optional: auto-process (across all domains) ---------------
             if auto_process and not dry_run:
                 for dom_result in results:
@@ -223,6 +226,9 @@ def collect(
             # -- Unknown / failed requested sources → non-zero exit (#296) --
             if sources:
                 _check_requested_sources([result])
+
+            # -- No source succeeded at all → non-zero exit (B14) ----------
+            _fail_if_no_source_succeeded([result], dry_run=dry_run)
 
             # -- Optional: auto-process ------------------------------------
             if auto_process and not dry_run:
@@ -298,6 +304,44 @@ def _check_requested_sources(results: list[dict[str, Any]]) -> None:
             f"Error: requested source(s) failed during collection: {', '.join(failed)}",
             err=True,
         )
+        raise typer.Exit(code=1)
+
+
+def _fail_if_no_source_succeeded(
+    results: list[dict[str, Any]], *, dry_run: bool = False
+) -> None:
+    """Exit non-zero when every attempted source failed (B14).
+
+    A run where no source succeeded at all is a broken collection, not a
+    successful empty result — batch scripts that only read the exit code must
+    see it as a failure.  ``success``/``partial`` count as success, ``error``
+    as failure, and ``skipped``/``disabled_auto`` as unattempted (neither).
+    Nothing is reported when any source succeeded, when no source was even
+    attempted, or in dry-run mode.
+    """
+    if dry_run or any(res.get("dry_run") for res in results):
+        return
+
+    succeeded = 0
+    failed = 0
+    failed_domains: set[str] = set()
+    for res in results:
+        domain_label = res.get("domain", "")
+        for src in res.get("per_source") or []:
+            status = src.get("status")
+            if status in ("success", "partial"):
+                succeeded += 1
+            elif status == "error":
+                failed += 1
+                failed_domains.add(domain_label)
+
+    if succeeded == 0 and failed > 0:
+        message = (
+            f"no source succeeded ({failed} source(s) errored across "
+            f"{len(failed_domains)} domain(s))"
+        )
+        fail_if_global("CollectionFailed", message)
+        typer.echo(f"Error: {message}", err=True)
         raise typer.Exit(code=1)
 
 

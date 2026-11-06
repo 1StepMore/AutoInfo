@@ -145,6 +145,15 @@ def status(
                 f"({', '.join(affected) or 'none depends on ' + capability})"
             )
 
+    # T14 — the scripts registry rides in the status payload (derived live).
+    scripts_report: dict[str, Any] | None = None
+    try:
+        from autoinfo.gov.registry import registry_report
+
+        scripts_report = registry_report(contract)
+    except Exception:  # noqa: BLE001 — registry problems must not kill status
+        scripts_report = None
+
     return {
         "verdict": {"overall": overall, "reasons": reasons},
         "gates": gates,
@@ -153,6 +162,7 @@ def status(
         "pass_total_excludes_advisory": True,
         "blocking": blocking,
         "simulation": simulation,
+        "scripts": scripts_report,
     }
 
 

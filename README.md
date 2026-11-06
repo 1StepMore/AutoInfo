@@ -418,11 +418,11 @@ make lint        # ruff check + mypy
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Config override system (~/.autoinfo/overrides/) | 📋 Planned | Per-project config layering |
-| Multi-user / collaboration (auth, teams) | 📋 Planned | `user_id` fields in place; full auth v2 (see `docs/dev/specs/multi-tenancy-auth.md`, #165) |
+| Multi-user / collaboration (auth, teams) | 🚫 Out of scope | Single-tenant local tool per ADR-0012 (2026-11-02): no tenant isolation/auth/RBAC will be built; `user_id`/`actor` are advisory data-scoping cursors, never an authorization boundary (see `docs/adr/0012-multi-tenancy-out-of-scope.md`, #165) |
 
 - **MOBI** requires calibre; CI and nightly do not install it, so the success path is not automatically exercised (see `docs/known-limitations/demo-quality-residuals.md`).
 - **`tools/list` omits `outputSchema`** by design: the canonical envelope is documented once (ADR 0010); per-tool schemas are a follow-up (#581/#588).
-- **REST API has no auth** and binds `127.0.0.1` by default — do not expose it to untrusted networks.
+- **REST API has no auth** and binds `127.0.0.1` by default — non-loopback binds are refused at startup (exit 2) unless `AUTOINFO_ALLOW_NON_LOOPBACK=1`, and a confirmed non-loopback bind never serves allow-all CORS (configure `rest_api.cors_origins` / `AUTOINFO_CORS_ORIGINS`; see `docs/dev/required-api-keys.md`, ADR-0012).
 
 > The historical wave-by-wave scenario-count chronicle moved to
 > `docs/archive/readme-known-limitations-chronicle.md`.

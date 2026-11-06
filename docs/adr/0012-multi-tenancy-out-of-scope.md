@@ -96,3 +96,13 @@ On 2026-11-02 the director decided: **multi-tenancy is not being built.**
   autoinfo.api.server`) now refuses a non-loopback bind (exit 2) unless
   `AUTOINFO_ALLOW_NON_LOOPBACK=1`, and never serves allow-all CORS off loopback.
 - `AGENTS.md` and `GOVERNANCE.md` need no edit: neither promises tenancy anywhere.
+
+## Amendment (2026-11-06)
+
+The residual risk recorded above shipped its follow-up in #680/#681:
+`python -m autoinfo.api.server` now refuses a non-loopback bind (exit 2,
+actionable stderr) unless `AUTOINFO_ALLOW_NON_LOOPBACK=1`, and a confirmed
+non-loopback bind never serves `allow_origins=["*"]` — CORS narrows to
+`rest_api.cors_origins` / `AUTOINFO_CORS_ORIGINS` (config file wins per repo
+precedence), defaulting to deny-all cross-origin. A loopback bind keeps the
+allow-all localhost security zone. The decision above is unchanged.

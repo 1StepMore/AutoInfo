@@ -155,8 +155,15 @@ class TestResolveDomains:
 
 
 class TestShowStatusFilesystemFallback:
-    def test_fs_fallback_counts_when_index_missing(self, tmp_path: Path) -> None:
-        """No SQLite index + files on disk → counts come from the filesystem."""
+    def test_fs_fallback_counts_when_index_missing(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """No SQLite index + files on disk → counts come from the filesystem.
+
+        Hermetic: show_status resolves the DB at ``Path('knowledge')
+        .resolve().parent / 'autoinfo.db'`` against the real CWD, so the test
+        must chdir into tmp_path — otherwise it would touch the developer's
+        repo-root autoinfo.db (that is exactly what CI caught).
+        """
+        monkeypatch.chdir(tmp_path)
         (tmp_path / "knowledge" / "d1").mkdir(parents=True)
         today = date.today().isoformat()
         (tmp_path / "knowledge" / "d1" / f"entry-{today}.md").write_text("x", encoding="utf-8")
@@ -170,7 +177,6 @@ class TestShowStatusFilesystemFallback:
         with (
             patch.object(status_mod, "get_config_path", return_value=config.config_path),
             patch.object(status_mod, "load_config", return_value=config),
-            patch("pathlib.Path.cwd", return_value=tmp_path),
         ):
             report = status_mod.show_status("d1")
         domain = report["domains"][0]

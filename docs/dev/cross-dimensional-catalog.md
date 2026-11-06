@@ -1,6 +1,6 @@
 # AutoInfo — Cross-Dimensional Catalog
 
-> **Keystone document.** This is the single source of truth for the complete product definition across all dimensions.
+> **Keystone design snapshot.** This is the complete product definition across all dimensions — a design-time view, not a live status surface. For current machine-checked truth (counts, gates, decision sync) read `python -m autoinfo.gov status` and the governance contract `.github/governance-contract.toml` (ADR-0014); the numbers below are refreshed per edit and marked as of their date.
 >
 > **Relationship to founder expectations:** `docs/dev/founder-expectations.md` defines **why** the product exists (founder's vision). This document defines **what** the product is — the complete cross-dimensional matrix of Pipeline Value Chain (A1-A7) × User Types (B1/B2/B3). Every cell is evaluated: 🟢 fully delivered, 🟡 partially delivered, 🔴 not delivered (gap).
 >

@@ -128,8 +128,8 @@ Each rule exists because its absence produced a specific failure (two agents wri
 | **Rebase onto the latest `origin/main` before merging** | `strict_required_status_checks_policy: true`; with two writers a stale-base merge can be textually clean yet semantically wrong — the rebase makes CI test the real merge result |
 | **Merge with `--squash` only** | The ruleset allows no other merge method |
 | **Expect no human approval gate** | `required_approving_review_count` is 0; GitHub forbids self-approval and agents push under the repo owner account — approval lives in the director's instruction |
-| **Sign off every commit** | DCO (`Signed-off-by` trailer; `git commit -s`; ADR-0009) |
-| **Prefer fewer, larger PRs** | The release PR auto-merges minutes after any push to `main` (ADR-0007), invalidating open PRs — budget ~20 min rebase CI cycle |
+| **Sign off every commit** | DCO (`Signed-off-by` trailer; `git commit -s`; ADR-0009; identity enforcement ADR-0013) |
+| **Prefer fewer, larger PRs** | The release PR auto-merges minutes after any push to `main`, invalidating open PRs — budget ~20 min rebase CI cycle |
 
 ## Tool Discovery & Response Format
 
@@ -186,7 +186,7 @@ validates counts against code/CLI. Invariants: Architecture Rules above +
 
 ## References
 
-- `docs/dev/repo-map.md` — repo layout + runtime-artifact boundary · `docs/dev/llm-config.md` — full LLM setup (both loaded on demand)
+- `.github/governance-contract.toml` — machine-readable governance authority (ADR-0014); `python -m autoinfo.gov` is the single governance entry point · `docs/dev/repo-map.md` — repo layout + runtime-artifact boundary · `docs/dev/llm-config.md` — full LLM setup (both loaded on demand)
 - `docs/dev/workflow-charter.md` — dev process (canonical methodology: `docs/dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md`; ADR-0006)
 - `docs/dev/mcp-usage-examples.md` — worked MCP patterns · `docs/dev/required-api-keys.md` — API keys/env vars catalog
 - `docs/dev/founder-expectations.md` (D3 index) · `docs/dev/specs/` (extracted specs) · `docs/dev/cross-dimensional-catalog.md` (**keystone** matrix A1-A7 × B1/B2/B3) · `docs/dev/enduser-coverage-matrix.md`

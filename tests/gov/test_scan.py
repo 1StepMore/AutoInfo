@@ -24,7 +24,7 @@ def _scan_facts(mcp_tools: int = 151) -> dict[str, object]:
         "demo_domains": 21,
         "delivery_channels": 13,
         "llm_required_tools": 16,
-        "adr_count": 12,
+        "adr_count": 14,
     }
 
 

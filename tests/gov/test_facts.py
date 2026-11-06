@@ -29,7 +29,7 @@ def test_validation_scenarios_split_matches_disk() -> None:
 
 def test_demo_domains_and_adr_count_and_channels() -> None:
     assert facts_mod.demo_domains() == 21
-    assert facts_mod.adr_count() == 12  # T10 adds 0013/0014 → 14
+    assert facts_mod.adr_count() == 14  # 0013 (DCO identity) + 0014 (contract)
     assert facts_mod.delivery_channels() == 13
     assert facts_mod.llm_required_tools() == 16
 

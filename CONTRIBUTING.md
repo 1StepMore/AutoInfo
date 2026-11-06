@@ -46,7 +46,7 @@ make test
 make lint
 ```
 
-- `make test` runs the full suite (`pytest -v`). The suite is roughly 6866
+- `make test` runs the full suite (`pytest -v`). The suite is roughly 6867
   tests; every test is bounded by pytest-timeout at 180 seconds so a hang
   fails fast instead of stalling the run.
 - `make lint` runs `ruff check src/ tests/` followed by `mypy src/`.
@@ -93,6 +93,16 @@ Small PRs principle:
 - Do not submit large-scale stylistic refactors. Code readability is
   subjective, and broad style churn pollutes git history and makes reviews
   noisy.
+
+**Boundary for agent-driven feature waves** (where this differs from the
+internal agent rule "prefer fewer, larger PRs" — a deliberate, documented
+divergence): the "small and focused" guidance above is about *review
+surface*; it does not require splitting a single coherent feature wave into
+many tiny PRs. When one director-approved plan lands one interconnected
+change (schema + code + tests + docs), one larger PR per wave is correct —
+splitting it would leave main in a half-wired state between pieces. What
+stays non-negotiable: one PR still does one *thing*, stylistic churn is
+still out, and every PR passes the same required checks.
 
 ## Commit conventions
 

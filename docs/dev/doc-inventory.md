@@ -13,24 +13,24 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 131 |
-| Total lines | 39526 |
-| Active files | 99 |
+| Total files | 134 |
+| Total lines | 39747 |
+| Active files | 102 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
-| Category — adr | 14 files / 884 lines |
+| Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9940 lines |
 | Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 32 files / 11037 lines |
-| Category — docs/root | 9 files / 1643 lines |
+| Category — docs/dev | 33 files / 11145 lines |
+| Category — docs/root | 9 files / 1645 lines |
 
 ## Inventory
 
 | Relative path | Lines | Category | Status | Doc-type |
 |---------------|------:|----------|--------|----------|
-| `2026-11-05-AutoInfo-目标与任务-给agent.md` | 28 | docs/root | active | — |
+| `2026-11-05-AutoInfo-目标与任务-给agent.md` | 30 | docs/root | active | plan |
 | `adr/0001-kb-pipeline-raw-sole-entry.md` | 41 | adr | active | adr |
 | `adr/0002-draft-to-wiki-agent-promotion.md` | 46 | adr | active | adr |
 | `adr/0003-llm-fallback-chain.md` | 44 | adr | active | adr |
@@ -43,7 +43,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `adr/0010-mcp-tools-list-omits-output-schema.md` | 47 | adr | active | — |
 | `adr/0011-quality-gate-attempt-semantics.md` | 72 | adr | active | adr |
 | `adr/0012-multi-tenancy-out-of-scope.md` | 108 | adr | active | adr |
-| `adr/README.md` | 58 | adr | active | adr-index |
+| `adr/0013-dco-signoff-identity-ci.md` | 50 | adr | active | adr |
+| `adr/0014-governance-contract-and-authority-order.md` | 59 | adr | active | adr |
+| `adr/README.md` | 60 | adr | active | adr-index |
 | `adr/TEMPLATE.md` | 32 | adr | active | adr |
 | `agent-infrastructure-audit-2026-10-30.md` | 251 | docs/root | active | — |
 | `archive/AutoInfo-development-brief-v2.md` | 226 | archive | archived | — |
@@ -101,6 +103,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/plans/README.md` | 65 | docs/dev | active | plan-index |
 | `dev/plans/agent-infra-remediation-2026-10-30.md` | 172 | docs/dev | active | — |
 | `dev/plans/agent-oriented-gap-register.md` | 608 | docs/dev | active | plan |
+| `dev/plans/goals-2026-11-06.md` | 108 | docs/dev | active | plan |
 | `dev/repo-map.md` | 82 | docs/dev | active | — |
 | `dev/required-api-keys.md` | 167 | docs/dev | active | — |
 | `dev/research/综合报告-资讯付费与AI触达研究.md` | 702 | docs/dev | active | — |

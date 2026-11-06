@@ -107,7 +107,7 @@ def test_profile_key_set_mismatch_fails_validation(tmp_path: Path) -> None:
 
 def test_decision_missing_adr_file_fails_validation(tmp_path: Path) -> None:
     text = _contract_text() + (
-        '\n[decisions.dco_identity]\nadr = "9999"\n'
+        '\n[decisions.test_missing_adr]\nadr = "9999"\n'
         'consumers = [{ file = "AGENTS.md", expect = "ADR-9999" }]\n'
     )
     root = _write_contract(tmp_path, text)

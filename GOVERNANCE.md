@@ -72,7 +72,7 @@ label from each:
 Kind is the only group that is reliably present. Priority is set when the
 issue needs an SLA; issues with no priority label are backlog.
 
-`good-first-issue` and `help-wanted` are set by maintainers, not by reporters.
+`good first issue` and `help wanted` are set by maintainers, not by reporters.
 Security reports follow `SECURITY.md` instead of the normal triage flow.
 
 > **Why no `needs-triage` status label.** An earlier revision of this

@@ -109,7 +109,7 @@ AC9 judges two layers separately, and this doc makes the split explicit.
 | Naming | organized by subject, mirroring `src/` (`tests/kb/`, `tests/output/`, `tests/mcp/`, …); no `test_bug_*` filenames | per-scenario `name`, `category`, `pyramid_layer`, `pipeline_stage`, `user_level` |
 | Layer metadata | implicit (subpackage + test kind) | required `pyramid_layer` field |
 | Failure semantics | pytest pass / fail | `passed` / `failed` / `unconfigured`, where `unconfigured` is never a pass |
-| Counts (live) | ~6721 collected tests | 186 scenarios (86 functional + 100 regression) |
+| Counts (live) | ~6786 collected tests | 189 scenarios (86 functional + 103 regression) |
 
 The boundary rule:
 
@@ -135,9 +135,7 @@ added in Todo 8 (T-B-01 / T-B-02) and is defined once, in
 `src/autoinfo/mcp/validation.py`:
 
 ```python
-PYRAMID_LAYERS: frozenset[str] = frozenset(
-    {"unit", "component", "e2e", "red_team"}
-)
+PYRAMID_LAYERS: frozenset[str] = frozenset({"unit", "component", "e2e", "red_team"})
 ```
 
 `load_scenarios()` rejects a scenario that is missing the key or that carries a

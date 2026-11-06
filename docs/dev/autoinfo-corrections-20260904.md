@@ -319,7 +319,7 @@
 - 文件: docs/dev/autoinfo-dev-roadmap-20260902.md:14
 - 原文: | Validation 场景 | 130（65 功能 + 65 回归）| `src/autoinfo/mcp/scenarios/` |
 - 新文: | Validation 场景 | 130（65 功能 + 65 回归）[已修正 2026-09-04]（verified-correct, keep：2026-09-04 磁盘实测 = 130 个场景 yaml——主目录 65 功能 + regression/ 65 回归全带 regression:true；README/AGENTS.md 的 129 为过时侧，本报告 130 与磁盘一致，保持不动）| `src/autoinfo/mcp/scenarios/` |
-- 证据: on-disk 实测（src/autoinfo/mcp/scenarios/ 主目录 65 + regression/ 65）；draft:36（finding 4）；AGENTS.md 状态表"130 scenarios (65 functional + 65 regression)"
+- 证据: on-disk 实测（src/autoinfo/mcp/scenarios/ 主目录 65 + regression/ 65）；draft:36（finding 4）；AGENTS.md 状态表"130 scenarios (65 functional + 65 regression)" <!-- counts-ignore: dated corrections record 2026-09-04, values true at record time -->
 - 值变更: 无（130 → 130，verified-correct, keep — README/AGENTS.md 129 才是待修侧，不在本清单范围）
 - 类型: verified-correct (keep)
 

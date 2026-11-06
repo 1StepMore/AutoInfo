@@ -3,8 +3,8 @@
 Welcome. AutoInfo is a universal information tracking and knowledge base
 platform: you configure sources and topics, and AutoInfo handles collection,
 LLM-based structured extraction, summarization, and a queryable knowledge
-base. It is domain-agnostic (13 demo domains are configurations, not
-hardcoded features), agent-native (145 MCP tools across 35 categories), and
+base. It is domain-agnostic (21 demo domains are configurations, not
+hardcoded features), agent-native (151 MCP tools across 35 categories), and
 BYOK (bring your own LLM keys).
 
 AutoInfo is operated agent-first, but it is built and reviewed by humans. The
@@ -46,7 +46,7 @@ make test
 make lint
 ```
 
-- `make test` runs the full suite (`pytest -v`). The suite is roughly 3728
+- `make test` runs the full suite (`pytest -v`). The suite is roughly 6786
   tests; every test is bounded by pytest-timeout at 180 seconds so a hang
   fails fast instead of stalling the run.
 - `make lint` runs `ruff check src/ tests/` followed by `mypy src/`.
@@ -167,7 +167,7 @@ AutoInfo has a practice that is rare in open source, and we are proud of it:
 **every bug fix must ship a validation scenario that guards against the bug
 returning.**
 
-The project maintains 112 validation scenarios (64 functional + 48 regression)
+The project maintains 189 validation scenarios (86 functional + 103 regression)
 under `src/autoinfo/mcp/scenarios/`. Regression scenarios live in
 `src/autoinfo/mcp/scenarios/regression/` and are marked `category: regression`
 plus `regression: true`. They auto-load via recursive glob and run through

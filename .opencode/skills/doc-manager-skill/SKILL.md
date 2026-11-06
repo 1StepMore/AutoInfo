@@ -119,7 +119,7 @@ Before identifying affected docs, decide **whether this change needs an ADR**:
 Drift-prone facts checked by `doc_inventory.py --check`: MCP tools 151 / 35
 
 categories · CLI groups 31 · delivery channels 13 · validation scenarios 189
-(86 functional + 101 regression) · demo domains 21.
+(86 functional + 103 regression) · demo domains 21.
 Also keep consistent wherever they appear (README, AGENTS, CHANGELOG, specs,
 skills): source types 29, collector handlers 30, output templates 8,
 LLM-required tools 16, REST port 8741, test count ~6801 tests.
@@ -216,7 +216,7 @@ dependency version bumps with no behavior delta.
   is checked by `--check`; hand edits are overwritten on regeneration.
 - **Never edit `docs/archive/`** during normal changes — only when archiving
   a new doc, fixing an archival path reference, or on explicit user request.
-- **Update a count in EVERY location it appears** — one stale "142 tools" in
+- **Update a count in EVERY location it appears** — one stale "142 tools" in <!-- counts-ignore: deliberately quoted stale example -->
   any doc fails the "no stale numbers" verify rule (the `--check` covers the
   seven drift-prone facts plus the skill's own seven; the remaining numbers —
   source types, collector handlers, output templates, REST port — are your

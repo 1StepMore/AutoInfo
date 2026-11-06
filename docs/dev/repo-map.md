@@ -38,7 +38,7 @@ AutoInfo/
 ├── src/
 │   └── autoinfo/
 │       ├── cli/                     # 31 CLI command groups
-│       ├── mcp/                     # MCP server (149 tools); server.py = hub (app, discovery, _TOOL_DISPATCH, call_tool); context.py = shared helper tier; tools/ = per-domain schemas + handler bodies (_handle_*), one module per domain; _TOOL_DISPATCH = single name→handler dispatch table (#581)
+│       ├── mcp/                     # MCP server (151 tools); server.py = hub (app, discovery, _TOOL_DISPATCH, call_tool); context.py = shared helper tier; tools/ = per-domain schemas + handler bodies (_handle_*), one module per domain; _TOOL_DISPATCH = single name→handler dispatch table (#581)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)
 │       ├── collectors/              # 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, AP API, Reuters MCP, SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap) + registry.py (source_type → Collector lookup; enforced `fetch_items(ctx)` contract)

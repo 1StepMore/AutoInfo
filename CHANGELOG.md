@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.26.0](https://github.com/1StepMore/AutoInfo/compare/v1.25.0...v1.26.0) (2026-11-07)
+
+
+### Features
+
+* **gov:** capability boundary + degradation drills + human escalations (PR-D, T12/T15/T16) ([#708](https://github.com/1StepMore/AutoInfo/issues/708)) ([60e340a](https://github.com/1StepMore/AutoInfo/commit/60e340af2e897ac8620cd3e766d9ffd8170a720f))
+
 ## [1.25.0](https://github.com/1StepMore/AutoInfo/compare/v1.24.0...v1.25.0) (2026-11-07)
 
 

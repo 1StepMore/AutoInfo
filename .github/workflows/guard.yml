@@ -126,15 +126,17 @@ jobs:
         run: python scripts/surface_parity.py --check
       - name: End-user coverage matrix parity (coverage_matrix --check-enduser-doc)
         run: python scripts/coverage_matrix.py --check-enduser-doc docs/dev/enduser-coverage-matrix.md
-      # Governance (plan 2026-11-06, T09) — REPORT-ONLY observation period.
-      # `gov check` re-derives the facts from code and scans every tracked
-      # markdown (P3: reversed default); `gov status --only derived_parity`
-      # reports the parity gate. Neither step may fail the job yet: the
-      # derived_parity required flip happens only after the observation
-      # period (>= 3 PRs or >= 48h) per plan §8.6.
-      - name: Governance contract check (report-only)
-        run: python -m autoinfo.gov contract check --json || true
-      - name: Governance drift check + parity gate (report-only)
+      # Governance (plan 2026-11-06, T09) — BLOCKING as of the observation
+      # period's end (7 governance PRs merged, one deliberate red drill
+      # recorded: PR #712 caught a tampered count report-only; PR #713 is
+      # the required-era red drill). `gov check` re-derives the facts from
+      # code and scans every tracked markdown (P3: reversed default);
+      # `gov status --only derived_parity` reports the parity gate. With the
+      # ruleset flip these steps gate every PR — a drift violation is a red
+      # 'Derived doc/surface parity', never a swallowed exit.
+      - name: Governance contract check
+        run: python -m autoinfo.gov contract check --json
+      - name: Governance drift check + parity gate
         run: |
-          python -m autoinfo.gov check --json || true
-          python -m autoinfo.gov status --only derived_parity --json || true
+          python -m autoinfo.gov check --json
+          python -m autoinfo.gov status --only derived_parity --json

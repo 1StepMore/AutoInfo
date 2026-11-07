@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.1](https://github.com/1StepMore/AutoInfo/compare/v1.28.0...v1.28.1) (2026-11-07)
+
+
+### Documentation
+
+* required status checks are ten after the T09 flip ([#716](https://github.com/1StepMore/AutoInfo/issues/716)) ([89f52c2](https://github.com/1StepMore/AutoInfo/commit/89f52c26acda6ae24a3287801e3b6e111cc8a36a))
+
 ## [1.28.0](https://github.com/1StepMore/AutoInfo/compare/v1.27.0...v1.28.0) (2026-11-07)
 
 

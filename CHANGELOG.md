@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.25.0](https://github.com/1StepMore/AutoInfo/compare/v1.24.0...v1.25.0) (2026-11-07)
+
+
+### Features
+
+* **gov:** ADR guard + decision consumer sync + SSOT convergence (PR-C, T09-T11) ([#706](https://github.com/1StepMore/AutoInfo/issues/706)) ([c3c6d8c](https://github.com/1StepMore/AutoInfo/commit/c3c6d8cf48d019c2289d310b324d01a7aa4ed54d))
+
 ## [1.24.0](https://github.com/1StepMore/AutoInfo/compare/v1.23.0...v1.24.0) (2026-11-06)
 
 

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.27.0](https://github.com/1StepMore/AutoInfo/compare/v1.26.0...v1.27.0) (2026-11-07)
+
+
+### Features
+
+* **gov:** repo hygiene + scripts registry + negative-control harness (PR-E, T13/T14/T17) ([#710](https://github.com/1StepMore/AutoInfo/issues/710)) ([9298b07](https://github.com/1StepMore/AutoInfo/commit/9298b0767e03c8d4c9212b7ca4500510ade95c08))
+
 ## [1.26.0](https://github.com/1StepMore/AutoInfo/compare/v1.25.0...v1.26.0) (2026-11-07)
 
 

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.0](https://github.com/1StepMore/AutoInfo/compare/v1.27.0...v1.28.0) (2026-11-07)
+
+
+### Features
+
+* **governance:** flip gov parity steps to blocking (T09) ([#713](https://github.com/1StepMore/AutoInfo/issues/713)) ([9950a1b](https://github.com/1StepMore/AutoInfo/commit/9950a1b0ee35723c6fafabca9c77625e9d34d2bd))
+
 ## [1.27.0](https://github.com/1StepMore/AutoInfo/compare/v1.26.0...v1.27.0) (2026-11-07)
 
 

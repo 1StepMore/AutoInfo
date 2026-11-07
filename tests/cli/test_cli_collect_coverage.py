@@ -417,7 +417,16 @@ class TestCollectHumanOutput:
                     "items_filtered": 2,
                     "errors": [{"message": "PubMed down"}],
                     "duration_s": 1.25,
-                }
+                },
+                {
+                    "source": "arxiv",
+                    "status": "success",
+                    "items_found": 0,
+                    "items_new": 0,
+                    "items_filtered": 0,
+                    "errors": [],
+                    "duration_s": 0.1,
+                },
             ],
             resumed_skipped=["arxiv", "crossref"],
         )

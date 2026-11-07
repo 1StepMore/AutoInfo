@@ -4,7 +4,7 @@ Welcome. AutoInfo is a universal information tracking and knowledge base
 platform: you configure sources and topics, and AutoInfo handles collection,
 LLM-based structured extraction, summarization, and a queryable knowledge
 base. It is domain-agnostic (21 demo domains are configurations, not
-hardcoded features), agent-native (151 MCP tools across 35 categories), and
+hardcoded features), agent-native (150 MCP tools across 35 categories), and
 BYOK (bring your own LLM keys).
 
 AutoInfo is operated agent-first, but it is built and reviewed by humans. The

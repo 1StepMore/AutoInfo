@@ -1,3 +1,5 @@
+<!-- doc-type: plan -->
+<!-- status: superseded by docs/dev/plans/goals-2026-11-06.md (the 2026-11-06 定稿) — kept as the director's original brief; do not execute from this copy -->
 # AutoInfo · 目标与任务（给 coding agent · 2026-11-05 夜）
 
 > 定位：通用信息追踪 / 知识库平台 —— 多领域采集 → 抽取 → 沉淀。

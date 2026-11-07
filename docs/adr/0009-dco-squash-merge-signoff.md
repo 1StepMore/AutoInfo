@@ -1,7 +1,7 @@
 <!-- doc-type: adr -->
 # 0009. DCO squash-merge sign-off mismatch: document, do not rewrite
 
-- **Status**: Accepted
+- **Status**: Accepted (amended by 0013: sign-off identity is enforced in CI)
 - **Date**: 2026-10-01
 - **Author**: Maintainer (issue #427)
 

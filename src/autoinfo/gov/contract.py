@@ -297,13 +297,10 @@ def validate(contract: Contract) -> list[str]:
 
 
 def unsynced(contract: Contract) -> list[str]:
-    """Decision-consumer sync check (full implementation lands with T10).
+    """Decision-consumer sync check — delegates to the ADR guard (T10)."""
+    from autoinfo.gov.adr import check as adr_check
 
-    Kept here so `gov contract check` output shape is stable from PR-A; the
-    adr module replaces this stub with anchor verification (ADR guard).
-    """
-    del contract
-    return []
+    return list(adr_check(contract.root, contract)["unsynced"])
 
 
 def check(root: Path | None = None) -> dict[str, Any]:

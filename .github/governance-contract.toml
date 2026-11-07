@@ -213,8 +213,78 @@ eol = "lf"
 pr-size = { agents = "fewer-larger", humans = "small-focused" }
 
 # ---------------------------------------------------------------------------
-# Decisions — ADR consumer sync (T10). Each decision names its ADR and the
-# consumers that must reference it; `gov adr check` flags UNSYNCED when an
-# anchor goes missing. Filled in PR-C together with ADR-0013/0014.
+# Decisions — ADR consumer sync (T10/G5). Every numbered ADR MUST be
+# registered here; each entry names the consumers that must carry an anchor
+# of the decision. `gov adr check` (and `gov contract check`) flags UNSYNCED
+# when an anchor is missing AND when an ADR file is not registered. Value-type
+# consumers (code/config lines) anchor with expect_regex; prose consumers use
+# substring expect. The docs/adr/README.md index row is the minimum consumer
+# for every historical ADR.
 # ---------------------------------------------------------------------------
 [decisions]
+
+[decisions.kb_raw_sole_entry]
+adr = "0001"
+consumers = [{ file = "docs/adr/README.md", expect = "0001-kb-pipeline-raw-sole-entry" }]
+
+[decisions.draft_to_wiki_promotion]
+adr = "0002"
+consumers = [{ file = "docs/adr/README.md", expect = "0002-draft-to-wiki-agent-promotion" }]
+
+[decisions.llm_fallback_chain]
+adr = "0003"
+consumers = [{ file = "docs/adr/README.md", expect = "0003-llm-fallback-chain" }]
+
+[decisions.reasoning_model_json_mode]
+adr = "0004"
+consumers = [{ file = "docs/adr/README.md", expect = "0004-reasoning-model-json-mode-thinking" }]
+
+[decisions.unified_envelope]
+adr = "0005"
+consumers = [{ file = "docs/adr/README.md", expect = "0005-unified-success-error-envelope" }]
+
+[decisions.dev_process_charter]
+adr = "0006"
+consumers = [{ file = "docs/adr/README.md", expect = "0006-dev-process-workflow-charter" }]
+
+[decisions.release_please_version_truth]
+adr = "0007"
+consumers = [{ file = "docs/adr/README.md", expect = "0007-release-please-version-truth" }]
+
+[decisions.dependency_version_policy]
+adr = "0008"
+consumers = [{ file = "docs/adr/README.md", expect = "0008-dependency-version-policy" }]
+
+[decisions.dco_squash_signoff]
+adr = "0009"
+consumers = [{ file = "docs/adr/README.md", expect = "0009-dco-squash-merge-signoff" }]
+
+[decisions.tools_list_output_schema]
+adr = "0010"
+consumers = [{ file = "docs/adr/README.md", expect = "0010-mcp-tools-list-omits-output-schema" }]
+
+[decisions.gate_attempt_semantics]
+adr = "0011"
+consumers = [{ file = "docs/adr/README.md", expect = "0011-quality-gate-attempt-semantics" }]
+
+[decisions.multi_tenancy_out_of_scope]
+adr = "0012"
+consumers = [{ file = "docs/adr/README.md", expect = "0012-multi-tenancy-out-of-scope" }]
+
+[decisions.dco_identity]
+adr = "0013"
+consumers = [
+    { file = "docs/adr/README.md", expect = "0013-dco-signoff-identity-ci" },
+    { file = "AGENTS.md", expect = "ADR-0013" },
+    { file = "GOVERNANCE.md", expect = "sign-off must match the commit author" },
+    { file = ".github/workflows/ci.yml", expect_regex = "python scripts/check_signoff_identity\\.py" },
+]
+
+[decisions.governance_contract]
+adr = "0014"
+consumers = [
+    { file = "docs/adr/README.md", expect = "0014-governance-contract-and-authority-order" },
+    { file = "AGENTS.md", expect = "governance-contract.toml" },
+    { file = ".github/workflows/guard.yml", expect = "autoinfo.gov check" },
+    { file = ".pre-commit-config.yaml", expect = "autoinfo.gov check" },
+]

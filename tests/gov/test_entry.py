@@ -31,7 +31,7 @@ def test_force_pass_is_refused_with_exit_2() -> None:
 
 
 def test_stub_verbs_fail_honestly() -> None:
-    for verb in ("escalate", "negative-control", "adr"):
+    for verb in ("escalate", "negative-control", "scripts"):
         rc = main([verb, "--json"])
         assert rc == EXIT_ENV, verb
 
@@ -150,3 +150,12 @@ def test_doctor_verb_is_green(capsys: object) -> None:  # noqa: ARG001
     assert rc == EXIT_OK
     payload = json.loads(getattr(capsys, "readouterr")().out.strip())
     assert "checks" in payload and "p0" in payload
+
+
+def test_adr_verb_is_green(capsys: object) -> None:  # noqa: ARG001
+    """cmd_adr: 14 ADRs indexed, consumers synced, exit 0 (T10 coverage)."""
+    rc = main(["adr", "check", "--json"])
+    assert rc == EXIT_OK
+    payload = json.loads(getattr(capsys, "readouterr")().out.strip())
+    assert payload["adr_count"] == 14
+    assert payload["errors"] == [] and payload["unsynced"] == []

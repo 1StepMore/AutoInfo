@@ -35,14 +35,13 @@ VERBS = (
     "scripts",
 )
 
-#: Verbs implemented in later PRs (plan T09-T17); registered, honestly stubbed.
+#: Verbs implemented in later PRs (plan T12-T17); registered, honestly stubbed.
 _LATER_PR: dict[str, str] = {
     "escalate": "T12 (PR-D) — human escalations",
     "run": "T15 (PR-D) — profile probes",
     "acceptance": "T12 (PR-D) — acceptance report instrument",
     "negative-control": "T17 (PR-E) — negative-control harness",
     "confidence": "T17 (PR-E) — E2/E3 confidence grading",
-    "adr": "T10 (PR-C) — ADR guard + consumer sync",
     "scripts": "T14 (PR-E) — scripts/ registry",
 }
 
@@ -186,6 +185,21 @@ def cmd_status(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return report, status_mod.exit_code(report)
 
 
+def cmd_adr(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from autoinfo.gov.adr import check as adr_check
+    from autoinfo.gov.contract import ContractError, load
+
+    del args
+    try:
+        contract = load()
+    except ContractError as exc:
+        return _env_error(str(exc), "run from the repository root"), EXIT_ENV
+    data = adr_check(contract.root, contract)
+    data["success"] = not data["errors"] and not data["unsynced"]
+    rc = EXIT_OK if data["success"] else EXIT_RED
+    return data, rc
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m autoinfo.gov",
@@ -230,12 +244,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status_cmd.set_defaults(func=cmd_status)
 
+    adr = sub.add_parser("adr", help="ADR guard + decision consumer sync (T10)")
+    adr.add_argument("action", choices=["check"], help="only 'check' for now")
+    adr.add_argument("--json", action="store_true", help="emit one JSON line")
+    adr.set_defaults(func=cmd_adr)
+
     stub_verbs = (
         "escalate",
         "acceptance",
         "negative-control",
         "confidence",
-        "adr",
         "scripts",
     )
     for verb in stub_verbs:

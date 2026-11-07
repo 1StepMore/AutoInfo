@@ -38,8 +38,11 @@ vote. Objections must be specific and actionable rather than general
 disagreement.
 
 Non-trivial architecture decisions must be recorded as an Architecture
-Decision Record (ADR) in `docs/adr/`, following `docs/adr/TEMPLATE.md`. The
-ADR rules:
+Decision Record (ADR) in `docs/adr/`, following `docs/adr/TEMPLATE.md`. Where a
+machine-readable truth exists, the governance contract wins:
+`.github/governance-contract.toml` (ADR-0014) is the single authority for
+facts, gates and decision-consumer sync, checked by `python -m autoinfo.gov`.
+The ADR rules:
 
 - **ADR numbers are never reused.** If a decision changes, write a new ADR.
 - **Accepted ADRs are never rewritten in place.** If a decision is
@@ -139,11 +142,15 @@ quiet issues is lower than the cost of alienating reporters.
 
 ## Pull request review policy
 
-CI is the gatekeeper. Every pull request must pass the required status checks
-in the `main-protection` ruleset (`.github/workflows/ci.yml`: `lint` (ruff),
-`mypy-changed-files`, `test` (pytest); plus `Conventional Commits title`,
-`Fast subset coverage on changed modules`, and `DCO`). Reviewers focus on
-substance, not on style trivia that CI already covers.
+CI is the gatekeeper. Every pull request must pass the **nine** required
+status checks configured in the `main-protection` ruleset (measured
+2026-11-07): `Lint`, `Mypy (changed files)`, `Test suite (fast subset)`,
+`Conventional Commits title`, `DCO`, `Doc drift guard`,
+`Fast subset coverage on changed modules`, `Release scope`, and
+`Scenario portability`. (`Preview smoke` and `Derived doc/surface parity`
+run on every PR but are not ruleset-required; the latter is wired
+report-only by the governance plan until its observation period passes.)
+Reviewers focus on substance, not on style trivia that CI already covers.
 
 - **Solo-maintainer mode**: AutoInfo currently runs with a single maintainer,
   so `required_approving_review_count` is `0` and the author can merge their
@@ -195,7 +202,9 @@ All contributions require a sign-off: `git commit -s`, affirming the Developer
 Certificate of Origin (<https://developercertificate.org/>). The DCO app
 (<https://github.com/apps/dco>) enforces this check once installed; a pull
 request whose commits lack sign-off fails the check until the author amends
-them.
+them. On the PR branch, the sign-off must match the commit author —
+`scripts/check_signoff_identity.py` enforces this in CI (ADR-0013); the
+squash-merge divergence below is an artifact, not a violation (ADR-0009).
 
 Sign-off exists for legal provenance. AutoInfo is MIT licensed, and
 maintainers need a clear chain of who contributed what and under what

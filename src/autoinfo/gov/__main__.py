@@ -35,20 +35,18 @@ VERBS = (
     "scripts",
 )
 
-#: Verbs implemented in later PRs (plan T14/T17); registered, honestly stubbed.
-_LATER_PR: dict[str, str] = {
-    "negative-control": "T17 (PR-E) — negative-control harness",
-    "confidence": "T17 (PR-E) — E2/E3 confidence grading",
-    "scripts": "T14 (PR-E) — scripts/ registry",
-}
-
 
 def _print(payload: dict[str, Any], as_json: bool) -> None:
-    """Emit the payload: one JSON line for --json, readable text otherwise."""
+    """Emit the payload: one JSON line for --json, readable text otherwise.
+
+    JSON goes through ``sys.stdout.buffer`` in binary: text mode translates
+    newlines to CRLF on Windows and would break the cross-platform sha256
+    comparison of redirected ``derive --all --json`` output (DoD #5).
+    """
     if as_json:
-        sys.stdout.write(
-            json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
-        )
+        line = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        sys.stdout.buffer.write((line + "\n").encode("utf-8"))
+        sys.stdout.buffer.flush()
         return
     for key, value in payload.items():
         if isinstance(value, list):
@@ -57,18 +55,6 @@ def _print(payload: dict[str, Any], as_json: bool) -> None:
                 print(f"  - {item}")
         else:
             print(f"{key}: {value}")
-
-
-def _stub(verb: str) -> dict[str, Any]:
-    return {
-        "success": False,
-        "error": {
-            "code": "NOT_IMPLEMENTED_YET",
-            "message": f"verb {verb!r} lands in {_LATER_PR.get(verb, 'a later PR')}",
-            "actionable": "track the plan: deliverables/software-company/"
-            "autoinfo-governance-remediation-2026-11-06.md",
-        },
-    }
 
 
 def _env_error(message: str, actionable: str) -> dict[str, Any]:
@@ -209,6 +195,46 @@ def cmd_run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return decision, rc
 
 
+def cmd_negative_control(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from autoinfo.gov import negative_control as negctl
+    from autoinfo.gov.contract import ContractError, load
+
+    try:
+        contract = load()
+    except ContractError as exc:
+        return _env_error(str(exc), "run from the repository root"), EXIT_ENV
+    data = negctl.run_all(contract.root, only=args.case)
+    rc = EXIT_OK if data["all_three_evidences"] else EXIT_RED
+    return data, rc
+
+
+def cmd_confidence(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from autoinfo.gov import confidence as confidence_mod
+    from autoinfo.gov.contract import ContractError
+
+    del args
+    try:
+        data = confidence_mod.confidence()
+    except ContractError as exc:
+        return _env_error(str(exc), "run from the repository root"), EXIT_ENV
+    rc = EXIT_OK if data["overall"] == "E3" else EXIT_RED
+    return data, rc
+
+
+def cmd_scripts(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from autoinfo.gov import registry as registry_mod
+    from autoinfo.gov.contract import ContractError, load
+
+    del args
+    try:
+        contract = load()
+        data = registry_mod.registry_report(contract)
+    except (ContractError, RuntimeError) as exc:
+        return _env_error(str(exc), "run from the repository root"), EXIT_ENV
+    rc = EXIT_OK if not data["unregistered"] else EXIT_RED
+    return data, rc
+
+
 def cmd_escalate(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     from autoinfo.gov import escalate as escalate_mod
     from autoinfo.gov import sources
@@ -345,15 +371,21 @@ def build_parser() -> argparse.ArgumentParser:
     acceptance.add_argument("--json", action="store_true", help="emit one JSON line")
     acceptance.set_defaults(func=cmd_acceptance)
 
-    stub_verbs = (
-        "negative-control",
-        "confidence",
-        "scripts",
+    negctl = sub.add_parser(
+        "negative-control", help="break -> red -> restore -> green harness (T17)"
     )
-    for verb in stub_verbs:
-        stub = sub.add_parser(verb, help=f"lands in {_LATER_PR[verb]}")
-        stub.add_argument("--json", action="store_true", help="emit one JSON line")
-        stub.set_defaults(func=None)
+    negctl.add_argument("--all", action="store_true", help="run every case")
+    negctl.add_argument("--case", help="run a single case id")
+    negctl.add_argument("--json", action="store_true", help="emit one JSON line")
+    negctl.set_defaults(func=cmd_negative_control)
+
+    confidence = sub.add_parser("confidence", help="E2/E3 confidence grading (T17)")
+    confidence.add_argument("--json", action="store_true", help="emit one JSON line")
+    confidence.set_defaults(func=cmd_confidence)
+
+    scripts = sub.add_parser("scripts", help="scripts/ registry report (T14)")
+    scripts.add_argument("--json", action="store_true", help="emit one JSON line")
+    scripts.set_defaults(func=cmd_scripts)
 
     run = sub.add_parser("run", help="profile probe runner — policy decision only (T15)")
     run.add_argument("--mode", help="profile name (cloud|local)")
@@ -393,8 +425,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_ENV
 
     func = getattr(args, "func", None)
-    if func is None:
-        _print(_stub(args.verb), as_json)
+    if func is None:  # unreachable today: every verb has a handler
         return EXIT_ENV
 
     try:

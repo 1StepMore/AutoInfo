@@ -220,6 +220,37 @@ eol = "lf"
 pr-size = { agents = "fewer-larger", humans = "small-focused" }
 
 # ---------------------------------------------------------------------------
+# Scripts registry (T14). `scripts/*.py` (git-tracked, recursive) is derived
+# live; gate/one-off are declared HERE, everything else defaults to
+# `instrument` — the deliberate default for subjective classifications.
+# ---------------------------------------------------------------------------
+[scripts]
+gate = [
+    "scripts/doc_inventory.py",
+    "scripts/surface_parity.py",
+    "scripts/coverage_matrix.py",
+    "scripts/coverage_gate.py",
+    "scripts/quality_gate.py",
+    "scripts/scenario_portability_gate.py",
+    "scripts/check_signoff_identity.py",
+    "scripts/build_release_check.py",
+    "scripts/vendor_agnosticism_check.py",
+    "scripts/ax_metrics.py",
+    "scripts/nightly_ledger.py",
+    "scripts/gen_demo_domains_table.py",
+    "scripts/agent_review/battery.py",
+]
+oneoff = [
+    "scripts/dev_capture_digest_golden.py",
+    "scripts/merge_demo_domains.py",
+    "scripts/run_q2b_collector_tests.py",
+    "scripts/test_llm_concurrency.py",
+    "scripts/cleanup_empty_kb_entries.py",
+    "scripts/format_structure.py",
+    "scripts/repro_outbox_lock.py",
+]
+
+# ---------------------------------------------------------------------------
 # Decisions — ADR consumer sync (T10/G5). Every numbered ADR MUST be
 # registered here; each entry names the consumers that must carry an anchor
 # of the decision. `gov adr check` (and `gov contract check`) flags UNSYNCED

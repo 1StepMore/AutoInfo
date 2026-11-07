@@ -30,10 +30,11 @@ def test_force_pass_is_refused_with_exit_2() -> None:
     assert rc == EXIT_ENV
 
 
-def test_stub_verbs_fail_honestly() -> None:
-    for verb in ("escalate", "negative-control", "scripts"):
-        rc = main([verb, "--json"])
-        assert rc == EXIT_ENV, verb
+def test_previously_stubbed_verbs_are_now_real() -> None:
+    """No stubs remain: escalate/negative-control/scripts all answer for real."""
+    assert main(["negative-control", "--case", "force-pass", "--json"]) == EXIT_OK
+    assert main(["scripts", "--json"]) == EXIT_OK
+    assert main(["escalate", "--pending", "--json"]) == EXIT_OK
 
 
 def test_contract_check_verb_is_green() -> None:

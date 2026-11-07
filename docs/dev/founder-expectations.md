@@ -288,7 +288,7 @@ This is the standard. Everything else — tests, architecture, source curation �
 | True Test | ✅ 13-point agent-verifiable checklist — all pass |
 | Code implementation | ✅ ~18K+ lines Python, 35+ modules |
 | Demo source curation | ✅ 7 curated sources shipped with library metadata |
-| Tests | ✅ ~6891 tests across 100+ test files (includes new collector tests) |
+| Tests | ✅ ~6905 tests across 100+ test files (includes new collector tests) |
 | MCP tools | ✅ 151 tools across 35 categories |
 | Technical decisions | ✅ 34 categories documented, all implemented |
 | CLI commands | ✅ 31 command groups |

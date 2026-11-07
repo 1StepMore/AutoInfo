@@ -11,7 +11,7 @@ from autoinfo.gov import acceptance as acceptance_mod
 from autoinfo.gov import degrade as degrade_mod
 from autoinfo.gov import escalate as escalate_mod
 from autoinfo.gov import policy as policy_mod
-from autoinfo.gov.__main__ import EXIT_ENV, EXIT_OK, EXIT_RED, main
+from autoinfo.gov.__main__ import EXIT_OK, EXIT_RED, main
 from autoinfo.gov.contract import load
 
 PROFILES: dict[str, dict[str, list[str]]] = {
@@ -199,5 +199,5 @@ class SimpleRoot:
         return getattr(self._contract, name)
 
 
-def test_unknown_verb_still_exits_env() -> None:
-    assert main(["scripts", "--json"]) == EXIT_ENV
+def test_scripts_verb_reports_clean_registry() -> None:
+    assert main(["scripts", "--json"]) == EXIT_OK

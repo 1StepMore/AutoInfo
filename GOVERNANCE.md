@@ -142,15 +142,17 @@ quiet issues is lower than the cost of alienating reporters.
 
 ## Pull request review policy
 
-CI is the gatekeeper. Every pull request must pass the **nine** required
+CI is the gatekeeper. Every pull request must pass the **ten** required
 status checks configured in the `main-protection` ruleset (measured
-2026-11-07): `Lint`, `Mypy (changed files)`, `Test suite (fast subset)`,
-`Conventional Commits title`, `DCO`, `Doc drift guard`,
-`Fast subset coverage on changed modules`, `Release scope`, and
-`Scenario portability`. (`Preview smoke` and `Derived doc/surface parity`
-run on every PR but are not ruleset-required; the latter is wired
-report-only by the governance plan until its observation period passes.)
-Reviewers focus on substance, not on style trivia that CI already covers.
+2026-11-07, after the governance T09 flip): `Lint`, `Mypy (changed files)`,
+`Test suite (fast subset)`, `Conventional Commits title`, `DCO`,
+`Doc drift guard`, `Fast subset coverage on changed modules`,
+`Release scope`, `Scenario portability`, and `Derived doc/surface parity`
+(the governance derived-facts check — its guard.yml `gov check` steps went
+blocking together with this flip, after the observation period recorded a
+deliberate red drill). `Preview smoke` runs on every PR but is not
+ruleset-required. Reviewers focus on substance, not on style trivia that CI
+already covers.
 
 - **Solo-maintainer mode**: AutoInfo currently runs with a single maintainer,
   so `required_approving_review_count` is `0` and the author can merge their

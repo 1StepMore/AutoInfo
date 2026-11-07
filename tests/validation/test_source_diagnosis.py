@@ -18,11 +18,6 @@ SCRIPT = ROOT / "scripts" / "source_diagnosis.py"
 SPEC = ROOT / "docs" / "dev" / "specs" / "end-user-matrix.yaml"
 CONFIG_ROOT = ROOT / "src" / "autoinfo" / "data" / "domains"
 COLLECTIONS = ROOT / "collections"
-# The collection cache is runtime state (gitignored): CI checks out no
-# collections/, so the exact bucket counts cannot be reproduced there. The
-# structural assertions still run; only the bucket-exact ones skip.
-COLLECTIONS_PRESENT = COLLECTIONS.exists()
-
 _SPEC_IMPORT = importlib.util.spec_from_file_location("source_diagnosis", SCRIPT)
 assert _SPEC_IMPORT is not None and _SPEC_IMPORT.loader is not None
 sd = importlib.util.module_from_spec(_SPEC_IMPORT)
@@ -68,20 +63,13 @@ def test_row_parity_is_exactly_the_78_required_pairs(rows, required):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(
-    not COLLECTIONS_PRESENT,
-    reason="exact buckets need the runtime collection cache (gitignored)",
-)
-def test_bucket_counts_on_current_tree(rows):
+def test_bucket_counts_on_current_tree(rows, required):
+    """Invariants only: never pin the daily-varying bucket distribution (#696)."""
+    assert all(row["bucket"] in sd.BUCKETS for row in rows), "undefined bucket in classifier"
     counts = sd.bucket_counts(rows)
-    assert counts == {
-        "satisfied": 9,
-        "degraded": 5,
-        "failing": 3,
-        "never-attempted": 59,
-        "configured-off": 2,
-    }
-    assert sum(counts.values()) == 78
+    assert set(counts) == set(sd.BUCKETS)
+    assert sum(counts.values()) == len(required)
+    assert sum(counts.values()) == len(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -179,21 +167,29 @@ def _published_rows() -> list[list[str]]:
     return parsed
 
 
-def test_published_doc_matches_classifier(rows):
+def _published_header() -> list[str]:
+    section = DOC.read_text().split("## Full table", 1)[1]
+    for line in section.splitlines():
+        if line.startswith("| domain "):
+            return [cell.strip() for cell in line.strip().strip("|").split(" | ")]
+    raise AssertionError("published doc has no '| domain ...' header row")
+
+
+def test_published_doc_matches_classifier(rows, required):
+    """Same-source structure check; exact bucket values belong to a fresh render (#696)."""
     published = _published_rows()
-    assert len(published) == 78
-    if not COLLECTIONS_PRESENT:
-        pytest.skip("exact buckets need the runtime collection cache (gitignored)")
-    expected = [[r["domain"], r["source"], r["bucket"], r["recommendation"]] for r in rows]
-    assert [[c[0], c[1], c[8], c[10]] for c in published] == expected
+    assert len(published) == len(required)
+    assert len(published) == len(rows)
+    assert [(c[0], c[1]) for c in published] == [(r["domain"], r["source"]) for r in required]
+    header = _published_header()
+    for column in ("domain", "source", "bucket", "recommendation"):
+        assert column in header
+    bucket_col = header.index("bucket")
+    recommendation_col = header.index("recommendation")
+    assert all(c[bucket_col] in sd.BUCKETS for c in published)
+    assert all(c[recommendation_col] in sd.RECOMMENDATIONS for c in published)
 
 
-@pytest.mark.skipif(
-    not COLLECTIONS_PRESENT,
-    reason="deferred rows need the runtime collection cache (gitignored)",
-)
 def test_every_deferred_row_states_a_stable_domain(rows):
-    deferred = [r for r in rows if r["recommendation"] == "deferred"]
-    assert deferred, "expected at least one deferred row on the current tree"
-    for row in deferred:
+    for row in [r for r in rows if r["recommendation"] == "deferred"]:
         assert int(row["domain_stable_sources"]) >= 2

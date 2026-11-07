@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 136 |
-| Total lines | 39810 |
-| Active files | 104 |
+| Total files | 137 |
+| Total lines | 39826 |
+| Active files | 105 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9940 lines |
 | Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 34 files / 11198 lines |
+| Category — docs/dev | 35 files / 11214 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -166,3 +166,4 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `schemas/knowledge-digest-v1.json` | 154 | schemas | active | — |
 | `schemas/knowledge-presentation-v1.json` | 72 | schemas | active | — |
 | `schemas/knowledge-tutorial-v1.json` | 99 | schemas | active | — |
+| `user/README.md` | 16 | docs/dev | active | — |

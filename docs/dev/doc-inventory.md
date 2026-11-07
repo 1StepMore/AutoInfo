@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 134 |
-| Total lines | 39789 |
-| Active files | 102 |
+| Total files | 136 |
+| Total lines | 39810 |
+| Active files | 104 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
@@ -23,14 +23,15 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9940 lines |
 | Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 33 files / 11187 lines |
-| Category — docs/root | 9 files / 1645 lines |
+| Category — docs/dev | 34 files / 11198 lines |
+| Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
 
 | Relative path | Lines | Category | Status | Doc-type |
 |---------------|------:|----------|--------|----------|
 | `2026-11-05-AutoInfo-目标与任务-给agent.md` | 30 | docs/root | active | plan |
+| `AGENTS.md` | 10 | docs/root | active | — |
 | `adr/0001-kb-pipeline-raw-sole-entry.md` | 41 | adr | active | adr |
 | `adr/0002-draft-to-wiki-agent-promotion.md` | 46 | adr | active | adr |
 | `adr/0003-llm-fallback-chain.md` | 44 | adr | active | adr |
@@ -82,6 +83,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `archive/reports/global-content-paid-research-report-trae.md` | 973 | archive | archived | — |
 | `demo-release-standard.md` | 43 | docs/root | active | — |
 | `dev/AutoInfo-development-brief-v4.md` | 310 | docs/dev | active | — |
+| `dev/DEBT.md` | 11 | docs/dev | active | — |
 | `dev/acceptance-framework.md` | 508 | docs/dev | active | — |
 | `dev/agent-era-doc-architecture-autoinfo.md` | 124 | docs/dev | active | reference |
 | `dev/agent-era-doc-architecture.md` | 300 | docs/dev | active | instruction |

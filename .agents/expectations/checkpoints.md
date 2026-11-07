@@ -8,7 +8,7 @@
 | CP-AGENTS | 根 `AGENTS.md` 存在、≤200 行、含 §0 安全 + tiebreaker + 角色路由 + 确定性命令 | `.agents/scripts/consistency_check.py`（C3）+ 人工 |
 | CP-CONTRACTS | 四契约四要素齐、≤30 行、薄适配器为指针非复本 | `.agents/scripts/consistency_check.py`（C4） |
 | CP-INVENTORY | `.agents/audit/INVENTORY.md` 有 AUTO-GENERATED 头且与真实文档集一致 | `scripts/doc_inventory.py --check`（C6） |
-| CP-NOPLACEHOLDER | 落盘治理文件零 `{{占位符}}` 残留 | `.agents/scripts/consistency_check.py`（C5） |
+| CP-NOPLACEHOLDER | 落盘治理文件零双花括号占位符残留 | `.agents/scripts/consistency_check.py`（C5） |
 | CP-PARITY | REST 面与文档一致（canonical 8/8） | `scripts/surface_parity.py --check` |
 | CP-DOCCOUNTS | README 计数与代码/CLI 一致（工具/场景/CLI 组） | `scripts/doc_inventory.py --check`（C1/C2 类事实） |
 | CP-GATE-LIVE | 一致性校验 CI gate 生效：注入断链 → CI 必须挡住 | 确定性注入（PR 上实测） |

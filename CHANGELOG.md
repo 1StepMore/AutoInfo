@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.2](https://github.com/1StepMore/AutoInfo/compare/v1.28.1...v1.28.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* **cli:** collect 全源 0 成功时非零退出，不再让断链记成 ok（B14） ([#698](https://github.com/1StepMore/AutoInfo/issues/698)) ([8dd0322](https://github.com/1StepMore/AutoInfo/commit/8dd0322659744f8a581d1ec5373d97944f7cd358))
+
+
+### Miscellaneous Chores
+
+* **docs:** playbook v1.1 hash pin and source-diagnosis invariant tests ([#720](https://github.com/1StepMore/AutoInfo/issues/720)) ([54930c3](https://github.com/1StepMore/AutoInfo/commit/54930c341866c31c3caf18e85e4e665916bc8e44))
+
 ## [1.28.1](https://github.com/1StepMore/AutoInfo/compare/v1.28.0...v1.28.1) (2026-11-07)
 
 

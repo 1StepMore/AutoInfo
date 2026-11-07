@@ -32,7 +32,7 @@ PR：https://github.com/1StepMore/AutoInfo/pull/724（**draft，未合并**，�
 | A2 四契约 + DEBT.md | `0c8b2708` | 28/27/29/25 行 ≤30；四要素齐；零占位符 | `git revert 0c8b2708` |
 | ops(§5) 期望层 | `d49f1f9e` | 指针索引（决策 5）；EXP-AC..EXP-E2E 六行；CP-AGENTS..CP-E2E 八检查点 | `git revert d49f1f9e` |
 | A13 一致性机制 | `6f6c5889` | C3/C4/C5/C7 实测 PASS；doc_inventory --check 含 C6 镜像 PASS（venv 解释器）；guard.yml 接线 required check | `git revert 6f6c5889` |
-| A13 重生成（fix-then-gate） | `a22bea5b`（PR 上） | A8 新增 docs/user/README.md 后未重生成→**CI gate 真实抓到**（非注入）→同生成器重跑双镜像一致 | `git revert <hash>` |
+| A13 重生成（fix-then-gate） | `095403f3` | A8 新增 docs/user/README.md 后未重生成→**CI gate 真实抓到**（非注入）→同生成器重跑双镜像一致；同 commit 含 runlog 终版 | `git revert 095403f3` |
 | A5 constitution 抽取 | `0b519b5b` | 零代拟、逐条出处；V08 诚实标注；供 Owner 事后审核 | `git revert 0b519b5b` |
 | A3 .claude/agents/ ×4 | `02c965df` | frontmatter 齐；指针非复本；tester 只读 plan；R-2 标注 | `git revert 02c965df` |
 | A4 .github/agents/ ×8 | `09cc06a3` | cloud .md ×4 + CLI/IDE .agent.md ×4（M4）；description 全在 | `git revert 09cc06a3` |

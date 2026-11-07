@@ -36,6 +36,8 @@ detectable; never hand-maintain the inventory — regenerate it.
      (completeness both ways) and the README table's category-row count agrees
      with the README/AGENTS declared category count.
   7. The live pytest collected count agrees with README.md's test count.
+  8. The generic documentation playbook's bytes match ``DOC_ARCH_SHA256`` — the
+     cross-repo version/hash protocol guard (playbook §7).
 
 Exits non-zero on any failure. Idempotent: regenerating twice produces the
 same bytes (no timestamps). ``--check`` shells out to the interpreter for the
@@ -45,6 +47,7 @@ live tool list and the pytest collection (the ~30s pytest collect dominates).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import re
 import subprocess
@@ -63,6 +66,15 @@ SCENARIOS_DIR = ROOT / "src" / "autoinfo" / "mcp" / "scenarios"
 SERVER = ROOT / "src" / "autoinfo" / "mcp" / "server.py"
 #: The doc-manager skill whose own drift-prone numbers must agree with README.
 SKILL = ROOT / ".opencode" / "skills" / "doc-manager-skill" / "SKILL.md"
+
+#: The generic documentation-architecture playbook. Every participating repo
+#: carries a byte-identical copy; the hash pin below is the drift guard. When
+#: the canonical copy changes: bump its ``<!-- version: -->`` marker, sync the
+#: bytes to every repo, then update this constant in each repo (playbook §7).
+DOC_ARCH = DOCS / "dev" / "agent-era-doc-architecture.md"
+#: Byte-exact SHA-256 of ``DOC_ARCH``. Regenerate with:
+#:   sha256sum docs/dev/agent-era-doc-architecture.md
+DOC_ARCH_SHA256 = "725316a1fd83fcf68243ab87144f37add67b45275bd5faa31883c2f0bb061807"
 
 #: Exact first line of the generated report; ``--check`` requires it.
 HEADER = (
@@ -726,6 +738,27 @@ def run_check() -> list[str]:
     if readme_values.get("CLI command groups") is not None:
         expected_counts["cli_groups"] = int(readme_values["CLI command groups"])
     failures.extend(_check_living_docs(expected_counts))
+
+    if DOC_ARCH.exists():
+        digest = hashlib.sha256(DOC_ARCH.read_bytes()).hexdigest()
+        if digest == DOC_ARCH_SHA256:
+            print(f"  {DOC_ARCH.relative_to(ROOT)}: sha256 matches DOC_ARCH_SHA256 -> ok")
+        else:
+            print(
+                f"  {DOC_ARCH.relative_to(ROOT)}: sha256 {digest} vs pinned "
+                f"{DOC_ARCH_SHA256} -> FAIL"
+            )
+            failures.append(
+                f"{DOC_ARCH.relative_to(ROOT)} bytes drifted from DOC_ARCH_SHA256: if the "
+                "change is intended, bump the playbook version, sync every participating "
+                "repo, then update the pin in each repo (playbook §7); otherwise restore "
+                "the canonical bytes"
+            )
+    else:
+        print(f"  {DOC_ARCH.relative_to(ROOT)}: missing -> FAIL")
+        failures.append(
+            f"{DOC_ARCH.relative_to(ROOT)} missing: the documented playbook is required"
+        )
 
     if not OUT.exists():
         print("  docs/dev/doc-inventory.md: does not exist -> FAIL")

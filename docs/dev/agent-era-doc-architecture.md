@@ -1,7 +1,7 @@
 <!-- doc-type: instruction -->
 <!-- scope: generic — portable to any AI-agent-driven project -->
-<!-- version: 1.0 -->
-<!-- status: draft -->
+<!-- version: 1.1 -->
+<!-- status: active -->
 
 # Agent-Era Documentation Architecture — Generic Instruction
 
@@ -10,15 +10,25 @@
 > agent-driven development). It answers: what docs to keep, which to delete, how to
 > keep them current, and how to make the maintenance itself agentic.
 >
-> **How to use it.** Copy this file into your project as `docs/agents-doc-architecture.md`
-> (or your project's instruction home). Apply it as a checklist when (a) setting up a
-> new agent-driven repo, (b) restructuring an existing repo's docs, or (c) auditing doc
-> health. Each section is a decision procedure — not prose to admire.
+> **How to use it.** Place one copy in each participating repo as
+> `docs/dev/agent-era-doc-architecture.md` (or the repo's instruction home). Apply it
+> as a checklist when (a) setting up a new agent-driven repo, (b) restructuring an
+> existing repo's docs, or (c) auditing doc health. Each section is a decision
+> procedure — not prose to admire.
 >
-> **Status:** Draft v1.0 (2026-08). Derived from 2024-2026 industry research
+> **Multi-repo projects.** Every participating repo carries this file **byte-identical**
+> at the same path. There is one editing entry point (the canonical copy); downstream
+> copies are never forked or hand-edited. Each copy declares the same `version` and is
+> pinned by that repo's `scripts/doc_inventory.py --check` (see §7).
+>
+> **Worked example.** A production agent-driven project applying this playbook is
+> [AutoInfo](https://github.com/1StepMore/AutoInfo), used here only as an example
+> implementation. Its project-specific map lives in
+> [`agent-era-doc-architecture-autoinfo.md`](agent-era-doc-architecture-autoinfo.md).
+>
+> **Status:** v1.1 (2026-11). Synthesized from 2024-2026 industry research
 > (Anthropic context engineering, agents.md/CLAUDE.md conventions, Diátaxis, llms.txt,
-> context-rot research) and the AutoInfo implementation (a production system that
-> applies these patterns and is the reference implementation of this playbook).
+> context-rot research) and validated against a production agent-driven system.
 
 ---
 
@@ -224,37 +234,45 @@ because the checker would have failed CI first.
 
 ---
 
-## 6. Reference implementation
+## 6. Worked example
 
-This playbook is derived from — and validated by — the **AutoInfo** project
-(`github.com/1StepMore/AutoInfo`), which implements:
+This playbook is validated against a production agent-driven project. The example
+implementation's project-specific map — every section pinned to concrete files,
+plus its remaining debt — lives in the companion doc:
+[`agent-era-doc-architecture-autoinfo.md`](agent-era-doc-architecture-autoinfo.md).
 
-- `AGENTS.md` as a root instruction index with progressive disclosure.
-- `scripts/doc_inventory.py` + `--check` — a generated inventory + consistency checker
-  (the P5/P9 "context-rot checker" pattern) wired as an AC8 acceptance gate.
-- `docs/adr/` — immutable decision records with a template and index.
-- `docs/dev/acceptance-framework.md` — a keystone acceptance charter (AC1-AC9) that
-  includes **AC8 Documentation Health** as a binary, verifiable acceptance dimension.
-- `docs/dev/best-practice-review.md` — an independent best-practice benchmark
-  dimension with evidence-strength grading and a re-run protocol.
-- `docs/dev/specs/` — single-source specs (data models, pipeline, quality gates,
-  delivery, operations).
-- `docs/archive/` — aggressive archiving of one-offs (migration guides, per-run
-  acceptance reports, superseded master plans).
-- Operator skills and developer skills coexist under `.opencode/skills/`
-  (the former `docs/skills/` operator split was retired 2026-10-30 — a path no
-  agent loader could discover).
-- `.opencode/skills/autoinfo-skill/` — an operator skill whose counts are verified by the
-  same consistency checker as README/AGENTS (skill sync, §4).
-
-Use AutoInfo as the worked example: its structure *is* this playbook applied. Its
-remaining gaps (per the 2026 audit) are also instructive: AGENTS.md at 520 lines
-exceeds the adherence ceiling; the best-practice re-run protocol is manual; the
-inventory is a sitemap, not yet a curated map with `llms.txt` emission.
+Read the generic rule here, then see one repo implement it there. Treat the example's
+remaining gaps as a checklist, not as proof that the playbook is already complete.
 
 ---
 
-## 7. Source index (retrieved 2026-08)
+## 7. Maintaining this standard
+
+This playbook is itself a maintained document. Without an explicit protocol it
+becomes a second rotting copy.
+
+| Role | Owner / mechanism |
+|------|-------------------|
+| Source of truth (editing entry) | the canonical copy in the coordinating repo |
+| Downstream copies | one byte-identical copy per participating repo, same path |
+| Version marker | `<!-- version: N.N -->` in every copy's header |
+| Hash pin | each repo's `scripts/doc_inventory.py` carries `DOC_ARCH_SHA256`; `--check` compares the copy's byte hash against the pin and fails on drift |
+
+Change procedure for a rule change:
+
+1. Edit the canonical copy — never a downstream copy — and bump `version`.
+2. Sync the new bytes to every participating repo.
+3. Update `DOC_ARCH_SHA256` in each repo's `scripts/doc_inventory.py`.
+4. Run `python3 scripts/doc_inventory.py --check` in every repo; all must pass.
+5. Record the cross-repo coordination in the umbrella issue.
+
+Drift is detected by the per-repo `--check` (hash pin + inventory freshness). If a
+copy and its pin disagree, the copy is wrong by definition — never "fix" the pin to
+match an unreviewed edit.
+
+---
+
+## 8. Source index (retrieved 2026-08)
 
 | Source | What it establishes |
 |--------|--------------------|

@@ -186,6 +186,13 @@ advisory = false
 source = ".github/workflows/coverage.yml#Measure base coverage"
 not_run_allowed_reason = "base-suite exit is only measured on coverage.yml (PR CI) runs"
 
+[gates.escalations]
+kind = "gate"
+required = false
+advisory = false
+source = "autoinfo.gov.escalate:pending"
+not_run_allowed_reason = "no escalation store yet — an empty store is a PASS (nothing awaiting a human)"
+
 # ---------------------------------------------------------------------------
 # Profiles — capability boundary (T15). One contract, two runtime profiles.
 # `gov run --mode <profile> --probe <action>` decides via autoinfo.gov.policy.

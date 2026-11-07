@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from autoinfo.gov import sources
+from autoinfo.gov import degrade, sources
 from autoinfo.gov.contract import EVIDENCE_FIELDS, STATES, Contract
 
 AMBER_STATES = ("UNCONFIGURED", "DEGRADED", "UNMEASURED")
@@ -80,6 +80,7 @@ def status(
     contract: Contract,
     derived: dict[str, Any],
     only: str | None = None,
+    simulate: str | None = None,
 ) -> dict[str, Any]:
     """Aggregate every contract gate into the 8-state report."""
     # `_input_hash` rides along as metadata; readers must see the CLEAN facts
@@ -92,6 +93,8 @@ def status(
             continue
         raw = sources.read_gate(gate_id, contract, facts_clean)
         raw["id"] = gate_id
+        if simulate:
+            raw = degrade.apply_simulation(raw, simulate)
         gates.append(_judge(raw, gate_cfg, current_input_hash))
 
     counts = {state: 0 for state in STATES}
@@ -121,6 +124,27 @@ def status(
     if degraded_states:
         reasons.append(f"degraded/unconfigured gates: {', '.join(degraded_states)}")
 
+    simulation: dict[str, Any] | None = None
+    if simulate:
+        capability = degrade.SIMULATIONS.get(simulate, "")
+        flipped = [g["id"] for g in gates if g.get("simulated_from") == "PASS"]
+        affected = degrade.affected_gates([g["id"] for g in gates], simulate)
+        simulation = {
+            "mode": simulate,
+            "capability": capability,
+            "affected_gates": affected,
+            "flipped_from_pass": flipped,
+        }
+        # A drill IS a degraded environment by declaration: even when no gate
+        # depends on the missing capability (e.g. no-key today — no gov
+        # instrument is key-bound by design), the drill must not read green.
+        if overall == "green":
+            overall = "amber"
+            reasons.append(
+                f"simulated {simulate} drill: {len(affected)} affected gate(s) "
+                f"({', '.join(affected) or 'none depends on ' + capability})"
+            )
+
     return {
         "verdict": {"overall": overall, "reasons": reasons},
         "gates": gates,
@@ -128,6 +152,7 @@ def status(
         "pass_total": len(passing),
         "pass_total_excludes_advisory": True,
         "blocking": blocking,
+        "simulation": simulation,
     }
 
 

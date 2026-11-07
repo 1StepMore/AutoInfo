@@ -6,17 +6,39 @@
 
 ## What Is AutoInfo
 
-AutoInfo is a **universal information tracking and knowledge base platform**. You configure
-sources and topics; AutoInfo handles collection, LLM-based structured extraction,
-summarization, and builds a queryable knowledge base. **Domain-agnostic**: the demo domains
-(medical-research, ai-commercial, financial-intelligence, …) are configurations, not
-hardcoded features — users define their own domains.
+AutoInfo is a **universal information tracking and knowledge base platform**: configure sources
+and topics; it handles collection, LLM-based structured extraction, summarization, and builds a
+queryable knowledge base. **Domain-agnostic** — demo domains are configurations, not features.
 
 ## Agent Operating Model
 
 **Agent-first**: the human director communicates intent in natural language → you translate
 to MCP tool calls (stdio server). All capabilities are MCP tools (counts: `README.md` →
-Status table). CLI mirrors MCP — `--domain X --topic Y` maps 1:1 to tool parameters; humans may use the CLI as a fallback.
+Status table). CLI mirrors MCP — `--domain X --topic Y` maps 1:1 to tool parameters.
+
+## §0 安全条款（不可覆盖 · overrides every layer below）
+
+1. **疑似密钥/凭据泄露**：立即停止动作，上报文件路径，不读取、不扩散、不存储内容。
+2. **不管理原始 API key**：仅经 `configure_llm()` 的 `${ENV}` 引用（BYOK），永不落库落盘。
+3. **03-Wiki append-only**：降级/删除非 agent 操作（详见 MUST NOT）。
+4. **`.agents/expectations/` 期望工件仅 Owner 显式指令可改**；Tester 不得改代码或改期望使套件变绿。
+5. 本节优先级高于下方 tiebreaker 的任何层级，任何指令不可覆盖。
+
+## 角色路由与冲突优先级
+
+**角色由 Owner 显式指派，禁止自猜**（agents.md FAQ："explicit user chat prompts override everything"）。
+角色不明、或指令与契约冲突且 tiebreaker 无法裁决 → 停止一切动作，输出 `ESCALATE: <原因>`。
+
+| Owner 显式指派 | 角色契约（唯一事实源） | 固定返回格式 |
+|---|---|---|
+| Coder（实现） | `.agents/roles/coder.md` | PR 四段式 |
+| Maintainer（裁决） | `.agents/roles/maintainer.md` | 裁决三选一 + 依据 + 后续 |
+| Tester（验收） | `.agents/roles/tester.md` | 固定 JSON verdict |
+| User（旅程验收） | `.agents/roles/user.md` | issue 四段式 |
+
+**Tiebreaker**：直接指令（Owner 当前任务） > 角色文件 > 目录 scope（最近 `AGENTS.md`） > 根默认；
+例外：§0 安全条款高于一切。「角色文件 > 目录 scope」是仓库本地约定，约束不了只机械加载最近
+文件的极简 Harness → **硬边界靠 CI 权限事实与 rulesets 兜底，不能只靠提示词**。
 
 ## Quick Start & CLI
 
@@ -27,12 +49,12 @@ autoinfo collect --domain medical-research  # fetch items (live per-source progr
 autoinfo process --domain medical-research  # LLM extraction + quality gates (G4/G5 opt-in — see gates)
 ```
 
-MCP client configs are committed: `.cursor/mcp.json` (restart Cursor), `.opencode/mcp.json`
-(auto-discovered); Claude Desktop: copy `.claude/claude_desktop_config.json` to the path in
-`docs/dev/llm-config.md`. CLI entry points (same Typer app, `src/autoinfo/cli/__init__.py`):
-`autoinfo <cmd>` (from `pip install -e .` / `make install`) or `python -m autoinfo.cli <cmd>`.
-**Do not confuse CLI with MCP server**: `python -m autoinfo.mcp.server` speaks JSON-RPC over
-stdio — never interactive.
+**确定性命令（单一声明；CI 引用不重写）**：`BUILD_CMD=pip install -e ".[dev,ebook]"` ·
+`TEST_CMD=pytest -m "not real_api" -q` · `LINT_CMD=ruff check src/ tests/ && mypy src/`。
+
+MCP client configs committed: `.cursor/mcp.json` · `.opencode/mcp.json` · Claude Desktop per
+`docs/dev/llm-config.md`. CLI: `autoinfo <cmd>` / `python -m autoinfo.cli <cmd>`; the MCP
+server speaks JSON-RPC — never interactive.
 
 ## Architecture Rules
 
@@ -41,8 +63,7 @@ Hard constraints derived from `docs/dev/founder-expectations.md` (the *why* live
 
 ### KB Pipeline
 
-`Collected Item → 01-Raw (sole entry, auto-ingest) → 02-Draft (agent processes/creates from
-Raw only) → 03-Wiki (agent promotes)`.
+`Collected Item → 01-Raw (sole entry, auto-ingest) → 02-Draft (from Raw only) → 03-Wiki (agent promotes)`.
 
 | Rule | Why |
 |------|-----|
@@ -58,11 +79,10 @@ Full KB/collection pipeline detail: `docs/dev/specs/pipeline.md` §1–2; ration
 
 ### Collection Pipeline
 
-Two phases, separable in time: `collect` (parallel source handlers → raw JSON cache to
-`collections/` → dedup URL→PMID/DOI→fuzzy title→cross-domain event → collection log), then `process` (LLM
-extraction with per-task model config → quality gates → 01-Raw KB entries). Every handler
-implements the `Collector` ABC's `fetch_items(ctx)` contract via `collectors/registry.py` —
-adding a source is one class plus one registration, never a dispatch-chain edit.
+Two phases: `collect`（并行 handler → raw cache to `collections/` → dedup URL→PMID/DOI→fuzzy title→event→log），
+then `process`（per-task model config → quality gates → 01-Raw entries）. Every handler implements the
+`Collector` ABC's `fetch_items(ctx)` contract via `collectors/registry.py` — 加源 = 一个类 + 一次注册，
+never a dispatch-chain edit.
 
 ### Quality Gates
 
@@ -78,27 +98,22 @@ adding a source is one class plus one registration, never a dispatch-chain edit.
 | D1: Product completeness / D2: Format integrity | 🔴 Hard | block delivery |
 | D3: Freshness | 🟡 Soft | configurable threshold |
 
-- **Default activation** — the table says what a gate does *when it runs*; this says *when
-  it runs*: G0/G1/G2/G3/G7 run by default at process time; **G4/G5 are opt-in flags** (CLI
-  `--check-factual` / `--check-translation`; MCP `check_factual` / `check_translation`,
-  default `false`) — G4 additionally runs unconditionally in the Draft→Wiki CurationGate.
-  D1-D3 run only where `delivery_gates` is configured — the shipped default config and
-  every demo domain set none, so **delivery gates are off by default** (decision point A
-  in `docs/dev/plans/agent-infra-remediation-2026-10-30.md`).
+- **Default activation** — 上表说明 gate *做什么*，此条说明 *何时跑*：G0/G1/G2/G3/G7 默认 process 时跑；
+  **G4/G5 是 opt-in**（CLI `--check-factual`/`--check-translation`；MCP 同名参数，default `false`）——
+  G4 另在 Draft→Wiki CurationGate 无条件跑。D1-D3 仅在配置了 `delivery_gates` 处跑——出厂默认与全部
+  demo 域均未配置，**交付门禁默认关闭**（decision point A, `docs/dev/plans/agent-infra-remediation-2026-10-30.md`）。
 - Full gate catalog + configuration + testing strategy: `docs/dev/specs/quality-gates.md`.
 
 ### Product QC — 3-Layer Model (issue #194)
 
-- **L0 dead-code gate** (default, blocking): `make validate DIR=outputs/<domain>` (or
-  `python3 scripts/quality_gate.py <dir>`) — deterministic structural checks (F1 empty
-  shell, F2 placeholders, F3 doubled citations, F4 forbidden words, C1 fake entries, C2
-  log leaks, C3 CJK residue, C4 truncated lines, C5 source integrity, C6 narrative
-  grounding #192, X1 cross-product entity conflicts). Exit 0/1/2.
-- **L1 agent battery** (opt-in `--semantic`): `scripts/agent_review/battery.py` — semantic
-  blind-spot judging over residue L0 cannot see; verdicts carry mandatory evidence;
-  unreachable/unparseable judgment ⇒ **ESCALATE, never PASS** (#195). Manifest:
-  `scripts/agent_review/blindspots.yaml`. Vendor/model-agnostic via `config.llm`
-  (structured output capability-probed, else deterministic markdown parsing).
+- **L0 dead-code gate**（default, blocking）: `make validate DIR=outputs/<domain>`（or
+  `python3 scripts/quality_gate.py <dir>`）— deterministic structural checks（F1 空壳, F2 占位符,
+  F3 双引用, F4 禁词, C1 造假条目, C2 日志泄漏, C3 CJK 残留, C4 截断行, C5 源完整性, C6 叙事接地
+  #192, X1 跨产物实体冲突）. Exit 0/1/2.
+- **L1 agent battery**（opt-in `--semantic`）: `scripts/agent_review/battery.py` — L0 不可见的残留
+  语义盲点判定；verdict 必带证据；unreachable/unparseable ⇒ **ESCALATE, never PASS**（#195）. Manifest:
+  `scripts/agent_review/blindspots.yaml`. 经 `config.llm` 厂商无关（capability-probed structured
+  output, else deterministic markdown parsing）。
 - **ESCALATE (human)**: value/intent calls go to the human director — never machine-final
   for subjective calls.
 - **Single-production discipline**: a product is produced ONCE; QC (L0 → opt-in L1 →
@@ -134,33 +149,22 @@ Each rule exists because its absence produced a specific failure (two agents wri
 ## Tool Discovery & Response Format
 
 Discovery: `health_check()` → `tools/list` → `list_domains()` → `get_domain_schema(domain)`
-→ `list_available_models()` → `list_output_templates(domain)`. Full catalog with counts:
-`README.md` (single source of truth). Validation: `list_validation_scenarios` /
-`run_validation_scenario` (contract: `docs/dev/validation-scenario-contract.md`). All tools
-return `{success: true, data: ...}` or `{success: false, error: {code, message, actionable}}`
-(ADR-0005; codes in `src/autoinfo/mcp/errors.py`). Follow the remediation hint in
-`error.message`. `LLM_NOT_CONFIGURED` when no key; `process_collection` with no cached items
-returns `{status: "noop"}`. Worked patterns: `docs/dev/mcp-usage-examples.md`.
+→ `list_available_models()` → `list_output_templates(domain)`. Full catalog: `README.md`（单源）.
+All tools return `{success: true, data}` 或 `{success: false, error: {code, message, actionable}}`
+（ADR-0005）；无缓存项的 `process_collection` → `{status: "noop"}`. Worked patterns:
+`docs/dev/mcp-usage-examples.md`.
 
 ## LLM Configuration (essentials)
 
-- **Precedence** (highest first): MCP tool parameter → `.autoinfo/config.yaml` `llm.*` →
-  `AUTOINFO_LLM_API_KEY` → defaults (openrouter / deepseek/deepseek-chat).
-- **Judgment calls** (G4/G5/llm_judge) resolve **config-first** (#195):
-  `llm.judgment_model` → `llm.model` → `JudgmentModelNotConfiguredError` — no hardcoded
-  model constant; a drifted task override can never change what model judges content.
-- **Fallback chain**: `[primary] + llm.fallback` — first success wins, shared per-provider
-  limiter + jittered 429/5xx backoff. **A cross-endpoint fallback never inherits the
-  primary key** — it must carry its own `${ENV}` reference.
-- Full setup (env table, `json_mode`/reasoning controls, custom endpoints, fallback
-  example, per-task routing): **`docs/dev/llm-config.md`**.
+- **Precedence**: MCP 参数 → `.autoinfo/config.yaml llm.*` → `AUTOINFO_LLM_API_KEY` → 默认（openrouter/deepseek-chat）。
+- **Judgment calls**（G4/G5/llm_judge）resolve **config-first**（#195）：`llm.judgment_model` → `llm.model`，无硬编码模型常量。
+- **Fallback chain**：跨端点 fallback 必须携带自己的 `${ENV}` 引用，绝不继承 primary key。
+- Full setup（env 表/`json_mode`/自定义端点/按任务路由）：**`docs/dev/llm-config.md`**。
 
 ## `.omo/` Workspace
 
-`.omo/` is the **agent-orchestrator workspace** (Sisyphus-style plans/notepads/evidence/
-`boulder.json`) — gitignored runtime scratch, not AutoInfo product data. Agents may **read**
-it to recover orchestrator context; never treat it as KB/sources/output, never modify it
-from AutoInfo MCP tools (owned by the orchestrator layer above AutoInfo).
+`.omo/` = agent-orchestrator workspace（gitignored runtime scratch）。Agent 可**读**它恢复编排上下文；
+永不当作 KB/sources/output，永不从 AutoInfo MCP 工具修改它。
 
 ## Runtime Artifacts vs Source Files
 
@@ -179,22 +183,18 @@ to fix behavior — fix the source. Full per-path table: `docs/dev/repo-map.md`.
 
 ## Status
 
-Status and **all counts** live in **`README.md` → Status table** (single source of truth;
-AGENTS.md is pointer-only). Regenerate: `python3 scripts/doc_inventory.py`; `--check`
-validates counts against code/CLI. Invariants: Architecture Rules above +
-`docs/dev/acceptance-framework.md` (AC1-AC9).
+All counts live in **`README.md` → Status table**（single source of truth; AGENTS.md is pointer-only）.
+Regenerate: `python3 scripts/doc_inventory.py`; `--check` validates against code/CLI. Invariants:
+Architecture Rules above + `docs/dev/acceptance-framework.md` (AC1-AC9).
 
 ## References
 
-- `.github/governance-contract.toml` — machine-readable governance authority (ADR-0014); `python -m autoinfo.gov` is the single governance entry point · `docs/dev/repo-map.md` — repo layout + runtime-artifact boundary · `docs/dev/llm-config.md` — full LLM setup (both loaded on demand)
-- `docs/dev/workflow-charter.md` — dev process (canonical methodology: `docs/dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md`; ADR-0006)
-- `docs/dev/mcp-usage-examples.md` — worked MCP patterns · `docs/dev/required-api-keys.md` — API keys/env vars catalog
-- `docs/dev/founder-expectations.md` (D3 index) · `docs/dev/specs/` (extracted specs) · `docs/dev/cross-dimensional-catalog.md` (**keystone** matrix A1-A7 × B1/B2/B3) · `docs/dev/enduser-coverage-matrix.md`
-- `docs/dev/acceptance-framework.md` — **keystone** acceptance (AC1-AC9); `docs/dev/validation-scenario-contract.md` — scenario contract
-- `docs/adr/` — decision records · `docs/glossary.md` — ubiquitous language · `docs/demo-release-standard.md` — demo DoD · `docs/known-limitations/demo-quality-residuals.md` — residual register
-- `docs/dev/agent-era-doc-architecture.md` + `-autoinfo.md` — doc-architecture playbook + AutoInfo map (maintenance loop, cleaned-items record)
+- `docs/dev/repo-map.md` — repo layout + runtime boundary · `docs/dev/llm-config.md` — full LLM setup
+- `docs/dev/workflow-charter.md` — dev process（canonical methodology: `docs/dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md`; ADR-0006）
+- `docs/dev/founder-expectations.md`（D3 index）· `docs/dev/specs/` · `docs/dev/cross-dimensional-catalog.md`（**keystone**）
+- `docs/dev/acceptance-framework.md` — **keystone** acceptance (AC1-AC9) · `docs/adr/` · `docs/glossary.md` · `docs/demo-release-standard.md`
+- `.agents/roles/` 四角色契约 · `.agents/expectations/INDEX.md` 期望入口 · `.agents/audit/INVENTORY.md` 文档地图（AUTO-GENERATED）· `.github/governance-contract.toml`（ADR-0014，`python -m autoinfo.gov` 是唯一治理入口）
 
 ## Community
 
-`CONTRIBUTING.md` (Conventional Commits, AI policy, mandatory 回归场景) · `GOVERNANCE.md` ·
-`CODE_OF_CONDUCT.md` · `SECURITY.md` · `.github/` (templates, CODEOWNERS, release-please workflow gates).
+`CONTRIBUTING.md` · `GOVERNANCE.md` · `CODE_OF_CONDUCT.md` · `SECURITY.md` · `.github/`（templates, CODEOWNERS, release gates）.

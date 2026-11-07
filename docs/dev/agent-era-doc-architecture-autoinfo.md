@@ -1,6 +1,6 @@
 <!-- doc-type: reference -->
 <!-- scope: autoinfo-specific companion to agent-era-doc-architecture.md -->
-<!-- version: 1.0 -->
+<!-- version: 1.1 -->
 <!-- status: active -->
 
 # AutoInfo Documentation Architecture — Project-Specific Map
@@ -89,7 +89,31 @@ types 29, collector handlers 30, output templates 8, REST port 8741, schemas 4.
 | **Slimmed AGENTS.md to ceiling** (#671) | 401→200 lines (project structure + runtime-artifact table → `docs/dev/repo-map.md`; LLM configuration detail → `docs/dev/llm-config.md`; Common Patterns → `docs/dev/mcp-usage-examples.md`; gate/pipeline detail → `docs/dev/specs/`; inline rule tables kept) |
 | **ADR index** | added missing ADR-0007 row |
 
-## 6. Remaining debt / next-wave candidates
+## 6. Reference implementation (playbook §6)
+
+Playbook §6 lived in the generic file until v1.1. This section is its home now: it
+records why AutoInfo qualifies as a reference implementation and which gaps remain
+instructive.
+
+| Playbook pattern | AutoInfo evidence |
+|------------------|-------------------|
+| Root instruction index | `AGENTS.md` — 200 lines, pointer-only (§2) |
+| Generated inventory + checker | `scripts/doc_inventory.py` + `--check`, wired as AC8 |
+| Immutable decisions | `docs/adr/` with template + index |
+| Binary acceptance dimension | `docs/dev/acceptance-framework.md` (AC8 Documentation Health) |
+| Independent benchmark | `docs/dev/best-practice-review.md` + §8 re-run protocol |
+| Single-source specs | `docs/dev/specs/` |
+| Aggressive archive | `docs/archive/` |
+| Two skill audiences | `.opencode/skills/` (operator + developer families) |
+| Count-gated operator skill | `.opencode/skills/autoinfo-skill/` |
+
+**Instructive gaps** (2026-11 — keep as a checklist, not as permanent exceptions):
+
+- The best-practice re-run protocol is still manual.
+- `doc-inventory.md` is a sitemap, not yet a curated map with `llms.txt` emission.
+- Referential checks (broken `docs/...` / `src/...` links) are not yet part of `--check`.
+
+## 7. Remaining debt / next-wave candidates
 
 | Item | Why | Suggested action |
 |------|-----|------------------|

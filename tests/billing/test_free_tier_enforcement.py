@@ -22,6 +22,7 @@ Count semantics (plan todo 12):
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -84,9 +85,7 @@ def _premium_subscription(user_id: str) -> Subscription:
     )
 
 
-def _record_product(
-    user_id: str, product_type: str, product_id: str, domain: str = ""
-) -> None:
+def _record_product(user_id: str, product_type: str, product_id: str, domain: str = "") -> None:
     """Record one delivered product for *user_id* in the consumption store.
 
     The ``domain`` metadata mirrors what generate_digest/generate_report
@@ -166,9 +165,7 @@ class TestProductCountLimit:
         )
         assert result["allowed"] is True
 
-    def test_second_product_type_blocked_with_envelope(
-        self, user_db: Path
-    ) -> None:
+    def test_second_product_type_blocked_with_envelope(self, user_db: Path) -> None:
         """Named free user (1-product limit) generating a 2nd product type →
         FREE_TIER_LIMIT error containing current/limit values."""
         _free_subscription("u-quota")
@@ -191,9 +188,7 @@ class TestProductCountLimit:
         """Re-generating the same (family, domain) pair stays allowed —
         the gate blocks NEW products, not scheduled refreshes."""
         _free_subscription("u-regen")
-        _record_product(
-            "u-regen", "digest", "medical-research-weekly", domain="medical-research"
-        )
+        _record_product("u-regen", "digest", "medical-research-weekly", domain="medical-research")
 
         result = check_free_tier_generation(
             user_id="u-regen",
@@ -225,9 +220,7 @@ class TestProductCountLimit:
 
 
 class TestPremiumNotLimited:
-    def test_premium_user_above_free_product_count_allowed(
-        self, user_db: Path
-    ) -> None:
+    def test_premium_user_above_free_product_count_allowed(self, user_db: Path) -> None:
         _premium_subscription("u-premium")
         for i in range(3):
             _record_product("u-premium", "digest", f"domain-{i}-weekly")
@@ -303,9 +296,7 @@ class TestGenerationEntryEnforcement:
     """The single seam: generate_digest / generate_report consult the gate
     at ENTRY when user_id is non-empty."""
 
-    def test_generate_digest_blocks_named_over_limit_user(
-        self, user_db: Path
-    ) -> None:
+    def test_generate_digest_blocks_named_over_limit_user(self, user_db: Path) -> None:
         from autoinfo.output import generate_digest
 
         _free_subscription("u-entry")
@@ -318,9 +309,7 @@ class TestGenerationEntryEnforcement:
                 user_id="u-entry",
             )
 
-    def test_generate_digest_allows_unnamed_despite_exhausted_quota(
-        self, user_db: Path
-    ) -> None:
+    def test_generate_digest_allows_unnamed_despite_exhausted_quota(self, user_db: Path) -> None:
         """user_id="" generation must NOT be blocked (batch path)."""
         from autoinfo.output import generate_digest
 
@@ -335,9 +324,7 @@ class TestGenerationEntryEnforcement:
         assert isinstance(out, str)
         assert out.strip()  # non-empty product
 
-    def test_generate_report_blocks_named_over_limit_user(
-        self, user_db: Path
-    ) -> None:
+    def test_generate_report_blocks_named_over_limit_user(self, user_db: Path) -> None:
         from autoinfo.output import generate_report
 
         _free_subscription("u-entry-r")
@@ -350,9 +337,7 @@ class TestGenerationEntryEnforcement:
                 user_id="u-entry-r",
             )
 
-    def test_generate_report_allows_unnamed_despite_exhausted_quota(
-        self, user_db: Path
-    ) -> None:
+    def test_generate_report_allows_unnamed_despite_exhausted_quota(self, user_db: Path) -> None:
         from autoinfo.output import generate_report
 
         _free_subscription("u-batch-r")
@@ -392,9 +377,7 @@ class TestScheduleFrequency:
         assert "daily" in result["message"].lower()
 
         with pytest.raises(FreeTierLimitError):
-            check_schedule_frequency(
-                user_id="u-sched", frequency="daily", raise_on_block=True
-            )
+            check_schedule_frequency(user_id="u-sched", frequency="daily", raise_on_block=True)
 
     def test_weekly_schedule_under_weekly_limit_allowed(self, user_db: Path) -> None:
         from autoinfo.delivery.frequency_gate import check_schedule_frequency
@@ -421,6 +404,143 @@ class TestScheduleFrequency:
 
 
 # ---------------------------------------------------------------------------
+# Cadence derivation from cron expressions (#687)
+# ---------------------------------------------------------------------------
+
+_CADENCE_NOW = datetime(2026, 11, 9, 8, 0, 0)  # a Monday, 08:00 local
+
+
+class TestDeriveCadence:
+    """``derive_cadence`` maps real trigger cadence onto the rank ladder,
+    always rounding UP to the more frequent level (never understates)."""
+
+    def test_daily_cron(self) -> None:
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        assert derive_cadence("0 8 * * *", now=_CADENCE_NOW) == "daily"
+
+    def test_weekly_cron(self) -> None:
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        assert derive_cadence("0 8 * * 1", now=_CADENCE_NOW) == "weekly"
+
+    def test_monthly_cron(self) -> None:
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        assert derive_cadence("0 8 1 * *", now=_CADENCE_NOW) == "monthly"
+
+    def test_step_expression_is_minutely(self) -> None:
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        assert derive_cadence("*/5 * * * *", now=_CADENCE_NOW) == "minutely"
+        assert derive_cadence("* * * * *", now=_CADENCE_NOW) == "minutely"
+
+    def test_half_hourly_conservatively_minutely(self) -> None:
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        assert derive_cadence("0,30 * * * *", now=_CADENCE_NOW) == "minutely"
+
+    def test_hourly_cron(self) -> None:
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        assert derive_cadence("15 * * * *", now=_CADENCE_NOW) == "hourly"
+
+    def test_twice_weekly_conservatively_daily(self) -> None:
+        """2+/week already exceeds a weekly allowance → ``daily`` (round up)."""
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        assert derive_cadence("0 8 * * 1,4", now=_CADENCE_NOW) == "daily"
+
+    def test_valid_but_rare_cron_is_quarterly(self) -> None:
+        """Feb 29 / quarter-start crons never fire in a 28-day window —
+        safely classified at the least-frequent level, never a crash."""
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        assert derive_cadence("0 8 29 2 *", now=_CADENCE_NOW) == "quarterly"
+        assert derive_cadence("0 8 1 1,4,7,10 *", now=_CADENCE_NOW) == "quarterly"
+
+    def test_dst_transition_day_still_daily(self) -> None:
+        """Counting fire times (not measuring intervals) keeps a daily cron
+        ``daily`` even when its base sits on a spring-forward day."""
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        assert derive_cadence("0 8 * * *", now=datetime(2026, 3, 8, 8, 0, 0)) == "daily"
+
+    def test_invalid_cron_raises(self) -> None:
+        from autoinfo.delivery.frequency_gate import derive_cadence
+
+        with pytest.raises(ValueError):
+            derive_cadence("not a cron", now=_CADENCE_NOW)
+
+
+class TestCadenceGateContradiction:
+    """#687: the gate judges the cron-derived cadence, NOT ``period``.
+    A daily cron with ``period="weekly"`` must be rejected; a weekly cron
+    with ``period="daily"`` must now be allowed (period is content window)."""
+
+    def test_mcp_cron_daily_period_weekly_blocked(self, user_db: Path) -> None:
+        from autoinfo.mcp.tools.scheduling import _handle_add_delivery_schedule
+
+        _free_subscription("u-cadence")
+
+        result = _handle_add_delivery_schedule(
+            domain="medical-research",
+            cron_expression="0 8 * * *",  # fires daily…
+            output_type="digest",
+            period="weekly",  # …whatever the content window claims
+            user_id="u-cadence",
+        )
+        assert result["success"] is False, result
+        assert result["error"]["code"] == ErrorCode.FREE_TIER_LIMIT.value
+        assert "daily" in result["error"]["message"].lower()
+        assert "weekly" in result["error"]["message"].lower()
+
+    def test_mcp_cron_weekly_period_daily_allowed(self, user_db: Path) -> None:
+        """Corrected old-semantics case: a weekly cron passes on a weekly
+        plan even when ``period="daily"`` — period no longer gates."""
+        from autoinfo.mcp.tools.scheduling import _handle_add_delivery_schedule
+
+        _free_subscription("u-cadence-ok")
+
+        result = _handle_add_delivery_schedule(
+            domain="medical-research",
+            cron_expression="0 8 * * 1",  # weekly
+            output_type="digest",
+            period="daily",
+            user_id="u-cadence-ok",
+        )
+        assert result["created"] is True, result
+
+    def test_cli_cron_daily_period_weekly_blocked(self, user_db: Path) -> None:
+        from typer.testing import CliRunner
+
+        from autoinfo.cli import app as main_app
+
+        _free_subscription("u-cron-cadence")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main_app,
+            [
+                "cron",
+                "add-delivery",
+                "--domain",
+                "medical-research",
+                "--schedule",
+                "0 8 * * *",  # daily
+                "--output",
+                "digest",
+                "--period",
+                "weekly",  # no longer masks the daily cadence
+                "--user-id",
+                "u-cron-cadence",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "FreeTierLimit" in result.output or "FREE_TIER_LIMIT" in result.output
+
+
+# ---------------------------------------------------------------------------
 # CLI cron add-delivery: schedule-frequency check for named users
 # ---------------------------------------------------------------------------
 
@@ -437,12 +557,18 @@ class TestCronAddDelivery:
         result = runner.invoke(
             main_app,
             [
-                "cron", "add-delivery",
-                "--domain", "medical-research",
-                "--schedule", "0 8 * * *",  # daily
-                "--output", "digest",
-                "--period", "daily",
-                "--user-id", "u-cron",
+                "cron",
+                "add-delivery",
+                "--domain",
+                "medical-research",
+                "--schedule",
+                "0 8 * * *",  # daily
+                "--output",
+                "digest",
+                "--period",
+                "daily",
+                "--user-id",
+                "u-cron",
             ],
         )
         assert result.exit_code != 0
@@ -459,19 +585,23 @@ class TestCronAddDelivery:
         result = runner.invoke(
             main_app,
             [
-                "cron", "add-delivery",
-                "--domain", "medical-research",
-                "--schedule", "0 8 * * 1",  # weekly (Monday)
-                "--output", "digest",
-                "--period", "weekly",
-                "--user-id", "u-cron-ok",
+                "cron",
+                "add-delivery",
+                "--domain",
+                "medical-research",
+                "--schedule",
+                "0 8 * * 1",  # weekly (Monday)
+                "--output",
+                "digest",
+                "--period",
+                "weekly",
+                "--user-id",
+                "u-cron-ok",
             ],
         )
         assert result.exit_code == 0, f"STDERR: {result.output}"
 
-    def test_add_delivery_unnamed_user_unblocked_daily(
-        self, user_db: Path
-    ) -> None:
+    def test_add_delivery_unnamed_user_unblocked_daily(self, user_db: Path) -> None:
         """No --user-id → schedule user_id="" → gate skipped (batch path)."""
         from typer.testing import CliRunner
 
@@ -481,10 +611,14 @@ class TestCronAddDelivery:
         result = runner.invoke(
             main_app,
             [
-                "cron", "add-delivery",
-                "--domain", "medical-research",
-                "--schedule", "0 8 * * *",  # daily — would violate weekly, but no user
-                "--output", "digest",
+                "cron",
+                "add-delivery",
+                "--domain",
+                "medical-research",
+                "--schedule",
+                "0 8 * * *",  # daily — would violate weekly, but no user
+                "--output",
+                "digest",
             ],
         )
         assert result.exit_code == 0, f"STDERR: {result.output}"
@@ -502,9 +636,7 @@ class TestMcpAddDeliverySchedule:
     batch requests are unchanged.  Removing the wiring from
     ``_handle_add_delivery_schedule`` turns the blocked case red."""
 
-    def test_add_delivery_free_user_daily_blocked_with_envelope(
-        self, user_db: Path
-    ) -> None:
+    def test_add_delivery_free_user_daily_blocked_with_envelope(self, user_db: Path) -> None:
         from autoinfo.mcp.tools.scheduling import _handle_add_delivery_schedule
 
         _free_subscription("u-mcp")

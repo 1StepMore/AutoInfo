@@ -1096,10 +1096,13 @@ def add_delivery(
         )
         raise typer.Exit(code=1)
 
-    # Free-tier frequency gate (todo 12) — named users only; empty skips
-    from autoinfo.delivery.frequency_gate import check_schedule_frequency
+    # Free-tier frequency gate (todo 12, #674; cadence via #687) — named
+    # users only; empty skips.  The judged frequency is the cadence
+    # DERIVED from the cron expression, not ``period`` (content window):
+    # a ``0 8 * * *`` + ``period=weekly`` plan is daily in reality.
+    from autoinfo.delivery.frequency_gate import check_schedule_frequency, derive_cadence
 
-    gate = check_schedule_frequency(user_id=schedule_user_id, frequency=period)
+    gate = check_schedule_frequency(user_id=schedule_user_id, frequency=derive_cadence(schedule))
     if not gate["allowed"]:
         fail_if_global(gate["code"], gate["message"])
         typer.echo(

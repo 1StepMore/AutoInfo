@@ -275,7 +275,7 @@ CLI human mode prints text + exit 0; CLI `--json` mirrors the MCP shape exactly.
 
 | Capability | CLI | MCP | REST | Status | Notes |
 |------------|-----|-----|------|--------|-------|
-| Add delivery schedule | `cron add-delivery` | `add_delivery_schedule` | — | ✓ CLI+MCP | free-tier frequency gate enforced on both paths (#674) |
+| Add delivery schedule | `cron add-delivery` | `add_delivery_schedule` | — | ✓ CLI+MCP | free-tier frequency gate enforced on both paths (#674); since #687 the judged frequency is the cadence derived from `cron_expression` (frequency_gate.`derive_cadence`) — `period` keeps its content-window meaning and no longer doubles as the frequency limit |
 | List delivery schedules | `cron list-deliveries` | `list_delivery_schedules` | — | ✓ CLI+MCP | |
 | Remove delivery schedule | `cron remove-delivery` | `remove_delivery_schedule` | — | ✓ CLI+MCP | |
 

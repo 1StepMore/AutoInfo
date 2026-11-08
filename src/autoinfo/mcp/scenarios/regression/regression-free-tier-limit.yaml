@@ -25,10 +25,11 @@ steps:
     command: |-
       python3 -c '
       import os, shutil, tempfile
+      from datetime import datetime
       from pathlib import Path
       from autoinfo.mcp.errors import ErrorCode
       from autoinfo.output import FreeTierLimitError, check_free_tier_generation
-      from autoinfo.delivery.frequency_gate import check_schedule_frequency
+      from autoinfo.delivery.frequency_gate import check_schedule_frequency, derive_cadence
       from autoinfo.user_store import (
           create_profile,
           create_subscription,
@@ -115,6 +116,29 @@ steps:
           # Premium daily schedule → allowed.
           prem_freq = check_schedule_frequency(user_id="u-prem", frequency="daily")
           assert prem_freq["allowed"] is True, prem_freq
+
+          # 6b. Cadence derivation (#687): the gate judges the cadence
+          # derived from the cron expression, not the content ``period`` —
+          # a daily cron with period="weekly" must be judged daily.
+          now = datetime(2026, 11, 9, 8, 0, 0)
+          assert derive_cadence("0 8 * * *", now=now) == "daily"
+          assert derive_cadence("0 8 * * 1", now=now) == "weekly"
+          assert derive_cadence("0 8 1 * *", now=now) == "monthly"
+          assert derive_cadence("*/5 * * * *", now=now) == "minutely"
+          # Legal but rare (Feb 29) → least-frequent level, never a crash.
+          assert derive_cadence("0 8 29 2 *", now=now) == "quarterly"
+          # cron/period contradiction (#687 acceptance): daily cron +
+          # period="weekly" → blocked on the weekly plan.
+          contradiction = check_schedule_frequency(
+              user_id="u-limit", frequency=derive_cadence("0 8 * * *", now=now)
+          )
+          assert contradiction["allowed"] is False, contradiction
+          # Corrected old-semantics case: weekly cron + period="daily"
+          # → allowed — period no longer doubles as the frequency limit.
+          corrected = check_schedule_frequency(
+              user_id="u-limit", frequency=derive_cadence("0 8 * * 1", now=now)
+          )
+          assert corrected["allowed"] is True, corrected
 
           # 7. Over-limit generation raises the envelope-carrying ValueError.
           try:

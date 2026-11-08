@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import sys
 from pathlib import Path
+
+import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -113,6 +116,7 @@ def test_at_threshold_runs_and_writes_reports(tmp_path: Path) -> None:
 
     def runner(request: np.ProcessRequest) -> tuple[int, float]:
         calls.append(request)
+        _seed_ledger(tmp_path / "autoinfo.db", "alpha", completed=1, incomplete=0)
         return 0, 1.5
 
     rc = np.main(
@@ -144,6 +148,7 @@ def test_at_threshold_runs_and_writes_reports(tmp_path: Path) -> None:
         "failed": 0,
         "skipped": 0,
         "skipped_budget": 0,
+        "stalled": 0,
         "budget_exhausted": False,
     }
     assert "| alpha | 10 | 0 | 10 | run | 30.0 | 10 | 0 | 1.5 |" in (
@@ -622,6 +627,96 @@ def test_cursor_read_processed_count_prefers_ledger(tmp_path: Path) -> None:
     assert np.read_processed_count(db_path, "alpha") == 7
     # Unknown domains fall back to 0 (original "unavailable => 0" contract).
     assert np.read_processed_count(db_path, "beta") == 0
+
+
+def _seed_ledger(db_path: Path, domain: str, completed: int, incomplete: int) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS processing_items ("
+            "domain TEXT NOT NULL, item_id TEXT NOT NULL, processed_at TEXT, "
+            "PRIMARY KEY (domain, item_id))"
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO processing_items VALUES (?, ?, ?)",
+            [(domain, f"done-{i}", "2026-10-30T18:32:30+00:00") for i in range(completed)]
+            + [(domain, f"placeholder-{i}", None) for i in range(incomplete)],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_read_processed_count_ignores_unfinished_rows(tmp_path: Path) -> None:
+    db_path = tmp_path / "autoinfo.db"
+    _seed_ledger(db_path, "alpha", completed=7, incomplete=23)
+    assert np.read_processed_count(db_path, "alpha") == 7
+
+
+def test_unfinished_rows_keep_domain_due(tmp_path: Path) -> None:
+    _seed_domain(tmp_path, count=30)
+    _seed_ledger(tmp_path / "autoinfo.db", "alpha", completed=7, incomplete=23)
+    calls: list[str] = []
+
+    def runner(request: np.ProcessRequest) -> tuple[int, float]:
+        calls.append(request.domain)
+        return 0, 0.1
+
+    rc = np.main(
+        _args(tmp_path, "--min-backlog", "20", "--json-out", str(tmp_path / "report.json")),
+        runner=runner,
+    )
+
+    assert rc == 0
+    assert calls == ["alpha"]
+    row = _read_report(tmp_path)["domains"][0]
+    assert row["processed_count"] == 7
+    assert row["backlog"] == 23
+    assert row["action"] == "run"
+
+
+def test_run_without_ledger_advance_is_reported_stalled(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    _seed_domain(tmp_path, count=10)
+
+    def runner(request: np.ProcessRequest) -> tuple[int, float]:
+        return 0, 1.0
+
+    with caplog.at_level(logging.WARNING, logger="autoinfo.nightly_process"):
+        rc = np.main(
+            _args(tmp_path, "--min-backlog", "10", "--json-out", str(tmp_path / "report.json")),
+            runner=runner,
+        )
+
+    assert rc == 0
+    report = _read_report(tmp_path)
+    row = report["domains"][0]
+    assert row["processed_delta"] == 0
+    assert row["stalled"] is True
+    assert report["summary"]["stalled"] == 1
+    assert any("stalled" in record.getMessage().lower() for record in caplog.records)
+
+
+def test_run_that_advances_the_ledger_is_not_stalled(tmp_path: Path) -> None:
+    _seed_domain(tmp_path, count=10)
+    db_path = tmp_path / "autoinfo.db"
+
+    def runner(request: np.ProcessRequest) -> tuple[int, float]:
+        _seed_ledger(db_path, "alpha", completed=1, incomplete=0)
+        return 0, 1.0
+
+    rc = np.main(
+        _args(tmp_path, "--min-backlog", "10", "--json-out", str(tmp_path / "report.json")),
+        runner=runner,
+    )
+
+    assert rc == 0
+    report = _read_report(tmp_path)
+    row = report["domains"][0]
+    assert row["processed_delta"] == 1
+    assert row["stalled"] is False
+    assert report["summary"]["stalled"] == 0
 
 
 # ===================================================================

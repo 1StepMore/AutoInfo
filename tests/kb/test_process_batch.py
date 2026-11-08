@@ -741,6 +741,56 @@ class TestLedgerWriteResilience:
         }
 
 
+class TestIncompleteLedgerRows:
+    @pytest.fixture
+    def ledger_db(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+        db_path = tmp_path / "autoinfo.db"
+        monkeypatch.setattr("autoinfo.process._get_progress_db_path", lambda: db_path)
+        return db_path
+
+    @staticmethod
+    def _seed(db_path: Path, rows: list[tuple[str, str, str | None]]) -> None:
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                "CREATE TABLE processing_items ("
+                "domain TEXT NOT NULL, item_id TEXT NOT NULL, processed_at TEXT, "
+                "PRIMARY KEY (domain, item_id))"
+            )
+            conn.executemany("INSERT INTO processing_items VALUES (?, ?, ?)", rows)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_read_processed_ids_ignores_unfinished_rows(self, ledger_db: Path) -> None:
+        self._seed(
+            ledger_db,
+            [
+                ("d", "done", "2026-11-01T00:00:00+00:00"),
+                ("d", "placeholder", None),
+                ("d", "blank", ""),
+            ],
+        )
+        assert process_module._read_processed_ids("d") == {"done"}
+
+    def test_mark_processed_repairs_placeholder_row(self, ledger_db: Path) -> None:
+        self._seed(ledger_db, [("d", "placeholder", None)])
+        process_module._mark_processed("d", ["placeholder"])
+        assert process_module._read_processed_ids("d") == {"placeholder"}
+
+    def test_mark_processed_keeps_existing_timestamp(self, ledger_db: Path) -> None:
+        self._seed(ledger_db, [("d", "done", "2026-11-01T00:00:00+00:00")])
+        process_module._mark_processed("d", ["done"])
+        conn = sqlite3.connect(ledger_db)
+        try:
+            timestamp = conn.execute(
+                "SELECT processed_at FROM processing_items WHERE item_id = 'done'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert timestamp == "2026-11-01T00:00:00+00:00"
+
+
 # ===================================================================
 # Test: get_processing_progress
 # ===================================================================

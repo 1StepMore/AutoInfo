@@ -25,6 +25,7 @@ from autoinfo.gov.contract import GENERATOR_VERSION as GENERATOR_VERSION
 ARTIFACT_DIR_REL = Path(".autoinfo") / "gov"
 FACTS_NAME = "facts.json"
 EVIDENCE_NAME = "evidence.json"
+PARITY_NAME = "derived-parity.json"
 
 
 def input_hash(contract_version: int, facts: dict[str, Any]) -> str:
@@ -127,6 +128,37 @@ def write_artifacts(
         newline="\n",
     )
     return facts_path, evidence_path
+
+
+def write_parity_evidence(
+    root: Path,
+    contract_version: int,
+    facts: dict[str, Any],
+    result: dict[str, Any] | None = None,
+) -> Path:
+    """Persist derived-parity.json — the producer for the derived_parity gate.
+
+    Kept apart from facts.json/evidence.json (T03) because it is this gate's
+    own run record: ``read_derived_parity`` replays only this file, and its
+    ``input_hash`` binds the record to the exact facts snapshot the checks
+    ran against, so a drifted tree reads STALE instead of a false PASS.
+    ``result`` carries the check counters so a non-clean record can never be
+    replayed as PASS.
+    """
+    directory = artifact_dir(root)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / PARITY_NAME
+    payload = {
+        "input_hash": input_hash(contract_version, facts),
+        "result": result,
+        "evidence": evidence(root, contract_version, facts),
+    }
+    path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return path
 
 
 def load_cached_facts(root: Path) -> dict[str, Any] | None:

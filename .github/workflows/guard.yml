@@ -143,5 +143,5 @@ jobs:
         run: python -m autoinfo.gov contract check --json
       - name: Governance drift check + parity gate
         run: |
-          python -m autoinfo.gov check --json
+          python -m autoinfo.gov check --write-evidence --json
           python -m autoinfo.gov status --only derived_parity --json

@@ -102,11 +102,11 @@ def cmd_derive(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 def cmd_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     from autoinfo.gov import artifacts
     from autoinfo.gov import facts as facts_mod
-    from autoinfo.gov.contract import ContractError
+    from autoinfo.gov.contract import ContractError, load
 
-    del args
     try:
         data = facts_mod.check()
+        contract = load()
     except (ContractError, facts_mod.FactsError) as exc:
         return (
             _env_error(str(exc), "run from the repo root with the project venv interpreter"),
@@ -115,6 +115,20 @@ def cmd_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     clean = data["fail"] == 0 and data["stale"] == 0 and data["unexplained_not_run"] == 0
     rc = EXIT_OK if clean else EXIT_RED
     data["generator_version"] = artifacts.GENERATOR_VERSION
+    if args.write_evidence:
+        data["parity_evidence"] = (
+            artifacts.write_parity_evidence(
+                contract.root,
+                contract.version,
+                data["facts"],
+                {
+                    key: data[key]
+                    for key in ("fail", "stale", "unexplained_not_run", "files_scanned")
+                },
+            ).as_posix()
+            if clean
+            else None
+        )
     return data, rc
 
 
@@ -324,6 +338,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = sub.add_parser("check", help="full-repo drift check against derived facts")
     check.add_argument("--json", action="store_true", help="emit one JSON line")
+    check.add_argument(
+        "--write-evidence",
+        action="store_true",
+        help="on a clean check, write .autoinfo/gov/derived-parity.json for the parity gate",
+    )
     check.set_defaults(func=cmd_check)
 
     adjudicate = sub.add_parser("adjudicate", help="resolve a fact dispute via the authority order")

@@ -44,7 +44,7 @@ class TestSlugify:
 
     def test_max_len(self) -> None:
         long = "a-" * 100
-        result = _slugify(long, max_len=80)
+        result = _slugify(long, max_bytes=80)
         assert len(result) <= 80
         assert not result.endswith("-")
 

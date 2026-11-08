@@ -166,8 +166,19 @@ class DirectorOnlyError(Exception):  # noqa: N818 — mandated name (plan T5), n
 # ---------------------------------------------------------------------------
 
 
-def _slugify(text: str, max_len: int = 255) -> str:
+def _slugify(text: str, max_bytes: int = 255) -> str:
     """Turn *text* into a lowercase, alphanumeric-plus-hyphens slug.
+
+    Truncation is by UTF-8 **bytes**, not characters (issue #725): the slug
+    feeds ``f"{date_str}-{slug}-{hash8}.md"`` and ext4 caps a file name at
+    255 bytes, so a character-counted slug plus the date/fingerprint overhead
+    could overflow and fail the write with ``Errno 36``.  The regex already
+    reduces the slug to ASCII (CJK and other non-``a-z0-9`` runs collapse to
+    hyphens — a fully CJK title yields an empty slug, callers fall back to a
+    placeholder), so today bytes == chars; the byte budget keeps that
+    invariant true even if the character class ever widens.  Uniqueness on
+    truncation is guaranteed by the ``-{hash8}`` suffix every caller appends
+    (#695 source fingerprint), not by the slug itself.
 
     Examples
     --------
@@ -178,7 +189,7 @@ def _slugify(text: str, max_len: int = 255) -> str:
     # Replace any run of non-alphanumeric (except hyphens) with a single hyphen
     slug = re.sub(r"[^a-z0-9]+", "-", slug)
     slug = slug.strip("-")
-    return slug[:max_len].rstrip("-")
+    return slug.encode("utf-8")[:max_bytes].decode("utf-8", errors="ignore").rstrip("-")
 
 
 def _decode_html_entities(text: str) -> str:

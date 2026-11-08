@@ -1752,10 +1752,19 @@ def run_processing(
                 stats["passed_gates"] += 1
 
         except Exception as exc:
-            logger.error("Processing failed for item %s: %s", item.id, exc)
+            # Issue #725: log the traceback (logger.exception, not just str(exc))
+            # so the failing call site is identifiable from the log alone, and
+            # record the exception class next to the message — single-item
+            # dirty data was previously indistinguishable from a broken chain.
+            logger.exception(
+                "Processing failed for item %s: %s: %s", item.id, type(exc).__name__, exc
+            )
             item_log["status"] = "error"
             item_log["error"] = str(exc)
-            stats["errors"].append({"item_id": item.id, "error": str(exc)})
+            item_log["error_type"] = type(exc).__name__
+            stats["errors"].append(
+                {"item_id": item.id, "error": str(exc), "error_type": type(exc).__name__}
+            )
 
         item_log["duration_s"] = round(time.time() - item_start, 3)
         return item_log, stats

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.3](https://github.com/1StepMore/AutoInfo/compare/v1.28.2...v1.28.3) (2026-11-08)
+
+
+### Documentation
+
+* **agent-infra:** agent 治理整改 — 角色契约/期望层/一致性机制（盘点+P0-P5） ([#724](https://github.com/1StepMore/AutoInfo/issues/724)) ([ce6ca30](https://github.com/1StepMore/AutoInfo/commit/ce6ca3004dda7c5c2b2151d3bb22b0a358ef578f))
+
 ## [1.28.2](https://github.com/1StepMore/AutoInfo/compare/v1.28.1...v1.28.2) (2026-11-07)
 
 

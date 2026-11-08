@@ -625,7 +625,7 @@ class TestKBStore:
         # with a fresh created_at. Weekly digests never surface stale
         # content merely because it was re-ingested.
         assert len(entries) == 1
-        assert "new-article" in entries[0]["entry_id"]
+        assert entries[0]["source_url"] == "https://example.com/new"
 
     # ------------------------------------------------------------------
     # get_entry

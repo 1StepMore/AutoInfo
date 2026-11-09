@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,12 @@ from autoinfo.textutil import (
 from autoinfo.urlnorm import canonical_url
 
 logger = logging.getLogger(__name__)
+
+# A frontmatter delimiter is a whole line that is exactly ``---`` (trailing
+# spaces/tabs and a CRLF carriage return tolerated).  Matching it as a bare
+# substring instead truncates the YAML block at dashes inside a title or body
+# (``----``, Markdown horizontal rules) — issue #735.
+_FRONTMATTER_DELIM_RE = re.compile(r"^---[ \t]*\r?$", re.MULTILINE)
 
 
 class DedupChecker:
@@ -336,15 +343,17 @@ class DedupChecker:
         content = path.read_text(encoding="utf-8")
 
         # -- Extract YAML frontmatter between --- markers ----------------
-        if not content.startswith("---"):
+        opening = _FRONTMATTER_DELIM_RE.match(content)
+        if opening is None:
             return None
 
-        # Find the closing ---
-        end_idx = content.find("---", 3)
-        if end_idx == -1:
+        # Closing delimiter must also be a whole line: a bare ``find("---")``
+        # stops at dashes inside a title/body and truncates the YAML block.
+        end_match = _FRONTMATTER_DELIM_RE.search(content, opening.end() + 1)
+        if end_match is None:
             return None
 
-        yaml_block = content[3:end_idx].strip()
+        yaml_block = content[3 : end_match.start()].strip()
         if not yaml_block:
             return None
 

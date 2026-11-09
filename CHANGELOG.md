@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.7](https://github.com/1StepMore/AutoInfo/compare/v1.28.6...v1.28.7) (2026-11-09)
+
+
+### Bug Fixes
+
+* **dedup:** anchor frontmatter delimiters to line start ([#735](https://github.com/1StepMore/AutoInfo/issues/735)) ([#741](https://github.com/1StepMore/AutoInfo/issues/741)) ([f323562](https://github.com/1StepMore/AutoInfo/commit/f32356228d3200b101d2fdd2cfba5244bf11f8dc))
+
 ## [1.28.6](https://github.com/1StepMore/AutoInfo/compare/v1.28.5...v1.28.6) (2026-11-09)
 
 

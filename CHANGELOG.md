@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.6](https://github.com/1StepMore/AutoInfo/compare/v1.28.5...v1.28.6) (2026-11-09)
+
+
+### Bug Fixes
+
+* **nightly:** compute backlog as cached-vs-ledger set difference ([#734](https://github.com/1StepMore/AutoInfo/issues/734)) ([#736](https://github.com/1StepMore/AutoInfo/issues/736)) ([b48e156](https://github.com/1StepMore/AutoInfo/commit/b48e156eaf70184e6b06042388b14092cbd6cef8))
+
 ## [1.28.5](https://github.com/1StepMore/AutoInfo/compare/v1.28.4...v1.28.5) (2026-11-09)
 
 

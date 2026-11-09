@@ -25,6 +25,9 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+        # The JSON export golden is compared byte-for-byte to a render that
+        # has no trailing newline, so the EOF fixer must not add one.
+        exclude: ^tests/fixtures/golden/export_json\.golden\.json$
       - id: check-yaml
       - id: check-toml
       - id: check-json

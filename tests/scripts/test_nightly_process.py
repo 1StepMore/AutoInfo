@@ -629,7 +629,20 @@ def test_cursor_read_processed_count_prefers_ledger(tmp_path: Path) -> None:
     assert np.read_processed_count(db_path, "beta") == 0
 
 
-def _seed_ledger(db_path: Path, domain: str, completed: int, incomplete: int) -> None:
+def _seed_ledger(
+    db_path: Path,
+    domain: str,
+    completed: int,
+    incomplete: int,
+    ids: list[str] | None = None,
+) -> None:
+    """Seed the ledger.  *ids* lets a test use the real cache stems (#734)."""
+    if ids is None:
+        done_ids = [f"done-{i}" for i in range(completed)]
+        pending_ids = [f"placeholder-{i}" for i in range(incomplete)]
+    else:
+        done_ids = list(ids[:completed])
+        pending_ids = list(ids[completed : completed + incomplete])
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
@@ -639,8 +652,8 @@ def _seed_ledger(db_path: Path, domain: str, completed: int, incomplete: int) ->
         )
         conn.executemany(
             "INSERT OR REPLACE INTO processing_items VALUES (?, ?, ?)",
-            [(domain, f"done-{i}", "2026-10-30T18:32:30+00:00") for i in range(completed)]
-            + [(domain, f"placeholder-{i}", None) for i in range(incomplete)],
+            [(domain, item_id, "2026-10-30T18:32:30+00:00") for item_id in done_ids]
+            + [(domain, item_id, None) for item_id in pending_ids],
         )
         conn.commit()
     finally:
@@ -655,7 +668,15 @@ def test_read_processed_count_ignores_unfinished_rows(tmp_path: Path) -> None:
 
 def test_unfinished_rows_keep_domain_due(tmp_path: Path) -> None:
     _seed_domain(tmp_path, count=30)
-    _seed_ledger(tmp_path / "autoinfo.db", "alpha", completed=7, incomplete=23)
+    # Real stems: 30 cached files, 7 finished, 23 unfinished rows that must not
+    # count as processed (#722), and the backlog is the set difference (#734).
+    _seed_ledger(
+        tmp_path / "autoinfo.db",
+        "alpha",
+        completed=7,
+        incomplete=23,
+        ids=[f"{index:03d}" for index in range(30)],
+    )
     calls: list[str] = []
 
     def runner(request: np.ProcessRequest) -> tuple[int, float]:
@@ -800,3 +821,110 @@ def test_count_cached_items_applies_window_to_date_dirs(tmp_path: Path) -> None:
 
     assert np.count_cached_items(collections, "alpha") == 6
     assert np.count_cached_items(collections, "alpha", since_days=7) == 4
+
+
+# ===================================================================
+# AutoInfo#734 — backlog as a set difference against the id ledger
+# ===================================================================
+
+
+def _seed_domain_config(tmp_path: Path, domain: str = "alpha") -> None:
+    domain_dir = tmp_path / "domains" / domain
+    domain_dir.mkdir(parents=True, exist_ok=True)
+    (domain_dir / "sources.yaml").write_text("sources: []\n", encoding="utf-8")
+
+
+def _seed_ledger_items(tmp_path: Path, item_ids: list[str], domain: str = "alpha") -> None:
+    """Seed the ``processing_items`` ledger with *item_ids* for one domain."""
+    conn = sqlite3.connect(tmp_path / "autoinfo.db")
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS processing_items ("
+            "domain TEXT NOT NULL, item_id TEXT NOT NULL, processed_at TEXT NOT NULL, "
+            "PRIMARY KEY (domain, item_id))"
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO processing_items (domain, item_id, processed_at) "
+            "VALUES (?, ?, ?)",
+            [(domain, item_id, "2026-10-21T00:00:00+00:00") for item_id in item_ids],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_unprocessed_is_set_difference_not_window_minus_ledger(tmp_path: Path) -> None:
+    """40 cached files with 74 unrelated ledger rows -> backlog 40, not 0."""
+    _seed_domain_config(tmp_path)
+    window_ids = [f"cache-{i:03d}" for i in range(40)]
+    _seed_dated_cache(tmp_path, "2026-10-21", window_ids)
+    _seed_ledger_items(tmp_path, [f"ledger-{i:03d}" for i in range(74)])
+
+    collections = tmp_path / "collections"
+    assert np.count_unprocessed_items(collections, tmp_path / "autoinfo.db", "alpha") == 40
+    # The legacy subtraction would have produced max(0, 40 - 74) == 0.
+    assert np.count_cached_items(collections, "alpha") - 74 <= 0
+
+    rc = np.main(
+        _args(
+            tmp_path,
+            "--dry-run",
+            "--json-out",
+            str(tmp_path / "report.json"),
+        ),
+        runner=lambda request: (_ for _ in ()).throw(AssertionError("dry run")),
+        clock=_FakeClock(),
+    )
+
+    assert rc == 0
+    row = _read_report(tmp_path)["domains"][0]
+    assert (row["cached_items"], row["processed_count"], row["backlog"]) == (40, 74, 40)
+
+
+def test_unprocessed_excludes_ids_already_in_ledger(tmp_path: Path) -> None:
+    """12 of the 40 window ids are in the ledger -> 28 remain."""
+    _seed_domain_config(tmp_path)
+    window_ids = [f"cache-{i:03d}" for i in range(40)]
+    _seed_dated_cache(tmp_path, "2026-10-21", window_ids)
+    _seed_ledger_items(tmp_path, window_ids[:12])
+
+    assert (
+        np.count_unprocessed_items(tmp_path / "collections", tmp_path / "autoinfo.db", "alpha")
+        == 28
+    )
+
+
+def test_unprocessed_honours_since_days_window(tmp_path: Path) -> None:
+    """Files under a date dir older than the cutoff are not counted."""
+    from tests._freshness import fresh_date
+
+    _seed_domain_config(tmp_path)
+    _seed_dated_cache(tmp_path, "2020-01-01", [f"old-{i}" for i in range(5)])
+    _seed_dated_cache(tmp_path, fresh_date(1), [f"new-{i}" for i in range(3)])
+    _seed_ledger_items(tmp_path, ["ledger-only"])
+
+    collections = tmp_path / "collections"
+    db_path = tmp_path / "autoinfo.db"
+    assert np.count_unprocessed_items(collections, db_path, "alpha") == 8
+    assert np.count_unprocessed_items(collections, db_path, "alpha", since_days=7) == 3
+
+
+def test_unprocessed_missing_db_returns_none_and_falls_back(tmp_path: Path) -> None:
+    """No DB -> None, and ``main`` keeps the legacy ``cached - processed`` math."""
+    _seed_domain_config(tmp_path)
+    _seed_dated_cache(tmp_path, "2026-10-21", [f"cache-{i:03d}" for i in range(12)])
+
+    db_path = tmp_path / "autoinfo.db"
+    assert not db_path.exists()
+    assert np.count_unprocessed_items(tmp_path / "collections", db_path, "alpha") is None
+
+    rc = np.main(
+        _args(tmp_path, "--dry-run", "--json-out", str(tmp_path / "report.json")),
+        runner=lambda request: (_ for _ in ()).throw(AssertionError("dry run")),
+        clock=_FakeClock(),
+    )
+
+    assert rc == 0
+    row = _read_report(tmp_path)["domains"][0]
+    # Legacy fallback: cached (12) - processed (0).
+    assert (row["cached_items"], row["processed_count"], row["backlog"]) == (12, 0, 12)

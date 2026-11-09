@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.5](https://github.com/1StepMore/AutoInfo/compare/v1.28.4...v1.28.5) (2026-11-09)
+
+
+### Bug Fixes
+
+* **kb,process,delivery:** [#695](https://github.com/1StepMore/AutoInfo/issues/695) entry-id collisions · [#722](https://github.com/1StepMore/AutoInfo/issues/722) ledger stall · [#725](https://github.com/1StepMore/AutoInfo/issues/725) dirty-data resilience · [#687](https://github.com/1StepMore/AutoInfo/issues/687) cron cadence gate ([#731](https://github.com/1StepMore/AutoInfo/issues/731)) ([42c76a5](https://github.com/1StepMore/AutoInfo/commit/42c76a5f249ca822c1cf4d5a15f6f1d0661ba526))
+
 ## [1.28.4](https://github.com/1StepMore/AutoInfo/compare/v1.28.3...v1.28.4) (2026-11-09)
 
 

@@ -2933,11 +2933,37 @@ class KBStore:
         collected_date = _parse_date(item.collected_at)
         date_str = collected_date.isoformat()
 
+        # --- resolve user_id (before the fingerprint: #695 identity) -----------
+        # Two users saving the same source URL must resolve to distinct entries,
+        # so a non-empty user id joins the fingerprint basis.  An empty/default
+        # user keeps the exact pre-existing basis, leaving the single-user path
+        # byte-identical to the #695 scheme.
+        resolved_user_id: str = ""
+        if user_id is not None:
+            resolved_user_id = user_id
+        else:
+            # Try from config multi_user settings
+            try:
+                from autoinfo.config import get_config_path, load_config
+
+                cfg_path = get_config_path()
+                if cfg_path:
+                    cfg = load_config(cfg_path)
+                    if cfg.multi_user.enabled:
+                        # Prefer item.raw_data["user_id"], fall back to default
+                        resolved_user_id = str(
+                            item.raw_data.get("user_id", cfg.multi_user.default_user_id)
+                        )
+            except Exception:
+                pass  # No config available — stay with empty user_id
+
         fingerprint_basis = (
             item.source_url.strip()
             or str(item.id or "").strip()
             or f"{item.title}\x1f{item.content}"
         )
+        if resolved_user_id:
+            fingerprint_basis = f"{resolved_user_id}\x1f{fingerprint_basis}"
         source_fp = _source_fingerprint(fingerprint_basis)
         entry_id = f"{domain}-{date_str}-{source_fp}"
 
@@ -3018,26 +3044,6 @@ class KBStore:
                             g3.score,
                             _HIGH_RESCORE_RESTORE,
                         )
-
-        # --- resolve user_id ---------------------------------------------------
-        resolved_user_id: str = ""
-        if user_id is not None:
-            resolved_user_id = user_id
-        else:
-            # Try from config multi_user settings
-            try:
-                from autoinfo.config import get_config_path, load_config
-
-                cfg_path = get_config_path()
-                if cfg_path:
-                    cfg = load_config(cfg_path)
-                    if cfg.multi_user.enabled:
-                        # Prefer item.raw_data["user_id"], fall back to default
-                        resolved_user_id = str(
-                            item.raw_data.get("user_id", cfg.multi_user.default_user_id)
-                        )
-            except Exception:
-                pass  # No config available — stay with empty user_id
 
         # --- build KBEntry -----------------------------------------------------
         # Issue #55: decode residual HTML entities at the storage layer so

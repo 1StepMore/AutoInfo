@@ -80,13 +80,15 @@ steps:
       try:
           os.chdir(tmp)
           store = KBStore(base_path=Path("knowledge"))
+          created_ids = set()
           for i, title in enumerate(["Time-lapse imaging improves IVF outcomes",
                                      "AI embryo selection systematic review",
                                      "IVF clinic workflows"]):
-              store.store_entry(Item(id=f"med-{i}", source_name="pubmed", source_type="api",
+              entry = store.store_entry(Item(id=f"med-{i}", source_name="pubmed", source_type="api",
                   source_url=f"https://example.com/ivf-{i}", title=title,
                   content=f"{title}. Relevant IVF content for the briefing.",
                   collected_at=iso(2), domain="medical-research", topic_tags=["IVF"]))
+              created_ids.add(entry.entry_id)
           store.store_entry(Item(id="ai-0", source_name="arxiv", source_type="api",
               source_url="https://example.com/market", title="LLM market trends",
               content="Large language models dominate AI investment.",
@@ -107,11 +109,7 @@ steps:
               filter_custom_fields={"product_analysis.action_required": ""})
           assert subset["total_count"] == 3, subset["total_count"]
           ids = {e["entry_id"] for e in subset["entries"]}
-          assert ids == {
-              "medical-research-ivf-time-lapse-imaging-improves-ivf-outcomes",
-              "medical-research-ivf-ai-embryo-selection-systematic-review",
-              "medical-research-ivf-ivf-clinic-workflows",
-          }, ids
+          assert ids == created_ids, ids
 
           plain = store.search_knowledge_base("IVF", domain="medical-research")
           assert plain["total_count"] == 3, "default search changed"

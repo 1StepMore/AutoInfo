@@ -17,22 +17,42 @@ collect_artifacts:
   - "knowledge/medical-research/02-Draft/**/*.md"
   - "knowledge/medical-research/03-Wiki/**/*.md"
 steps:
-  - name: "create_kb_entry writes to 01-Raw"
-    tool: create_kb_entry
-    arguments:
-      domain: medical-research
-      title: "KB Draft Scenario Test Entry"
-      content: "This is a test entry created by the kb-draft validation scenario."
-      source_url: https://kb-draft.autoinfo.dev/kb-draft-scenario
-      source_type: web
+  - name: "create fixture Raw entry in 01-Raw (pinned collected_at)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore
+      from autoinfo.models import Item
+      store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
+      entry = store.store_entry(
+          item=Item(
+              id="kb-draft-scenario-raw",
+              source_name="web",
+              source_type="web",
+              source_url="https://kb-draft.autoinfo.dev/kb-draft-scenario",
+              source_platform="web",
+              title="KB Draft Scenario Test Entry",
+              content="This is a test entry created by the kb-draft validation scenario.",
+              domain="medical-research",
+              topic_tags=[],
+              collected_at="2026-01-01T00:00:00+00:00",
+              content_type="text",
+              quality_tier=1,
+          ),
+          tier="01-Raw",
+      )
+      assert entry is not None, "raw fixture creation rejected"
+      print("ENTRY_ID " + entry.entry_id)
+      PY
     expect:
       success: true
-      data_has: ["entry_id", "tier"]
+      exit_code: 0
+      stdout_has: ["ENTRY_ID", "medical-research-2026-01-01-823389dc"]
 
   - name: "get_summary returns detail for the scenario entry"
     tool: get_summary
     arguments:
-      summary_id: medical-research-general-kb-draft-scenario-test-entry
+      summary_id: medical-research-2026-01-01-823389dc
     expect:
       success: true
       data_has: ["entry_id", "title", "relevance_score"]
@@ -40,28 +60,42 @@ steps:
   - name: "flag_for_knowledge_base flags the scenario entry"
     tool: flag_for_knowledge_base
     arguments:
-      summary_id: medical-research-general-kb-draft-scenario-test-entry
+      summary_id: medical-research-2026-01-01-823389dc
       tags: ["validation", "scenario"]
     expect:
       success: true
       data_has: ["flagged", "entry_id"]
 
-  - name: "create_kb_draft creates Draft from scenario Raw"
-    tool: create_kb_draft
-    arguments:
-      raw_ids:
-        - medical-research-general-kb-draft-scenario-test-entry
-      title: "KB Draft Scenario Draft"
-      summary: "Draft created for kb-draft validation scenario."
-      tags: ["validation", "scenario"]
+  - name: "create_kb_draft creates Draft from scenario Raw (pinned draft date)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from datetime import date as _date
+      import autoinfo.kb as kb
+      class _FixedDate(_date):
+          @classmethod
+          def today(cls):
+              return _date(2026, 1, 1)
+      kb.date = _FixedDate
+      from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore
+      store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
+      entry = store.create_kb_draft(
+          raw_ids=["medical-research-2026-01-01-823389dc"],
+          title="KB Draft Scenario Draft",
+          summary="Draft created for kb-draft validation scenario.",
+          tags=["validation", "scenario"],
+      )
+      print("DRAFT_ID " + entry.entry_id)
+      PY
     expect:
       success: true
-      data_has: ["entry_id", "tier"]
+      exit_code: 0
+      stdout_has: ["DRAFT_ID", "medical-research-draft-2026-01-01-d251b8fe"]
 
   - name: "reject_kb_draft archives the draft"
     tool: reject_kb_draft
     arguments:
-      draft_id: medical-research-draft-kb-draft-scenario-draft
+      draft_id: medical-research-draft-2026-01-01-d251b8fe
       reason: "validation scenario cleanup"
       action: archive
     expect:
@@ -88,9 +122,9 @@ cleanup_steps:
       from pathlib import Path
       from autoinfo.kb import KBStore
       store = KBStore()
-      markers = [('medical-research-general-kb-draft-scenario-test-entry',
+      markers = [('medical-research-2026-01-01-823389dc',
                   'https://kb-draft.autoinfo.dev/kb-draft-scenario'),
-                 ('medical-research-draft-kb-draft-scenario-draft',
+                 ('medical-research-draft-2026-01-01-d251b8fe',
                   'https://kb-draft.autoinfo.dev/kb-draft-scenario')]
       removed = []
       for eid, url in markers:

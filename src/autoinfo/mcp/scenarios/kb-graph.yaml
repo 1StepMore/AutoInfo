@@ -15,35 +15,87 @@ pipeline_stage: A3
 user_level: B2.4
 requires_env: []
 steps:
-  - name: "create_kb_entry writes fixture item A to 01-Raw"
+  - name: "create_kb_entry keeps the MCP surface covered (date-derived id)"
     tool: create_kb_entry
     arguments:
       domain: medical-research
-      title: "KB Graph Scenario Item A"
-      content: "Fixture A for the kb-graph validation scenario — this content is intentionally longer than the 50-character minimum enforced by create_kb_entry (MIN_KB_CONTENT_CHARS)."
-      source_url: https://kb-graph.autoinfo.test/kb-graph-scenario-item-a
+      title: "KB Graph Scenario Item Coverage"
+      content: "Fixture created so the scenario library still exercises the create_kb_entry MCP surface; the graph assertions below use pinned CLI fixtures so their ids are deterministic (#695)."
+      source_url: https://kb-graph.autoinfo.test/kb-graph-scenario-item-coverage
       source_type: web
     expect:
       success: true
       data_has: ["entry_id", "tier"]
 
-  - name: "create_kb_entry writes fixture item B to 01-Raw"
-    tool: create_kb_entry
-    arguments:
-      domain: medical-research
-      title: "KB Graph Scenario Item B"
-      content: "Fixture B for the kb-graph validation scenario — this content is intentionally longer than the 50-character minimum enforced by create_kb_entry (MIN_KB_CONTENT_CHARS)."
-      source_url: https://kb-graph.autoinfo.test/kb-graph-scenario-item-b
-      source_type: web
+  - name: "create fixture item A in 01-Raw (pinned collected_at)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore
+      from autoinfo.models import Item
+      store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
+      entry = store.store_entry(
+          item=Item(
+              id="kb-graph-scenario-item-a",
+              source_name="web",
+              source_type="web",
+              source_url="https://kb-graph.autoinfo.test/kb-graph-scenario-item-a",
+              source_platform="web",
+              title="KB Graph Scenario Item A",
+              content="Fixture A for the kb-graph validation scenario — this content is intentionally longer than the 50-character minimum enforced by create_kb_entry (MIN_KB_CONTENT_CHARS).",
+              domain="medical-research",
+              topic_tags=[],
+              collected_at="2026-01-01T00:00:00+00:00",
+              content_type="text",
+              quality_tier=1,
+          ),
+          tier="01-Raw",
+      )
+      assert entry is not None, "fixture A rejected"
+      print("ENTRY_ID " + entry.entry_id)
+      PY
     expect:
       success: true
-      data_has: ["entry_id", "tier"]
+      exit_code: 0
+      stdout_has: ["ENTRY_ID", "medical-research-2026-01-01-348b0bfd"]
+
+  - name: "create fixture item B in 01-Raw (pinned collected_at)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore
+      from autoinfo.models import Item
+      store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
+      entry = store.store_entry(
+          item=Item(
+              id="kb-graph-scenario-item-b",
+              source_name="web",
+              source_type="web",
+              source_url="https://kb-graph.autoinfo.test/kb-graph-scenario-item-b",
+              source_platform="web",
+              title="KB Graph Scenario Item B",
+              content="Fixture B for the kb-graph validation scenario — this content is intentionally longer than the 50-character minimum enforced by create_kb_entry (MIN_KB_CONTENT_CHARS).",
+              domain="medical-research",
+              topic_tags=[],
+              collected_at="2026-01-01T00:00:00+00:00",
+              content_type="text",
+              quality_tier=1,
+          ),
+          tier="01-Raw",
+      )
+      assert entry is not None, "fixture B rejected"
+      print("ENTRY_ID " + entry.entry_id)
+      PY
+    expect:
+      success: true
+      exit_code: 0
+      stdout_has: ["ENTRY_ID", "medical-research-2026-01-01-a10b32a9"]
 
   - name: "link_items creates relation between the two fixtures"
     tool: link_items
     arguments:
-      item_a_id: medical-research-general-kb-graph-scenario-item-a
-      item_b_id: medical-research-general-kb-graph-scenario-item-b
+      item_a_id: medical-research-2026-01-01-348b0bfd
+      item_b_id: medical-research-2026-01-01-a10b32a9
       relation_type: related
     expect:
       success: true
@@ -52,7 +104,7 @@ steps:
   - name: "get_item_relations returns relations for fixture A"
     tool: get_item_relations
     arguments:
-      item_id: medical-research-general-kb-graph-scenario-item-a
+      item_id: medical-research-2026-01-01-348b0bfd
     expect:
       success: true
       data_has: ["item_id", "relations", "count"]
@@ -90,9 +142,9 @@ cleanup_steps:
       from pathlib import Path
       from autoinfo.kb import KBStore
       store = KBStore()
-      markers = [('medical-research-general-kb-graph-scenario-item-a',
+      markers = [('medical-research-2026-01-01-348b0bfd',
                   'https://kb-graph.autoinfo.test/kb-graph-scenario-item-a'),
-                 ('medical-research-general-kb-graph-scenario-item-b',
+                 ('medical-research-2026-01-01-a10b32a9',
                   'https://kb-graph.autoinfo.test/kb-graph-scenario-item-b')]
       removed = []
       for eid, url in markers:
@@ -104,6 +156,11 @@ cleanup_steps:
               continue
           res = store.delete_entry(eid)
           removed.append(eid + ':' + str(res.get('deleted')))
+      coverage = store.index.get_entry_by_source_url(
+          'https://kb-graph.autoinfo.test/kb-graph-scenario-item-coverage')
+      if coverage is not None:
+          res = store.delete_entry(coverage['entry_id'])
+          removed.append(coverage['entry_id'] + ':coverage:' + str(res.get('deleted')))
       for p in list(Path('knowledge/medical-research/01-Raw/general').glob('*kb-graph-scenario-item-*')):
           p.unlink(missing_ok=True)
           removed.append(str(p))

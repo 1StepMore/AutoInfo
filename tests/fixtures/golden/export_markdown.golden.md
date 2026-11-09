@@ -1,9 +1,9 @@
-===== medical-research/01-Raw/IVF/2026-07-15-time-lapse-embryo-imaging-improves-ivf-outcomes.md =====
+===== medical-research/01-Raw/IVF/2026-07-15-time-lapse-embryo-imaging-improves-ivf-outcomes-93da34bb.md =====
 ---
 title: Time-lapse embryo imaging improves IVF outcomes
 domain: medical-research
 tier: 01-Raw
-entry_id: medical-research-ivf-time-lapse-embryo-imaging-improves-ivf-outcomes
+entry_id: medical-research-2026-07-15-93da34bb
 source_url: https://pubmed.ncbi.nlm.nih.gov/12345678/
 source_type: api
 source_platform: pubmed
@@ -25,12 +25,12 @@ trace_id: ''
 
 ## Original Content
 Time-lapse embryo imaging improved live birth rates in a randomized controlled trial.
-===== medical-research/01-Raw/IVF/2026-07-16-embryo-selection-advances-with-ai-scoring.md =====
+===== medical-research/01-Raw/IVF/2026-07-16-embryo-selection-advances-with-ai-scoring-a0968b6f.md =====
 ---
 title: Embryo selection advances with AI scoring
 domain: medical-research
 tier: 01-Raw
-entry_id: medical-research-ivf-embryo-selection-advances-with-ai-scoring
+entry_id: medical-research-2026-07-16-a0968b6f
 source_url: https://pubmed.ncbi.nlm.nih.gov/87654321/
 source_type: api
 source_platform: pubmed

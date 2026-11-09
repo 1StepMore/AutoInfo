@@ -10,12 +10,15 @@ Running the LLM-heavy process stage for every domain every night is expensive,
 so this script computes a per-domain backlog and only invokes ``autoinfo
 process`` when the backlog reaches ``--min-backlog``::
 
-    backlog = cached JSON items - completed ledger rows (processing_items)
+    backlog = cached item ids in the window - ids in the processing_items ledger
 
-The cursor is intentionally read from the same ``autoinfo.db`` ledger that the
-process CLI maintains.  A missing DB or table means "nothing processed yet" and
-the full cache is backlog; ledger rows without a completion timestamp do not
-count (AutoInfo#722).
+The cursor is intentionally read from the same ``autoinfo.db`` /
+``processing_items`` ledger that the process CLI maintains.  Ledger rows without
+a completion timestamp do not count (AutoInfo#722), and the subtraction is a
+**set difference of item ids**, not row counts: a lifetime ledger total is not
+commensurable with a rolling window of cached files (#734).  A missing DB,
+missing table, or empty ledger means "ledger unavailable" and therefore the
+legacy ``cached - processed`` subtraction is used instead (pre-#596 projects).
 
 The stage runs under a hard total budget (#596): ``--max-seconds`` (default
 2400) is shared fairly across the due domains, so the lane returns inside the
@@ -69,7 +72,7 @@ import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_DOMAINS_DIR = REPO / "src" / "autoinfo" / "data" / "domains"
@@ -108,24 +111,18 @@ def domain_names(domains_dir: Path) -> list[str]:
     )
 
 
-def count_cached_items(collections: Path, domain: str, since_days: int = 0) -> int:
-    """Count usable cached item JSON files for one domain.
-
-    Mirrors the loader's conventions: ``_runs.json`` and paths under a
-    directory whose name starts with ``_`` are bookkeeping, not items.
-    With *since_days* > 0, files under a date-named directory older than that
-    window are skipped; non-date directories never filter a file out.  Only
-    path/name parsing is done — cache files are never read.
-    """
+def _iter_cached_item_paths(
+    collections: Path, domain: str, since_days: int = 0
+) -> Iterator[Path]:
+    """Yield usable cached item paths for one domain (see ``count_cached_items``)."""
     root = collections / domain
     if not root.is_dir():
-        return 0
+        return
 
     cutoff: date | None = None
     if since_days > 0:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=since_days)).date()
 
-    count = 0
     for path in root.rglob("*.json"):
         rel_parts = path.relative_to(root).parts
         if path.name.startswith("_"):
@@ -139,8 +136,57 @@ def count_cached_items(collections: Path, domain: str, since_days: int = 0) -> i
                 parent_date = None
             if parent_date is not None and parent_date < cutoff:
                 continue
-        count += 1
-    return count
+        yield path
+
+
+def count_cached_items(collections: Path, domain: str, since_days: int = 0) -> int:
+    """Count usable cached item JSON files for one domain.
+
+    Mirrors the loader's conventions: ``_runs.json`` and paths under a
+    directory whose name starts with ``_`` are bookkeeping, not items.
+    With *since_days* > 0, files under a date-named directory older than that
+    window are skipped; non-date directories never filter a file out.  Only
+    path/name parsing is done — cache files are never read.
+    """
+    return sum(1 for _ in _iter_cached_item_paths(collections, domain, since_days))
+
+
+def count_unprocessed_items(
+    collections: Path, db_path: Path, domain: str, since_days: int = 0
+) -> int | None:
+    """Return the number of cached items in the window whose id is not in the ledger.
+
+    Returns None when the ledger is unavailable/empty (pre-#596 project or a
+    domain that was never migrated) so the caller can fall back to the legacy
+    subtraction.
+    """
+    if not db_path.is_file():
+        return None
+
+    conn: sqlite3.Connection | None = None
+    try:
+        uri = db_path.resolve().as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+        rows = conn.execute(
+            "SELECT item_id FROM processing_items WHERE domain = ? "
+            "AND processed_at IS NOT NULL",
+            (domain,),
+        ).fetchall()
+    except (sqlite3.Error, OSError, ValueError):
+        return None
+    finally:
+        if conn is not None:
+            conn.close()
+
+    if not rows:
+        return None
+
+    processed_ids = {str(row[0]) for row in rows}
+    return sum(
+        1
+        for path in _iter_cached_item_paths(collections, domain, since_days)
+        if path.stem not in processed_ids
+    )
 
 
 def read_processed_count(db_path: Path, domain: str) -> int:
@@ -389,7 +435,10 @@ def main(
         if cached == 0:
             continue
         processed = read_processed_count(db_path, domain)
-        backlog = max(0, cached - processed)
+        unprocessed = count_unprocessed_items(
+            collections, db_path, domain, since_days=args.since_days
+        )
+        backlog = unprocessed if unprocessed is not None else max(0, cached - processed)
         rows.append(
             {
                 "domain": domain,

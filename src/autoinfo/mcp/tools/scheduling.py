@@ -488,12 +488,15 @@ def _handle_add_delivery_schedule(
             )
 
         # Free-tier frequency gate (#674) — the same single seam the CLI
-        # ``cron add-delivery`` path consults: a named end-user's requested
-        # frequency is checked against the subscription ``max_frequency``;
+        # ``cron add-delivery`` path consults: a named end-user's schedule
+        # cadence is checked against the subscription ``max_frequency``;
         # ``user_id=""`` (batch/unattended) skips the gate entirely.
-        from autoinfo.delivery.frequency_gate import check_schedule_frequency
+        # Since #687 the judged frequency is derived from the cron
+        # expression, not ``period`` (content window) — a ``0 8 * * *`` +
+        # ``period="weekly"`` plan is daily in reality.
+        from autoinfo.delivery.frequency_gate import check_schedule_frequency, derive_cadence
 
-        gate = check_schedule_frequency(user_id=user_id, frequency=period)
+        gate = check_schedule_frequency(user_id=user_id, frequency=derive_cadence(cron_expression))
         if not gate["allowed"]:
             return error_response(
                 code=gate["code"],

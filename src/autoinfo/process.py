@@ -640,7 +640,10 @@ def _read_processed_ids(domain: str) -> set[str]:
     """Return the set of item ids already processed for *domain*.
 
     Reads the ``processing_items`` ledger.  An absent db or table means no
-    items have been processed yet (empty set).
+    items have been processed yet (empty set).  Only rows carrying a
+    non-empty ``processed_at`` count as done: a placeholder row (written by a
+    legacy/external writer with a nullable column) must not suppress the item
+    forever (AutoInfo#722).
     """
     db_path = _get_progress_db_path()
     if not db_path.is_file():
@@ -649,7 +652,8 @@ def _read_processed_ids(domain: str) -> set[str]:
         with _connect_progress_db() as conn:
             _init_progress_table(conn)
             rows = conn.execute(
-                "SELECT item_id FROM processing_items WHERE domain = ?",
+                "SELECT item_id FROM processing_items WHERE domain = ? "
+                "AND processed_at IS NOT NULL AND processed_at != ''",
                 (domain,),
             ).fetchall()
             return {str(row[0]) for row in rows}
@@ -661,12 +665,14 @@ def _read_processed_ids(domain: str) -> set[str]:
 def _mark_processed(domain: str, item_ids: Sequence[str]) -> None:
     """Record *item_ids* as processed for *domain* (idempotent).
 
-    Each id is inserted once (``INSERT OR IGNORE``) with an ISO8601 UTC
-    ``processed_at`` timestamp.  Called per item as soon as that item's
-    processing finishes, so a run killed by an external timeout keeps its
-    completed work.  Transient SQLite contention is retried a bounded number
-    of times; a final failure is logged at ERROR and left unmarked so the
-    next run reprocesses those items instead of silently sinking them (#663).
+    Each id is inserted once with an ISO8601 UTC ``processed_at`` timestamp;
+    an existing row with a NULL/blank timestamp is repaired in place, so a
+    placeholder row cannot keep the item pending forever (AutoInfo#722).
+    Called per item as soon as that item's processing finishes, so a run
+    killed by an external timeout keeps its completed work.  Transient SQLite
+    contention is retried a bounded number of times; a final failure is
+    logged at ERROR and left unmarked so the next run reprocesses those items
+    instead of silently sinking them (#663).
     """
     ids = [str(i) for i in item_ids]
     if not ids:
@@ -681,8 +687,12 @@ def _mark_processed(domain: str, item_ids: Sequence[str]) -> None:
             with _connect_progress_db() as conn:
                 _init_progress_table(conn)
                 conn.executemany(
-                    "INSERT OR IGNORE INTO processing_items (domain, item_id, processed_at) "
-                    "VALUES (?, ?, ?)",
+                    "INSERT INTO processing_items (domain, item_id, processed_at) "
+                    "VALUES (?, ?, ?) "
+                    "ON CONFLICT(domain, item_id) DO UPDATE SET "
+                    "processed_at = excluded.processed_at "
+                    "WHERE processing_items.processed_at IS NULL "
+                    "OR processing_items.processed_at = ''",
                     rows,
                 )
             return
@@ -1742,10 +1752,19 @@ def run_processing(
                 stats["passed_gates"] += 1
 
         except Exception as exc:
-            logger.error("Processing failed for item %s: %s", item.id, exc)
+            # Issue #725: log the traceback (logger.exception, not just str(exc))
+            # so the failing call site is identifiable from the log alone, and
+            # record the exception class next to the message — single-item
+            # dirty data was previously indistinguishable from a broken chain.
+            logger.exception(
+                "Processing failed for item %s: %s: %s", item.id, type(exc).__name__, exc
+            )
             item_log["status"] = "error"
             item_log["error"] = str(exc)
-            stats["errors"].append({"item_id": item.id, "error": str(exc)})
+            item_log["error_type"] = type(exc).__name__
+            stats["errors"].append(
+                {"item_id": item.id, "error": str(exc), "error_type": type(exc).__name__}
+            )
 
         item_log["duration_s"] = round(time.time() - item_start, 3)
         return item_log, stats

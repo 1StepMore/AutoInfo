@@ -73,12 +73,13 @@ class TestEntryVersioning:
         # First store
         entry = store.store_entry(sample_item)
 
-        # Second store (same item_id triggers versioning in store_entry)
+        # Second store of the same source/day updates the entry (issue #695:
+        # identity is the source fingerprint, not the title).
         item2 = Item(
             id="item-v2",
             source_name="test",
             source_type="api",
-            source_url="https://example.com/v2",
+            source_url="https://example.com/v",
             title="Versioned entry",
             content="Updated content.",
             collected_at="2026-07-20T01:00:00Z",

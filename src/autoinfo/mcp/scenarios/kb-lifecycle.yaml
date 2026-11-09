@@ -15,29 +15,69 @@ pipeline_stage: A3
 user_level: B2.5
 requires_env: []
 steps:
-  - name: "create_kb_entry writes fixture item A to 01-Raw"
-    tool: create_kb_entry
-    arguments:
-      domain: medical-research
-      title: "KB Lifecycle Scenario Item A"
-      content: "Fixture A for the kb-lifecycle validation scenario."
-      source_url: https://kb-lifecycle.autoinfo.test/kb-lifecycle-scenario-item-a
-      source_type: web
+  - name: "create fixture item A in 01-Raw (pinned collected_at)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore
+      from autoinfo.models import Item
+      store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
+      entry = store.store_entry(
+          item=Item(
+              id="kb-lifecycle-scenario-item-a",
+              source_name="web",
+              source_type="web",
+              source_url="https://kb-lifecycle.autoinfo.test/kb-lifecycle-scenario-item-a",
+              source_platform="web",
+              title="KB Lifecycle Scenario Item A",
+              content="Fixture A for the kb-lifecycle validation scenario.",
+              domain="medical-research",
+              topic_tags=[],
+              collected_at="2026-01-01T00:00:00+00:00",
+              content_type="text",
+              quality_tier=1,
+          ),
+          tier="01-Raw",
+      )
+      assert entry is not None, "fixture A rejected"
+      print("ENTRY_ID " + entry.entry_id)
+      PY
     expect:
       success: true
-      data_has: ["entry_id", "tier"]
+      exit_code: 0
+      stdout_has: ["ENTRY_ID", "medical-research-2026-01-01-89cda160"]
 
-  - name: "create_kb_entry writes fixture item B to 01-Raw"
-    tool: create_kb_entry
-    arguments:
-      domain: medical-research
-      title: "KB Lifecycle Scenario Item B"
-      content: "Fixture B for the kb-lifecycle validation scenario."
-      source_url: https://kb-lifecycle.autoinfo.test/kb-lifecycle-scenario-item-b
-      source_type: web
+  - name: "create fixture item B in 01-Raw (pinned collected_at)"
+    kind: cli
+    command: |-
+      python3 - <<'PY'
+      from autoinfo.kb import MIN_KB_CONTENT_CHARS, KBStore
+      from autoinfo.models import Item
+      store = KBStore(min_content_chars=MIN_KB_CONTENT_CHARS)
+      entry = store.store_entry(
+          item=Item(
+              id="kb-lifecycle-scenario-item-b",
+              source_name="web",
+              source_type="web",
+              source_url="https://kb-lifecycle.autoinfo.test/kb-lifecycle-scenario-item-b",
+              source_platform="web",
+              title="KB Lifecycle Scenario Item B",
+              content="Fixture B for the kb-lifecycle validation scenario.",
+              domain="medical-research",
+              topic_tags=[],
+              collected_at="2026-01-01T00:00:00+00:00",
+              content_type="text",
+              quality_tier=1,
+          ),
+          tier="01-Raw",
+      )
+      assert entry is not None, "fixture B rejected"
+      print("ENTRY_ID " + entry.entry_id)
+      PY
     expect:
       success: true
-      data_has: ["entry_id", "tier"]
+      exit_code: 0
+      stdout_has: ["ENTRY_ID", "medical-research-2026-01-01-9ac336f6"]
 
   - name: "get_domain_decay returns decay metrics"
     tool: get_domain_decay
@@ -50,14 +90,14 @@ steps:
   - name: "mark_stale marks fixture A as stale"
     tool: mark_stale
     arguments:
-      entry_id: medical-research-general-kb-lifecycle-scenario-item-a
+      entry_id: medical-research-2026-01-01-89cda160
     expect:
       success: true
 
   - name: "calculate_freshness_score returns freshness"
     tool: calculate_freshness_score
     arguments:
-      entry_id: medical-research-general-kb-lifecycle-scenario-item-b
+      entry_id: medical-research-2026-01-01-9ac336f6
       ttl_days: 90
     expect:
       success: true
@@ -67,8 +107,8 @@ steps:
     tool: merge_items
     arguments:
       item_ids:
-        - medical-research-general-kb-lifecycle-scenario-item-a
-        - medical-research-general-kb-lifecycle-scenario-item-b
+        - medical-research-2026-01-01-89cda160
+        - medical-research-2026-01-01-9ac336f6
       strategy: simple
     expect:
       success: true
@@ -86,7 +126,7 @@ steps:
   - name: "get_extraction reads stored extraction data"
     tool: get_extraction
     arguments:
-      content_id: medical-research-general-kb-lifecycle-scenario-item-a
+      content_id: medical-research-2026-01-01-89cda160
     expect:
       success: true
       data_has: ["content_id", "extracted_fields"]
@@ -104,9 +144,9 @@ cleanup_steps:
       from pathlib import Path
       from autoinfo.kb import KBStore
       store = KBStore()
-      markers = [('medical-research-general-kb-lifecycle-scenario-item-a',
+      markers = [('medical-research-2026-01-01-89cda160',
                   'https://kb-lifecycle.autoinfo.test/kb-lifecycle-scenario-item-a'),
-                 ('medical-research-general-kb-lifecycle-scenario-item-b',
+                 ('medical-research-2026-01-01-9ac336f6',
                   'https://kb-lifecycle.autoinfo.test/kb-lifecycle-scenario-item-b')]
       removed = []
       for eid, url in markers:

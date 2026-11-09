@@ -21,24 +21,34 @@ LEAK_MARKER_ID = "medical-research-general-leak-guard-leak-a"
 CLEAN_MARKER_URL = "https://leak-guard.autoinfo.test/leak-guard-clean-b"
 CLEAN_MARKER_ID = "medical-research-general-leak-guard-clean-b"
 
-_MARKERS = (LEAK_MARKER_ID, CLEAN_MARKER_ID)
+_MARKER_URLS = (LEAK_MARKER_URL, CLEAN_MARKER_URL)
+
+
+def _purge_by_url(store: KBStore, url: str) -> None:
+    entry = store.get_entry_by_source_url(url)
+    if entry is not None:
+        store.delete_entry(entry["entry_id"])
 
 
 @pytest.fixture(autouse=True)
 def purge_marker_entries() -> None:
     store = KBStore()
-    for entry_id in _MARKERS:
-        store.delete_entry(entry_id)
+    for url in _MARKER_URLS:
+        _purge_by_url(store, url)
     yield
-    for entry_id in _MARKERS:
-        store.delete_entry(entry_id)
+    for url in _MARKER_URLS:
+        _purge_by_url(store, url)
 
 
 def _write_scenario(
     tmp_path: Path, marker_url: str, marker_id: str, title: str, cleanup: bool
 ) -> tuple[Path, str]:
     cleanup_cmd = (
-        (f"python3 -c 'from autoinfo.kb import KBStore; KBStore().delete_entry(\"{marker_id}\")'")
+        (
+            "python3 -c 'from autoinfo.kb import KBStore; s = KBStore(); "
+            f'e = s.get_entry_by_source_url("{marker_url}"); '
+            'e and s.delete_entry(e["entry_id"])\''
+        )
         if cleanup
         else "true"
     )
@@ -101,10 +111,10 @@ async def test_leak_scenario_reports_warning(tmp_path: Path) -> None:
     assert "warnings" in result, "leak must produce a SCENARIO_LEAK warning"
     joined = " ".join(result["warnings"])
     assert "SCENARIO_LEAK" in joined
-    assert LEAK_MARKER_ID in joined
     store = KBStore()
     entry = store.get_entry_by_source_url(LEAK_MARKER_URL)
     assert entry is not None, "fixture should still exist when cleanup is skipped"
+    assert entry["entry_id"] in joined
 
 
 async def test_clean_scenario_has_no_warning(tmp_path: Path) -> None:

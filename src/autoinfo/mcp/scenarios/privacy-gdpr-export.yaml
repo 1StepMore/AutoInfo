@@ -49,7 +49,7 @@ steps:
           content="Fixture entry owned by the privacy-gdpr-export scenario.",
           domain="medical-research",
           topic_tags=[],
-          collected_at=datetime.now(timezone.utc).isoformat(),
+          collected_at="2026-01-01T00:00:00+00:00",
           content_type="text",
           quality_tier=1,
       )
@@ -59,7 +59,7 @@ steps:
     expect:
       success: true
       exit_code: 0
-      stdout_has: ["SETUP_OK", "medical-research-general-privacy-gdpr-export-fixture-entry"]
+      stdout_has: ["SETUP_OK", "medical-research-2026-01-01-94e3bbde"]
 
   - name: "enduser_get returns user A's marker profile over MCP"
     tool: enduser_get
@@ -168,7 +168,7 @@ cleanup_steps:
       from autoinfo.kb import KBStore
       from autoinfo.user_store import delete_profile
       store = KBStore()
-      eid = "medical-research-general-privacy-gdpr-export-fixture-entry"
+      eid = "medical-research-2026-01-01-94e3bbde"
       if store.index.get_entry(eid) is not None:
           store.delete_entry(eid)
       for p in list(Path("knowledge/medical-research/01-Raw/general").glob("*privacy-gdpr-export-fixture-entry*")):

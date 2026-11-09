@@ -166,8 +166,19 @@ class DirectorOnlyError(Exception):  # noqa: N818 — mandated name (plan T5), n
 # ---------------------------------------------------------------------------
 
 
-def _slugify(text: str, max_len: int = 255) -> str:
+def _slugify(text: str, max_bytes: int = 255) -> str:
     """Turn *text* into a lowercase, alphanumeric-plus-hyphens slug.
+
+    Truncation is by UTF-8 **bytes**, not characters (issue #725): the slug
+    feeds ``f"{date_str}-{slug}-{hash8}.md"`` and ext4 caps a file name at
+    255 bytes, so a character-counted slug plus the date/fingerprint overhead
+    could overflow and fail the write with ``Errno 36``.  The regex already
+    reduces the slug to ASCII (CJK and other non-``a-z0-9`` runs collapse to
+    hyphens — a fully CJK title yields an empty slug, callers fall back to a
+    placeholder), so today bytes == chars; the byte budget keeps that
+    invariant true even if the character class ever widens.  Uniqueness on
+    truncation is guaranteed by the ``-{hash8}`` suffix every caller appends
+    (#695 source fingerprint), not by the slug itself.
 
     Examples
     --------
@@ -178,7 +189,7 @@ def _slugify(text: str, max_len: int = 255) -> str:
     # Replace any run of non-alphanumeric (except hyphens) with a single hyphen
     slug = re.sub(r"[^a-z0-9]+", "-", slug)
     slug = slug.strip("-")
-    return slug[:max_len].rstrip("-")
+    return slug.encode("utf-8")[:max_bytes].decode("utf-8", errors="ignore").rstrip("-")
 
 
 def _decode_html_entities(text: str) -> str:
@@ -238,6 +249,20 @@ def _parse_date(s: str) -> date:
     except (ValueError, TypeError):
         pass
     return date.today()
+
+
+def _source_fingerprint(basis: str) -> str:
+    """Return the 8-hex-char source fingerprint used in KB entry ids.
+
+    Legacy ids were ``{domain}-{topic}-{slug}`` (issue #695): two items that
+    shared a title collapsed onto one id AND one ``{date}-{slug}.md`` file,
+    so the second write overwrote the first and its index row was replaced
+    — 161 of 2,937 tier files were invisible to search.  Hashing the
+    provenance basis (source URL, else item id, else title+content) keeps
+    the id stable across re-ingest of the same item while distinguishing
+    items that merely share a title.
+    """
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:8]
 
 
 # ---------------------------------------------------------------------------
@@ -2904,16 +2929,47 @@ class KBStore:
         # --- derive metadata ---------------------------------------------------
         domain = item.domain or "default"
         topic = item.topic_tags[0] if item.topic_tags else "general"
-        slug = _slugify(item.title)
+        slug = _slugify(item.title, 100) or "entry"
         collected_date = _parse_date(item.collected_at)
-
-        topic_slug = _slugify(topic)
-        entry_id = f"{domain}-{topic_slug}-{slug}"
-
-        # File path: knowledge/<domain>/<tier>/<topic>/<YYYY-MM-DD>-<slug>.md
         date_str = collected_date.isoformat()
+
+        # --- resolve user_id (before the fingerprint: #695 identity) -----------
+        # Two users saving the same source URL must resolve to distinct entries,
+        # so a non-empty user id joins the fingerprint basis.  An empty/default
+        # user keeps the exact pre-existing basis, leaving the single-user path
+        # byte-identical to the #695 scheme.
+        resolved_user_id: str = ""
+        if user_id is not None:
+            resolved_user_id = user_id
+        else:
+            # Try from config multi_user settings
+            try:
+                from autoinfo.config import get_config_path, load_config
+
+                cfg_path = get_config_path()
+                if cfg_path:
+                    cfg = load_config(cfg_path)
+                    if cfg.multi_user.enabled:
+                        # Prefer item.raw_data["user_id"], fall back to default
+                        resolved_user_id = str(
+                            item.raw_data.get("user_id", cfg.multi_user.default_user_id)
+                        )
+            except Exception:
+                pass  # No config available — stay with empty user_id
+
+        fingerprint_basis = (
+            item.source_url.strip()
+            or str(item.id or "").strip()
+            or f"{item.title}\x1f{item.content}"
+        )
+        if resolved_user_id:
+            fingerprint_basis = f"{resolved_user_id}\x1f{fingerprint_basis}"
+        source_fp = _source_fingerprint(fingerprint_basis)
+        entry_id = f"{domain}-{date_str}-{source_fp}"
+
+        # File path: knowledge/<domain>/<tier>/<topic>/<YYYY-MM-DD>-<slug>-<hash8>.md
         file_dir = self.base_path / domain / tier / topic
-        file_name = f"{date_str}-{slug}.md"
+        file_name = f"{date_str}-{slug}-{source_fp}.md"
         file_path = file_dir / file_name
 
         # 03-Wiki is append-only — reject agent-facing writes here
@@ -2988,26 +3044,6 @@ class KBStore:
                             g3.score,
                             _HIGH_RESCORE_RESTORE,
                         )
-
-        # --- resolve user_id ---------------------------------------------------
-        resolved_user_id: str = ""
-        if user_id is not None:
-            resolved_user_id = user_id
-        else:
-            # Try from config multi_user settings
-            try:
-                from autoinfo.config import get_config_path, load_config
-
-                cfg_path = get_config_path()
-                if cfg_path:
-                    cfg = load_config(cfg_path)
-                    if cfg.multi_user.enabled:
-                        # Prefer item.raw_data["user_id"], fall back to default
-                        resolved_user_id = str(
-                            item.raw_data.get("user_id", cfg.multi_user.default_user_id)
-                        )
-            except Exception:
-                pass  # No config available — stay with empty user_id
 
         # --- build KBEntry -----------------------------------------------------
         # Issue #55: decode residual HTML entities at the storage layer so
@@ -3540,14 +3576,19 @@ class KBStore:
 
         domain = domains.pop() if len(domains) == 1 else "default"
         topic = topics.pop() if len(topics) == 1 else "general"
-        slug = _slugify(title)
+        slug = _slugify(title, 100) or "draft"
         today_str = date.today().isoformat()
 
-        entry_id = f"{domain}-draft-{slug}"
+        # Issue #695: drafts need the same collision guarantee as Raw entries —
+        # two drafts with the same title must not overwrite each other.
+        draft_fp = _source_fingerprint(
+            "\x1f".join([title or "", summary or "", ",".join(sorted(raw_ids))])
+        )
+        entry_id = f"{domain}-draft-{today_str}-{draft_fp}"
 
-        # File path: knowledge/<domain>/02-Draft/<topic>/<YYYY-MM-DD>-<slug>.md
+        # File path: knowledge/<domain>/02-Draft/<topic>/<YYYY-MM-DD>-<slug>-<hash8>.md
         file_dir = self.base_path / domain / "02-Draft" / topic
-        file_name = f"{today_str}-{slug}.md"
+        file_name = f"{today_str}-{slug}-{draft_fp}.md"
         file_path = file_dir / file_name
 
         merged_body_parts: list[str] = []
@@ -4806,7 +4847,10 @@ class KBStore:
 
         Finds all ``.md`` files under ``knowledge/``, ensures each has
         a corresponding entry in the SQLite index, then rebuilds the
-        FTS5 virtual table from the ``entries`` table.
+        FTS5 virtual table from the ``entries`` table.  Two files carrying
+        the same ``entry_id`` (or a file whose id is already indexed at a
+        different path) are reported in ``errors`` instead of being silently
+        skipped — that is the #695 collision this method must surface.
 
         Parameters
         ----------
@@ -4820,6 +4864,7 @@ class KBStore:
         """
         files_found = 0
         sync_errors: list[dict[str, Any]] = []
+        seen_ids: dict[str, str] = {}
 
         search_root = self.base_path
         if domain:
@@ -4847,7 +4892,35 @@ class KBStore:
                     continue
 
                 entry_id = fm["entry_id"]
+                prior_path = seen_ids.get(entry_id)
+                if prior_path is not None and prior_path != str(md_file):
+                    sync_errors.append(
+                        {
+                            "file": str(md_file),
+                            "entry_id": entry_id,
+                            "error": (
+                                f"duplicate entry_id {entry_id!r} is already used by {prior_path}"
+                            ),
+                        }
+                    )
+                    continue
+                seen_ids[entry_id] = str(md_file)
+
                 existing = self.index.get_entry(entry_id)
+                if existing is not None:
+                    indexed_path = existing.get("file_path") or ""
+                    if indexed_path and Path(indexed_path).resolve() != md_file.resolve():
+                        sync_errors.append(
+                            {
+                                "file": str(md_file),
+                                "entry_id": entry_id,
+                                "error": (
+                                    f"entry_id {entry_id!r} is indexed at "
+                                    f"{indexed_path}, not at this file"
+                                ),
+                            }
+                        )
+                        continue
                 if existing is None:
                     entry = KBEntry(
                         entry_id=entry_id,

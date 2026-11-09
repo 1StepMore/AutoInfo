@@ -122,6 +122,86 @@ def test_derived_parity_stale_detection(tmp_path: Path) -> None:
     assert "rerun gov check" in result["reason"]
 
 
+def test_derived_parity_missing_artifact_names_the_producer(tmp_path: Path) -> None:
+    contract = load()
+    proxy = SimpleNamespace(contract, root=tmp_path)
+    result = sources.read_derived_parity(proxy, {"mcp_tools": 151})  # type: ignore[arg-type]
+    assert result["state"] == "NOT_RUN"
+    assert "gov check --write-evidence" in result["reason"]
+
+
+def test_derived_parity_written_record_replays_as_pass(tmp_path: Path) -> None:
+    from autoinfo.gov import artifacts
+
+    contract = load()
+    facts: dict[str, Any] = {"mcp_tools": 151}
+    clean = {"fail": 0, "stale": 0, "unexplained_not_run": 0, "files_scanned": 7}
+    artifacts.write_parity_evidence(tmp_path, contract.version, facts, clean)
+    proxy = SimpleNamespace(contract, root=tmp_path)
+    result = sources.read_derived_parity(proxy, facts)  # type: ignore[arg-type]
+    assert result["state"] == "PASS"
+    assert result["evidence"]["input_hash"] == artifacts.input_hash(contract.version, facts)
+
+
+def test_derived_parity_non_clean_record_cannot_pass(tmp_path: Path) -> None:
+    from autoinfo.gov import artifacts
+
+    contract = load()
+    facts: dict[str, Any] = {"mcp_tools": 151}
+    artifacts.write_parity_evidence(
+        tmp_path,
+        contract.version,
+        facts,
+        {"fail": 2, "stale": 0, "unexplained_not_run": 0, "files_scanned": 7},
+    )
+    proxy = SimpleNamespace(contract, root=tmp_path)
+    result = sources.read_derived_parity(proxy, facts)  # type: ignore[arg-type]
+    assert result["state"] == "FAIL"
+    assert "not clean" in result["reason"]
+
+
+def test_cmd_check_write_evidence_only_on_clean_run(tmp_path: Path, monkeypatch: Any) -> None:
+    import argparse
+
+    from autoinfo.gov import __main__ as gov_main
+    from autoinfo.gov import artifacts
+    from autoinfo.gov import facts as facts_mod
+
+    contract = load()
+    facts: dict[str, Any] = {"mcp_tools": 151}
+
+    def fake_check(fail: int) -> Any:
+        return lambda: {
+            "fail": fail,
+            "stale": 0,
+            "unexplained_not_run": 0,
+            "violations": [],
+            "files_scanned": 7,
+            "facts": facts,
+            "flat_facts": {},
+            "input_hash": artifacts.input_hash(contract.version, facts),
+            "contract_version": contract.version,
+            "generator_version": artifacts.GENERATOR_VERSION,
+        }
+
+    monkeypatch.setattr(
+        "autoinfo.gov.contract.load", lambda: SimpleNamespace(contract, root=tmp_path)
+    )
+    args = argparse.Namespace(write_evidence=True)
+
+    monkeypatch.setattr(facts_mod, "check", fake_check(1))
+    data, rc = gov_main.cmd_check(args)
+    assert rc == 1
+    assert data["parity_evidence"] is None
+    assert not (tmp_path / ".autoinfo" / "gov" / "derived-parity.json").exists()
+
+    monkeypatch.setattr(facts_mod, "check", fake_check(0))
+    data, rc = gov_main.cmd_check(args)
+    assert rc == 0
+    assert data["parity_evidence"] is not None
+    assert (tmp_path / ".autoinfo" / "gov" / "derived-parity.json").is_file()
+
+
 class SimpleNamespace:
     """Read-only stand-in exposing .root on a frozen Contract."""
 

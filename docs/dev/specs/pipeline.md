@@ -422,12 +422,12 @@ The resume cursor lives in `autoinfo.db` (`_get_progress_db_path()`, the same SQ
 
 | Table | Columns | Role |
 |-------|---------|------|
-| `processing_items` | `domain`, `item_id`, `processed_at`; PRIMARY KEY `(domain, item_id)` | **Authoritative** item-id ledger |
+| `processing_items` | `domain`, `item_id`, `processed_at`; PRIMARY KEY `(domain, item_id)` | **Authoritative** item-id ledger (completed rows only) |
 | `processing_progress` | `domain`, `last_processed_index`, `total_items` | **Legacy** position cursor, retained as a public contract |
 
-**Why the cursor is monotone** — the cursor anchor is the stable `Item.id`, not a position plus a snapshot count. `_read_processed_ids(domain)` returns the ledger's id set and the pending list is computed as `[it for it in cached_items if it.id not in processed_ids]`; an id is pending exactly once until it is marked, so a nightly collection that grows (or shrinks) the cache no longer resets the cursor to zero and re-processes the whole backlog — the failure mode that position-based tracking had before #637 (parent issue #596 / BACKLOG B7).
+**Why the cursor is monotone** — the cursor anchor is the stable `Item.id`, not a position plus a snapshot count. `_read_processed_ids(domain)` returns the id set of ledger rows carrying a non-empty `processed_at` and the pending list is computed as `[it for it in cached_items if it.id not in processed_ids]`; an id is pending exactly once until it is marked, so a nightly collection that grows (or shrinks) the cache no longer resets the cursor to zero and re-processes the whole backlog — the failure mode that position-based tracking had before #637 (parent issue #596 / BACKLOG B7). A placeholder row with a NULL/blank timestamp (possible when a legacy or external writer created the table with a nullable column) is **not** treated as done, so it cannot suppress the item forever (AutoInfo#722).
 
-**Per-item durability** — `_mark_processed` runs as soon as each item's processing settles (`INSERT OR IGNORE`, so re-marking is idempotent) with an ISO-8601 UTC `processed_at`. Items whose log status is `"error"` are deliberately **not** marked, so a failed item is retried on the next run instead of being silently sunk. A run killed by an external timeout therefore keeps every item it already finished.
+**Per-item durability** — `_mark_processed` runs as soon as each item's processing settles (an upsert that keeps an existing completion timestamp but repairs a NULL/blank one, so re-marking is idempotent) with an ISO-8601 UTC `processed_at`. Items whose log status is `"error"` are deliberately **not** marked, so a failed item is retried on the next run instead of being silently sunk. A run killed by an external timeout therefore keeps every item it already finished.
 
 **`resume_from` and `batch_size`** — `run_processing(..., batch_size=0, resume_from=None)` derives two booleans: `persist_cursor = batch_size > 0 or resume_from in ("auto", "start")` and `use_cursor = batch_size > 0 or resume_from == "auto"`. The modes are:
 
@@ -453,7 +453,9 @@ When the cursor is in use, `effective_batch = batch_size if batch_size > 0 else 
 
 ### 3.8 Nightly Process Stage: Hard Budget & Fair-Share Batching (issue #635, v1.18.0)
 
-The nightly batch used to run `collect` → `nightly_gap.py`; `scripts/nightly_process.py` inserts the LLM-bound process stage between them but only for domains that actually have a backlog: `backlog = count_cached_items(...) - read_processed_count(...)`, and a domain is due only when `backlog >= --min-backlog`. `read_processed_count` prefers `SELECT COUNT(*) FROM processing_items` (the #637 ledger, unaffected by cache-total changes) and falls back to `last_processed_index` from `processing_progress` for pre-#637 projects.
+The nightly batch used to run `collect` → `nightly_gap.py`; `scripts/nightly_process.py` inserts the LLM-bound process stage between them but only for domains that actually have a backlog: `backlog = count_cached_items(...) - read_processed_count(...)`, and a domain is due only when `backlog >= --min-backlog`. `read_processed_count` prefers `SELECT COUNT(*) FROM processing_items` (the #637 ledger, unaffected by cache-total changes) counting only completed rows (non-empty `processed_at`, #722) and falls back to `last_processed_index` from `processing_progress` for pre-#637 projects.
+
+**Silent-stall signal** — for every real domain run the report records `processed_delta` (completed-ledger rows gained by the subprocess) and `stalled = exit_code == 0 and processed_delta == 0 and backlog > 0`. A stalled run logs a WARNING and increments `summary.stalled`, so an exit-0 run that consumed nothing is visible instead of reading as success (AutoInfo#722).
 
 **Hard run budget** — `--max-seconds` (default 2400) is a hard wall-clock budget for the whole run, so the lane returns inside the systemd window instead of eating the next stage's time; `--max-seconds 0` disables it for manual/backlog runs. `--timeout` (default 7200) caps a single domain, `--seconds-per-item` (default 40, measured on the 2026-10-21 backlog) converts an allowance into an item count, and `--batch-size 0` means "derive it from the budget".
 

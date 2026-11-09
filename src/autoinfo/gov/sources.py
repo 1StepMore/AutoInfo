@@ -16,9 +16,6 @@ from typing import Any, Callable
 from autoinfo.gov import artifacts
 from autoinfo.gov.contract import Contract
 
-#: Gates whose readers live here; status.py dispatches by gate id.
-PARITY_ARTIFACT = "derived-parity.json"
-
 
 def _fresh_evidence(contract: Contract, input_hash: str) -> dict[str, Any]:
     return artifacts.evidence(contract.root, contract.version, {"_": input_hash}) | {
@@ -92,18 +89,19 @@ def read_ruff_full(contract: Contract, derived: dict[str, Any]) -> dict[str, Any
 def read_derived_parity(contract: Contract, derived: dict[str, Any]) -> dict[str, Any]:
     """derived_parity: CI-written parity evidence, STALE-checked against now.
 
-    The guard.yml step (T09, report-only first) writes derived-parity.json
-    after its own gov check; this reader replays it. No artifact → NOT_RUN
-    (the contract carries the not_run_allowed_reason).
+    ``gov check --write-evidence`` (run by guard.yml's derived-facts job)
+    writes derived-parity.json after its own drift scan; this reader replays
+    it. No artifact → NOT_RUN (the contract carries the reason).
     """
-    path = artifacts.artifact_dir(contract.root) / PARITY_ARTIFACT
+    path = artifacts.artifact_dir(contract.root) / artifacts.PARITY_NAME
     if not path.is_file():
         return {
             "state": "NOT_RUN",
-            "reason": "no derived-parity evidence yet (guard.yml writes it; report-only)"
+            "reason": "no derived-parity evidence yet (run `gov check --write-evidence`;"
+            " guard.yml does it on every PR)"
             if contract.gates.get("derived_parity", {}).get("not_run_allowed_reason")
             else "no derived-parity evidence",
-            "missing": [PARITY_ARTIFACT],
+            "missing": [artifacts.PARITY_NAME],
             "evidence": None,
         }
     try:
@@ -125,11 +123,21 @@ def read_derived_parity(contract: Contract, derived: dict[str, Any]) -> dict[str
             "missing": [],
             "evidence": stored.get("evidence"),
         }
+    result = stored.get("result")
+    if not isinstance(result, dict) or any(
+        result.get(key) != 0 for key in ("fail", "stale", "unexplained_not_run")
+    ):
+        return {
+            "state": "FAIL",
+            "reason": f"stored parity record is not clean: {result!r}",
+            "missing": [],
+            "evidence": stored.get("evidence"),
+        }
     return {
         "state": "PASS",
         "reason": "",
         "missing": [],
-        "evidence": stored.get("evidence") or _fresh_evidence(contract, current_ih),
+        "evidence": stored.get("evidence"),
     }
 
 

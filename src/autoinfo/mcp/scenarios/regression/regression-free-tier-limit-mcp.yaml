@@ -1,8 +1,10 @@
-# Regression #674: the MCP ``add_delivery_schedule`` tool consults the SAME
-# free-tier frequency-gate seam as the CLI ``cron add-delivery`` path — an
-# over-frequency named free user (daily period under a weekly subscription
-# ceiling) is rejected with the canonical FREE_TIER_LIMIT envelope, while
-# weekly / premium / batch (user_id="") schedule creation is unchanged.
+# Regression #674 / #687: the MCP ``add_delivery_schedule`` tool consults
+# the SAME free-tier frequency-gate seam as the CLI ``cron add-delivery``
+# path — a named free user's schedule whose CRON-DERIVED cadence exceeds the
+# subscription ceiling (a daily cron under a weekly limit, whatever
+# ``period`` claims) is rejected with the canonical FREE_TIER_LIMIT
+# envelope, while weekly / premium / batch (user_id="") schedule creation is
+# unchanged.
 #
 # Deterministic (requires_env: []): the gate reads the user-store
 # subscription (bootstrapped hermetically in the subprocess's temp cwd —
@@ -25,9 +27,11 @@ steps:
     command: |-
       python3 -c '
       import os, shutil, tempfile
+      from datetime import datetime
       from pathlib import Path
       from autoinfo.mcp.errors import ErrorCode
       from autoinfo.mcp.tools.scheduling import _handle_add_delivery_schedule
+      from autoinfo.delivery.frequency_gate import derive_cadence
       from autoinfo.user_store import (
           create_profile,
           create_subscription,
@@ -45,9 +49,11 @@ steps:
               max_products=1, max_frequency="weekly", allow_custom=False,
           )
 
-          # 1. Named free user, daily period under the weekly ceiling →
-          #    blocked with the canonical envelope.  The CLI path already
-          #    rejects the same request; this guards the MCP main path.
+          # 1. Named free user, daily cadence under the weekly ceiling →
+          #    blocked with the canonical envelope.  Since #687 the gate
+          #    judges the cron-derived cadence; this request fires daily,
+          #    so it is blocked regardless of ``period``.  The CLI path
+          #    already rejects the same request; this guards the MCP path.
           blocked = _handle_add_delivery_schedule(
               domain="medical-research",
               cron_expression="0 8 * * *",
@@ -59,6 +65,36 @@ steps:
           assert blocked["error"]["code"] == ErrorCode.FREE_TIER_LIMIT.value, blocked
           assert blocked["error"]["actionable"] is True, blocked
           assert "upgrade" in blocked["error"]["message"].lower(), blocked["error"]["message"]
+
+          # 1b. cron/period contradiction (#687): a daily cron with
+          #     period="weekly" must be judged daily (period is the content
+          #     window, not the frequency limit) → still blocked.
+          contradiction = _handle_add_delivery_schedule(
+              domain="medical-research",
+              cron_expression="0 8 * * *",
+              output_type="digest",
+              period="weekly",
+              user_id="u-mcp-gate",
+          )
+          assert contradiction["success"] is False, contradiction
+          assert contradiction["error"]["code"] == ErrorCode.FREE_TIER_LIMIT.value, contradiction
+          assert "daily" in contradiction["error"]["message"].lower(), contradiction
+          # Corrected old-semantics case: weekly cron + period="daily" →
+          # allowed — period no longer doubles as the frequency limit.
+          corrected = _handle_add_delivery_schedule(
+              domain="medical-research",
+              cron_expression="0 8 * * 1",
+              output_type="digest",
+              period="daily",
+              user_id="u-mcp-gate",
+          )
+          assert corrected["created"] is True, corrected
+
+          # Determinism guard for the derivation itself (fixed now):
+          now = datetime(2026, 11, 9, 8, 0, 0)
+          assert derive_cadence("0 8 * * *", now=now) == "daily"
+          assert derive_cadence("0 8 * * 1", now=now) == "weekly"
+          assert derive_cadence("*/5 * * * *", now=now) == "minutely"
 
           # 2. Weekly within the allowance → created.
           allowed = _handle_add_delivery_schedule(

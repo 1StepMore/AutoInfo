@@ -44,7 +44,7 @@ class TestSlugify:
 
     def test_max_len(self) -> None:
         long = "a-" * 100
-        result = _slugify(long, max_len=80)
+        result = _slugify(long, max_bytes=80)
         assert len(result) <= 80
         assert not result.endswith("-")
 
@@ -625,7 +625,7 @@ class TestKBStore:
         # with a fresh created_at. Weekly digests never surface stale
         # content merely because it was re-ingested.
         assert len(entries) == 1
-        assert "new-article" in entries[0]["entry_id"]
+        assert entries[0]["source_url"] == "https://example.com/new"
 
     # ------------------------------------------------------------------
     # get_entry

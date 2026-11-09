@@ -10,12 +10,12 @@ Running the LLM-heavy process stage for every domain every night is expensive,
 so this script computes a per-domain backlog and only invokes ``autoinfo
 process`` when the backlog reaches ``--min-backlog``::
 
-    backlog = cached JSON items - last_processed_index (processing_progress)
+    backlog = cached JSON items - completed ledger rows (processing_items)
 
-The cursor is intentionally read from the same ``autoinfo.db`` /
-``processing_progress`` table that the process CLI maintains.  A missing DB or
-missing table means "nothing processed yet" and therefore the full cache is
-treated as backlog.
+The cursor is intentionally read from the same ``autoinfo.db`` ledger that the
+process CLI maintains.  A missing DB or table means "nothing processed yet" and
+the full cache is backlog; ledger rows without a completion timestamp do not
+count (AutoInfo#722).
 
 The stage runs under a hard total budget (#596): ``--max-seconds`` (default
 2400) is shared fairly across the due domains, so the lane returns inside the
@@ -25,6 +25,10 @@ left at 0 the per-domain item cap is derived from that fair share and
 keeps a subprocess from being killed mid-item.  A domain that no longer fits is
 reported as ``skipped_budget`` instead of being started anyway.
 ``--max-seconds 0`` disables the budget for manual / backlog runs.
+
+A domain that exits 0 without advancing its ledger while a backlog remains is
+reported as ``stalled`` (row field plus a WARNING) instead of a silent success
+— the failure mode behind #722.
 
 #596 also left processing oldest-first, so a nightly run with a budget only
 ever reached stale entries.  ``--since-days N`` restricts the backlog (and the
@@ -57,6 +61,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sqlite3
 import subprocess
 import sys
@@ -75,6 +80,8 @@ DEFAULT_TIMEOUT = 7200
 DEFAULT_MAX_SECONDS = 2400
 DEFAULT_SECONDS_PER_ITEM = 40
 SCHEMA = "autoinfo-nightly-process/1"
+
+logger = logging.getLogger("autoinfo.nightly_process")
 
 
 @dataclass(frozen=True)
@@ -141,8 +148,11 @@ def read_processed_count(db_path: Path, domain: str) -> int:
 
     Prefers the item-id ledger (``processing_items``, AutoInfo#596): its row
     count is the number of distinct ids the processing cursor has consumed,
-    unaffected by the cache total changing between runs.  Falls back to the
-    legacy ``last_processed_index`` column when that table or domain has no
+    unaffected by the cache total changing between runs.  Only rows with a
+    non-empty ``processed_at`` count: a placeholder row written by a legacy or
+    external writer (nullable schema) means the item was never completed and
+    must stay in the backlog (AutoInfo#722).  Falls back to the legacy
+    ``last_processed_index`` column when that table or domain has no completed
     ledger rows (pre-#596 projects / domains not yet migrated).
     """
     if not db_path.is_file():
@@ -154,7 +164,8 @@ def read_processed_count(db_path: Path, domain: str) -> int:
         conn = sqlite3.connect(uri, uri=True, timeout=5)
         try:
             row = conn.execute(
-                "SELECT COUNT(*) FROM processing_items WHERE domain = ?",
+                "SELECT COUNT(*) FROM processing_items WHERE domain = ? "
+                "AND processed_at IS NOT NULL AND processed_at != ''",
                 (domain,),
             ).fetchone()
         except sqlite3.Error:
@@ -223,10 +234,12 @@ def _run_process(request: ProcessRequest) -> tuple[int, float]:
 
 
 def _log_row(row: dict[str, object]) -> None:
+    suffix = " STALLED" if row.get("stalled") else ""
     print(
         f"[nightly-process] {row['domain']}: cached={row['cached_items']} "
         f"processed={row['processed_count']} backlog={row['backlog']} "
-        f"budget={row['budget_s']}s batch={row['batch_size']} -> {row['action']}",
+        f"budget={row['budget_s']}s batch={row['batch_size']} "
+        f"delta={row['processed_delta']} -> {row['action']}{suffix}",
         flush=True,
     )
 
@@ -245,7 +258,7 @@ def _render_md(report: dict[str, object]) -> str:
         f"- dry run: {str(report['dry_run']).lower()}",
         f"- selected: {summary['selected']} / executed: {summary['executed']} / "
         f"failed: {summary['failed']} / skipped: {summary['skipped']} / "
-        f"skipped_budget: {summary['skipped_budget']}",
+        f"skipped_budget: {summary['skipped_budget']} / stalled: {summary['stalled']}",
         "",
         "| domain | cached | processed | backlog | action | budget_s | batch | exit | seconds |",
         "|:---|---:|---:|---:|:---|---:|---:|---:|---:|",
@@ -388,6 +401,8 @@ def main(
                 "batch_size": 0,
                 "exit_code": 0,
                 "duration_s": 0.0,
+                "processed_delta": None,
+                "stalled": False,
                 "since_days": args.since_days,
                 "newest_first": args.newest_first,
             }
@@ -435,6 +450,7 @@ def main(
             projected_used += allowance
         else:
             timeout = max(1, int(min(args.timeout, allowance))) if budget_enabled else args.timeout
+            before = read_processed_count(db_path, str(row["domain"]))
             exit_code, duration_s = run(
                 ProcessRequest(
                     str(row["domain"]),
@@ -445,19 +461,33 @@ def main(
                     args.newest_first,
                 )
             )
+            after = read_processed_count(db_path, str(row["domain"]))
+            delta = max(0, after - before)
+            # Exit 0 with no ledger advance is the silent stall from #722.
+            stalled = exit_code == 0 and delta == 0 and backlog > 0
             row.update(
                 action="run",
                 budget_s=float(timeout),
                 batch_size=batch,
                 exit_code=exit_code,
                 duration_s=duration_s,
+                processed_delta=delta,
+                stalled=stalled,
             )
+            if stalled:
+                logger.warning(
+                    "Domain '%s' ran (exit 0) but processed 0 of %d backlog item(s); "
+                    "the ledger made no progress — treating the run as stalled",
+                    row["domain"],
+                    backlog,
+                )
         _log_row(row)
 
     selected = sum(1 for row in rows if row["action"] in ("run", "would_run"))
     executed = sum(1 for row in rows if row["action"] == "run")
     failed = sum(1 for row in rows if row["action"] == "run" and row["exit_code"] != 0)
     skipped_budget = sum(1 for row in rows if row["action"] == "skipped_budget")
+    stalled = sum(1 for row in rows if row.get("stalled"))
     report = {
         "schema": SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -477,6 +507,7 @@ def main(
             "failed": failed,
             "skipped": sum(1 for row in rows if row["action"] == "skip"),
             "skipped_budget": skipped_budget,
+            "stalled": stalled,
             "budget_exhausted": budget_enabled and skipped_budget > 0,
         },
     }

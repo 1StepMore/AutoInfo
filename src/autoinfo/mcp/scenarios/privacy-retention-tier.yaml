@@ -75,7 +75,7 @@ steps:
           content="Fixture entry owned by the privacy-retention-tier scenario.",
           domain="medical-research",
           topic_tags=[],
-          collected_at=datetime.now(timezone.utc).isoformat(),
+          collected_at="2026-01-01T00:00:00+00:00",
           content_type="text",
           quality_tier=1,
       )
@@ -94,7 +94,7 @@ steps:
     expect:
       success: true
       exit_code: 0
-      stdout_has: ["RETENTION_ANCHOR_OK", "medical-research-general-privacy-retention-tier-fixture-entry"]
+      stdout_has: ["RETENTION_ANCHOR_OK", "medical-research-2026-01-01-8b303314"]
 
   - name: "no automatic tier-based purge exists in shipped code"
     kind: cli
@@ -123,7 +123,7 @@ cleanup_steps:
       from pathlib import Path
       from autoinfo.kb import KBStore
       store = KBStore()
-      eid = "medical-research-general-privacy-retention-tier-fixture-entry"
+      eid = "medical-research-2026-01-01-8b303314"
       meta = store.index.get_entry(eid)
       if meta is not None:
           store.delete_entry(eid)

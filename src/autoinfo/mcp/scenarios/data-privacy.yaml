@@ -34,7 +34,7 @@ steps:
           content='Fixture entry owned by the data-privacy validation scenario.',
           domain='medical-research',
           topic_tags=[],
-          collected_at=datetime.now(timezone.utc).isoformat(),
+          collected_at='2026-01-01T00:00:00+00:00',
           content_type='text',
           quality_tier=1,
       )
@@ -44,12 +44,12 @@ steps:
     expect:
       success: true
       exit_code: 0
-      stdout_has: ["ENTRY_ID", "medical-research-general-data-privacy-scenario-fixture-entry"]
+      stdout_has: ["ENTRY_ID", "medical-research-2026-01-01-46da6236"]
 
   - name: "soft_delete_entry marks scenario entry as deleted"
     tool: soft_delete_entry
     arguments:
-      entry_id: medical-research-general-data-privacy-scenario-fixture-entry
+      entry_id: medical-research-2026-01-01-46da6236
     expect:
       success: true
       data_has: ["entry_id"]
@@ -57,7 +57,7 @@ steps:
   - name: "restore_entry revives the soft-deleted scenario entry"
     tool: restore_entry
     arguments:
-      entry_id: medical-research-general-data-privacy-scenario-fixture-entry
+      entry_id: medical-research-2026-01-01-46da6236
     expect:
       success: true
       data_has: ["entry_id"]
@@ -99,7 +99,7 @@ cleanup_steps:
       from pathlib import Path
       from autoinfo.kb import KBStore
       store = KBStore()
-      eid = 'medical-research-general-data-privacy-scenario-fixture-entry'
+      eid = 'medical-research-2026-01-01-46da6236'
       marker = 'https://data-privacy.autoinfo.test/data-privacy-scenario-entry'
       removed = []
       meta = store.index.get_entry(eid)

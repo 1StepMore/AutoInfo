@@ -596,10 +596,10 @@ class LLMExtractor:
         return ExtractionResult(
             item_id=item.id,
             title=item.title,
-            tl_dr=parsed.get("tl_dr", ""),
-            key_points=parsed.get("key_points", []),
-            entities=parsed.get("entities", []),
-            relevance_score=max(0.0, min(100.0, float(parsed.get("relevance_score", 0)))),
+            tl_dr=_coerce_text(parsed.get("tl_dr", "")),
+            key_points=_coerce_str_list(parsed.get("key_points", [])),
+            entities=_coerce_entities(parsed.get("entities", [])),
+            relevance_score=_coerce_relevance_score(parsed.get("relevance_score", 0)),
             custom_fields=custom_fields,
             usage=usage,
         )
@@ -624,6 +624,84 @@ class LLMExtractor:
             return parsed
         logger.warning("LLM response parsed but is not a JSON object: %.200s", content or "")
         return {}
+
+
+def _coerce_text(value: Any) -> str:
+    """Coerce an LLM-returned scalar to ``str`` without raising (issue #725).
+
+    Models occasionally return a non-string shape for text fields (a number,
+    a nested object, ``null``).  Callers treat ``tl_dr`` as text, so degrade
+    to a stringified value instead of an ``AttributeError`` mid-pipeline.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _coerce_str_list(value: Any) -> list[str]:
+    """Coerce an LLM-returned ``key_points`` field to ``list[str]`` (#725).
+
+    Downstream consumers call ``.split()`` on every element, so a bare string
+    or a list of dicts would crash them.  A bare string becomes a single
+    element; non-string list elements are dropped (logged at debug).
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, (list, tuple)):
+        return [v for v in value if isinstance(v, str) and v.strip()]
+    return []
+
+
+def _coerce_entities(value: Any) -> list[dict[str, Any]]:
+    """Coerce an LLM-returned ``entities`` field to ``list[dict]`` (#725).
+
+    The contract is ``[{"name": ..., "type": ...}]``, but models return bare
+    strings (``"Entity A, Entity B"``) or lists of strings often enough that
+    ``entity.get("name")`` crashed the process worker with ``'str' object has
+    no attribute 'get'``.  Normalization rules:
+
+    - ``dict`` elements are kept, with ``name`` coerced to ``str``;
+    - ``str`` elements become ``{"name": element}``;
+    - a top-level bare string is split on common delimiters (ASCII/CJK comma,
+      semicolons, newlines) into one entity per fragment;
+    - anything else is dropped.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        fragments = re.split(r"[,;；、，\n]+", value)
+        return [{"name": f.strip()} for f in fragments if f.strip()]
+    if not isinstance(value, (list, tuple)):
+        return []
+    entities: list[dict[str, Any]] = []
+    for element in value:
+        if isinstance(element, dict):
+            name = element.get("name")
+            if name is None or not str(name).strip():
+                continue
+            entity = dict(element)
+            entity["name"] = str(name).strip()
+            entities.append(entity)
+        elif isinstance(element, str):
+            if element.strip():
+                entities.append({"name": element.strip()})
+    return entities
+
+
+def _coerce_relevance_score(value: Any) -> float:
+    """Coerce an LLM-returned ``relevance_score`` to a 0-100 float (#725).
+
+    ``float("high")`` raised ``ValueError`` and failed the whole item; any
+    non-numeric shape (verbal labels, ``null``) now degrades to ``0.0``.
+    """
+    try:
+        return max(0.0, min(100.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def parse_json_response(content: str | None) -> Any:

@@ -8,7 +8,8 @@ item was permanently dropped for that run (only logged as a failure).
 The fix adds a BOUNDED retry with a small jittered backoff around the
 ``store_entry`` region.  Non-lock operational errors are NOT retried — they
 surface immediately through the existing error path (item logged + counted,
-CLI exit code 1).  The ``except Exception`` handler semantics are unchanged.
+CLI non-zero exit — code 2, partial dirty-data failure, since #725).  The
+``except Exception`` handler semantics are unchanged.
 
 All LLM calls are mocked — no real API calls are made.
 """
@@ -113,9 +114,7 @@ def _no_sleep(_seconds: float) -> None:
 
 
 class TestDbLockRetry:
-    def test_lock_error_retried_and_item_stored(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_lock_error_retried_and_item_stored(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A transient ``database is locked`` on the first 2 store attempts is
         retried; the third attempt succeeds and the item IS stored.
 
@@ -189,27 +188,22 @@ class TestNonLockErrorNotRetried:
         item logged as error and ``stats["errors"]`` incremented."""
         item = _item("non-lock-item", "First test article about IVF")
         store = _mock_store(_entry("non-lock-entry"))
-        store.store_entry.side_effect = sqlite3.OperationalError(
-            "no such table: entries"
-        )
+        store.store_entry.side_effect = sqlite3.OperationalError("no such table: entries")
         monkeypatch.setenv("AUTOINFO_PROCESS_WORKERS", "1")
         monkeypatch.setattr("autoinfo.process.time.sleep", _no_sleep)
 
         result = _run_with_patches([item], store, Config())
 
-        assert store.store_entry.call_count == 1, (
-            "a non-lock OperationalError must NOT be retried"
-        )
+        assert store.store_entry.call_count == 1, "a non-lock OperationalError must NOT be retried"
         assert result.kb_entries_created == 0
         assert len(result.errors) == 1
         assert "no such table" in result.errors[0]["error"]
         assert result.per_item_logs[0]["status"] == "error"
 
-    def test_cli_exit_code_1_when_item_errors(
-        self, cli_runner: Any
-    ) -> None:
-        """The CLI exits 1 when any item failed processing (existing contract
-        preserved — the retry must not change error reporting)."""
+    def test_cli_exit_code_2_when_item_errors(self, cli_runner: Any) -> None:
+        """The CLI exits 2 when any item failed processing (#725: partial
+        dirty-data failure — non-zero; the retry must not change error
+        reporting)."""
         from autoinfo.cli.process import app
 
         errored = ProcessResult(
@@ -223,6 +217,6 @@ class TestNonLockErrorNotRetried:
         with patch("autoinfo.cli.process.run_processing", return_value=errored):
             res = cli_runner.invoke(app, ["--domain", "medical-research"])
 
-        assert res.exit_code == 1, (
-            f"CLI must exit 1 when items failed (got exit_code={res.exit_code})"
+        assert res.exit_code == 2, (
+            f"CLI must exit 2 when items failed (got exit_code={res.exit_code})"
         )

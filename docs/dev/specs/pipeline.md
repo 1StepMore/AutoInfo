@@ -469,6 +469,22 @@ The nightly batch used to run `collect` → `nightly_gap.py`; `scripts/nightly_p
 
 **Reporting** — per-domain rows carry `cached_items`, `processed_count`, `backlog`, `action`, `budget_s`, `batch_size`, `exit_code` and `duration_s`; the summary counts `selected`, `executed`, `failed`, `skipped` and `skipped_budget`, and sets `budget_exhausted` when the budget is enabled and at least one domain was skipped for budget. Output is machine-readable JSON (`--json-out`) plus a Markdown table (`--md-out`, also printed), and exit codes are 0 (all selected domains succeeded or nothing was due), 1 (at least one failure), 2 (usage/environment error).
 
+### 3.9 Process CLI Exit-Code Grading (issue #725)
+
+`autoinfo process` (the per-domain subprocess of the nightly stage above) grades its exit code into three levels (implemented in `src/autoinfo/cli/process.py`):
+
+| Exit | Meaning | Scheduler reaction |
+|------|---------|--------------------|
+| `0` | All items processed successfully. | Success. |
+| `1` | Environment/config error — the run **aborted** (domain or collections dir not found, invalid config, unexpected exception such as a dead LLM chain). Retrying individual items cannot help; fix the environment. | Alert as failure; rerun only after the environment is fixed. |
+| `2` | Partial dirty-data failure — the run **completed to the end** but `result.errors` is non-empty (per-item failures carrying `item_id` / `error` / `error_type`). Needs human eyes on the data, not a blind rerun. | Alert as failure (non-zero); route to human data review instead of an automatic rerun. |
+
+**Compatibility** — any non-zero code still means "needs attention": schedulers keyed on `rc == 0` (including `scripts/nightly_process.py`, which counts every domain row with `exit_code != 0` as failed) need **no change**. The grading only separates "review the data" (`2`) from "fix the environment" (`1`); it never turns a partial failure into a success.
+
+**Failure-path details** — items that fail with a per-item exception are recorded in `result.errors` and **deliberately left unmarked** in the processed-id ledger, so the next `--resume-from auto` run retries them. Usage errors (missing `--domain`, bad flag values) keep Click's app-wide convention of exiting `2` with the usage block on stderr — #725 does not change that; such an exit carries no per-item output ("Summary:" / "failed processing" lines), which distinguishes it from a partial dirty-data exit.
+
+**Classification boundaries** — items blocked by the G0 hard gate are *not* graded into `2` (they carry no `result.errors` entry; they are written to `collections/<domain>/_failed/`, marked processed in the ledger, and visible via the §3.8 stalled signal). A run whose LLM extraction silently returns empty results (e.g. missing credentials — `LLMExtractor.extract` swallows the failure and the item is indexed with an empty summary) is likewise not graded as an error today; that is an extraction-failure-handling gap tracked separately, not an exit-code concern.
+
 ---
 
 ## 4. Custom Extraction & Q&A (§12.5, 12.8)

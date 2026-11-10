@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.8](https://github.com/1StepMore/AutoInfo/compare/v1.28.7...v1.28.8) (2026-11-10)
+
+
+### Bug Fixes
+
+* **nightly:** locate the venv console script by path, not by slash ([#744](https://github.com/1StepMore/AutoInfo/issues/744)) ([#746](https://github.com/1StepMore/AutoInfo/issues/746)) ([2cad879](https://github.com/1StepMore/AutoInfo/commit/2cad879c324de84ef2a8e54d9c55fc28eb24d957))
+
+
+### Documentation
+
+* **governance:** add the cross-repo boundary gate to §0 ([#745](https://github.com/1StepMore/AutoInfo/issues/745)) ([#748](https://github.com/1StepMore/AutoInfo/issues/748)) ([031ed35](https://github.com/1StepMore/AutoInfo/commit/031ed355a6fe1ff868518719225fc93a7529c05a))
+
 ## [1.28.7](https://github.com/1StepMore/AutoInfo/compare/v1.28.6...v1.28.7) (2026-11-09)
 
 

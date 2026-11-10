@@ -39,6 +39,9 @@ Usage (from repo root):
         --roots outputs,demo-packages --exclude '*/draft/*' \\
         --assertions _source_labels_specific \\
         --json-out /tmp/rp.json --md-out /tmp/rp.md
+
+``gap-reports/`` directories (the nightly-gap ops ledger, whose body quotes
+failure samples verbatim) are always excluded — see ``DEFAULT_EXCLUDES`` (#753).
 """
 
 from __future__ import annotations
@@ -64,6 +67,15 @@ SCHEMA_VERSION = 1
 TOOL = "scripts/real_product_assertions.py"
 DEFAULT_ROOTS = "outputs,demo-packages"
 _SCAN_SUFFIXES = (".md", ".html", ".txt")
+
+# #753 — ``outputs/gap-reports/`` holds the nightly-gap ops ledger, not a
+# domain product dir; its body quotes failure samples verbatim, so scanning it
+# makes the scan self-reference its own findings (perpetual false reds).  These
+# defaults always apply; ``--exclude`` only adds on top of them.
+DEFAULT_EXCLUDES: tuple[str, ...] = (
+    "gap-reports/*",  # root-relative: outputs/gap-reports/...
+    "*/gap-reports/*",  # absolute roots
+)
 
 # Filename keyword -> product name, mirroring the established product-type
 # inference in scripts/validation_delivery.py (order matters).  An unknown
@@ -339,7 +351,10 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="GLOB",
-        help="skip paths matching GLOB (repeatable / comma-separated)",
+        help=(
+            "skip paths matching GLOB (repeatable / comma-separated; added on "
+            f"top of the built-in defaults: {', '.join(DEFAULT_EXCLUDES)})"
+        ),
     )
     parser.add_argument(
         "--issue",
@@ -372,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
     if not roots:
         print("error: --roots is empty", file=sys.stderr)
         return 2
-    excludes: list[str] = []
+    excludes: list[str] = list(DEFAULT_EXCLUDES)
     for chunk in args.exclude:
         excludes.extend(parse_csv(chunk))
 

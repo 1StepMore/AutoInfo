@@ -133,12 +133,14 @@ def domain_names(domains_dir: Path) -> list[str]:
 
 
 def _autoinfo_cmd(python: str) -> list[str]:
-    """优先用与解释器同 venv 的 console script；退回 `-m autoinfo`。"""
+    """#744: locate the sibling console script; never infer OS from "/" in the path."""
     # 注意：不能用 resolve()，venv 的 bin/python 是软链，解开会跑到系统目录
-    cand = python if "/" not in python else str(Path(python).absolute().parent / "autoinfo")
-    if cand != python and Path(cand).exists():
-        return [cand]
-    return [python, "-m", "autoinfo"]
+    exe_dir = Path(python).absolute().parent
+    for name in ("autoinfo", "autoinfo.exe"):
+        cand = exe_dir / name
+        if cand.is_file():
+            return [str(cand)]
+    return [python, "-m", "autoinfo.cli"]
 
 
 def _read_runs(collections: Path, domain: str, source: str) -> list[dict[str, Any]]:

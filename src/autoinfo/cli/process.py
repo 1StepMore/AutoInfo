@@ -3,6 +3,13 @@
 Usage::
 
     autoinfo process --domain medical-research [--model deepseek/deepseek-chat] [--json]
+
+Exit codes (#725): ``0`` all items processed successfully; ``1``
+environment/config error (the run aborted — e.g. domain not found, invalid
+config; fixing it never means retrying items); ``2`` partial dirty-data
+failure (the run completed but some items failed — review the items, don't
+blindly rerun). Any non-zero code still means "needs attention": schedulers
+keyed on ``rc == 0`` are unaffected.
 """
 
 from __future__ import annotations
@@ -16,6 +23,11 @@ from autoinfo.process import ProcessResult, run_processing
 from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer()
+
+# Partial dirty-data failure (#725): the run completed but ``result.errors``
+# is non-empty. Kept non-zero (rc == 0 schedulers unchanged) while distinct
+# from ``1`` so "review the data" is tellable apart from "fix the environment".
+EXIT_PARTIAL_FAILURE = 2
 
 
 @app.callback(invoke_without_command=True)
@@ -83,14 +95,18 @@ def process(
             newest_first=newest_first,
         )
     except FileNotFoundError as exc:
+        # Environment/config error (#725): run aborted → 1.
         fail_if_global("NotFound", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
     except ValueError as exc:
+        # Environment/config error (#725): run aborted → 1.
         fail_if_global("ValidationError", str(exc))
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
     except Exception as exc:
+        # Environment/config error (#725): run aborted → 1 (e.g. dead LLM
+        # chain, missing dependency — retrying individual items cannot help).
         fail_if_global("InternalError", str(exc))
         typer.echo(f"Unexpected error: {exc}", err=True)
         raise typer.Exit(code=1)
@@ -108,7 +124,8 @@ def process(
         }
         if emit_if_global(noop):
             if result.errors:
-                raise typer.Exit(code=1)
+                # Partial dirty-data failure (#725) → 2.
+                raise typer.Exit(code=EXIT_PARTIAL_FAILURE)
             return
         if json_output:
             typer.echo(json.dumps(noop, ensure_ascii=False, indent=2))
@@ -129,16 +146,19 @@ def process(
         }
         if emit_if_global(full):
             if result.errors:
-                raise typer.Exit(code=1)
+                # Partial dirty-data failure (#725) → 2.
+                raise typer.Exit(code=EXIT_PARTIAL_FAILURE)
             return
         if json_output:
             typer.echo(json.dumps(full, ensure_ascii=False, indent=2))
         else:
             _print_human(result)
 
-    # Exit with error code when any items failed
+    # Partial dirty-data failure (#725): the run completed but some items
+    # failed → exit 2, still non-zero (rc == 0 schedulers unaffected); the
+    # code separates "review the data" from "fix the environment" (1).
     if result.errors:
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=EXIT_PARTIAL_FAILURE)
 
 
 # ---------------------------------------------------------------------------

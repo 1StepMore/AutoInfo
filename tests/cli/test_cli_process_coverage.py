@@ -212,7 +212,8 @@ class TestProcessFullOutput:
         ):
             result = runner.invoke(main_app, ["--json", "process", "--domain", "medical-research"])
 
-        assert result.exit_code == 1, result.output
+        # #725: partial dirty-data failure exits 2 (non-zero), not 1.
+        assert result.exit_code == 2, result.output
         payload = json.loads(result.stdout)
         assert payload["success"] is True
         assert payload["data"]["errors"] == [{"item_id": "item-3", "error": "llm exploded"}]
@@ -228,7 +229,8 @@ class TestProcessFullOutput:
         ):
             result = runner.invoke(main_app, ["--json", "process", "--domain", "medical-research"])
 
-        assert result.exit_code == 1, result.output
+        # #725: partial dirty-data failure exits 2 (non-zero), not 1.
+        assert result.exit_code == 2, result.output
 
     def test_human_output_renders_item_logs_and_exits_nonzero_on_errors(self) -> None:
         with patch(
@@ -237,7 +239,8 @@ class TestProcessFullOutput:
         ):
             result = runner.invoke(process_app, ["--domain", "medical-research"])
 
-        assert result.exit_code == 1, result.output
+        # #725: partial dirty-data failure exits 2 (non-zero), not 1.
+        assert result.exit_code == 2, result.output
         assert "Processing domain: medical-research" in result.output
         assert "✓ item-1: Title One [score=85, 0.50s]" in result.output
         assert "⚠ item-2: Title Two (duplicate, matched by url)" in result.output
@@ -257,3 +260,45 @@ class TestProcessFullOutput:
         assert result.exit_code == 0, result.output
         assert "Batch progress" not in result.output
         assert "failed processing" not in result.output
+
+
+class TestExitCodeGrading:
+    """#725 contract: ``0`` success / ``1`` environment error / ``2`` partial
+    dirty-data failure. ``2`` stays non-zero — schedulers keyed on ``rc == 0``
+    need no change; the grading only splits "review the data" (2) from
+    "fix the environment" (1)."""
+
+    def test_exit_zero_when_run_completes_without_errors(self) -> None:
+        with patch(
+            "autoinfo.cli.process.run_processing",
+            return_value=_full_result(is_complete=True, errors=[], remaining_count=0),
+        ):
+            result = runner.invoke(process_app, ["--domain", "medical-research"])
+
+        assert result.exit_code == 0, result.output
+
+    def test_exit_one_on_environment_error(self) -> None:
+        # Simulated environment/config error (dead LLM chain — e.g. missing
+        # credentials): the run aborts before completing → 1, never 2.
+        with patch(
+            "autoinfo.cli.process.run_processing",
+            side_effect=RuntimeError(
+                "All LLM models (primary + fallback) failed — Missing credentials"
+            ),
+        ):
+            result = runner.invoke(process_app, ["--domain", "medical-research"])
+
+        assert result.exit_code == 1, result.output
+        assert "Unexpected error: All LLM models (primary + fallback) failed" in result.output
+
+    def test_exit_two_on_partial_dirty_data_failure(self) -> None:
+        # Simulated partial dirty-data failure: the run completed to the end
+        # but result.errors is non-empty → 2 (non-zero; not a success).
+        with patch(
+            "autoinfo.cli.process.run_processing",
+            return_value=_full_result(),
+        ):
+            result = runner.invoke(process_app, ["--domain", "medical-research"])
+
+        assert result.exit_code == 2, result.output
+        assert "1 item(s) failed processing" in result.output

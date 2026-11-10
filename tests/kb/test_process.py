@@ -782,7 +782,9 @@ class TestProcessCli:
         assert kwargs.get("check_translation") is True
 
     def test_process_exit_code_on_errors(self, cli_runner) -> None:
-        """Exit code 1 when processing has errors."""
+        """Exit code 2 (partial dirty-data failure) when items fail (#725):
+        the run completed but result.errors is non-empty — non-zero, distinct
+        from 1 (environment/config abort)."""
         from autoinfo.cli import app
 
         mock_proc = MagicMock(
@@ -818,7 +820,7 @@ class TestProcessCli:
         with patch("autoinfo.cli.process.run_processing", mock_proc):
             result = cli_runner.invoke(app, ["process", "--domain", "test-domain"])
 
-        assert result.exit_code == 1
+        assert result.exit_code == 2  # #725: partial dirty-data failure, non-zero
         # Error count is written to stderr with err=True
         assert "1 item(s) failed processing" in strip_ansi(result.stderr)
 

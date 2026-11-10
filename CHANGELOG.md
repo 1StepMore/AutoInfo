@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.9](https://github.com/1StepMore/AutoInfo/compare/v1.28.8...v1.28.9) (2026-11-10)
+
+
+### Bug Fixes
+
+* **process:** grade ai-process exit codes 0/1/2 ([#725](https://github.com/1StepMore/AutoInfo/issues/725)) ([#749](https://github.com/1StepMore/AutoInfo/issues/749)) ([7562db1](https://github.com/1StepMore/AutoInfo/commit/7562db1f3241c797dce54e074d140d18f823e4ec))
+
 ## [1.28.8](https://github.com/1StepMore/AutoInfo/compare/v1.28.7...v1.28.8) (2026-11-10)
 
 

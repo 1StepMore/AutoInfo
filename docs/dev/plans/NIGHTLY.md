@@ -1,10 +1,16 @@
 # NIGHTLY.md — AutoInfo · 「不眠计划」执行面
 
+> ⚠️ **仓库边界**：本仓只负责 AutoInfo。`AutoMedia` / `Omni` 三模块 / `e2e-test-suite` 属别的产品线。
+> 本文件里出现的别仓名字与 issue 编号一律是**跨仓事实引用，不是本仓的作业项**：
+> 不改对方仓、不在对方仓开 PR/issue。那边的缺陷 → 在本仓开 issue 点名对仓 + 证据。
+> 硬约束全文：`docs/dev/repo-boundary.md`（`AGENTS.md` §0.6）。
+
 > **两个区，物理分开，权限不同**：
 > - **【冻结区】**（完成定义 + 验收命令）：由 code profile 维护。**coding agent 只读、只跑，不得修改。**
 > - **【活区】**（差距矩阵 / 下一步队列 / 摩擦账本 / 修订请求）：由 **coding agent 维护**。
 >
-> L1 总纲：`Hermes-Workspace/00-Records/dev-assets/NIGHTLY-PLAN-L1.md`
+> L1 总纲：`Hermes-Workspace/00-Records/dev-assets/NIGHTLY-PLAN-L1.md` —— **只读 §2.1（AutoInfo）**；
+> §2.2 / §2.3 属别的产品线，不是本仓作业项（见 `AGENTS.md` §0.6）。
 > 冻结区要改 → 只能往活区的「修订请求」写，等 owner / code profile 裁定；期间按原样执行。
 
 ---

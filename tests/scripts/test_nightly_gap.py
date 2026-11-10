@@ -831,3 +831,61 @@ def test_output_axis_missing_db_is_unavailable_not_a_gap(
     assert unit["freshness_flags"] == []
     assert payload["output_axis"]["status"] == ng.OUTPUT_AXIS_UNAVAILABLE
     assert "产出轴：unavailable" in md
+
+
+# ---------------------------------------------------------------------------
+# Issue #744 — the console-script lookup must not guess the OS from "/"
+# ---------------------------------------------------------------------------
+
+
+def _write_console_script(directory: Path, name: str = "autoinfo") -> Path:
+    script = directory / name
+    script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    return script
+
+
+def test_autoinfo_cmd_finds_sibling_console_script_for_bare_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for #744.
+
+    On Windows ``sys.executable`` is ``D:\\...\\Scripts\\python.exe`` — no forward
+    slash, so the old ``"/" not in python`` test treated a real interpreter
+    path as a bare name and never looked at its sibling directory. A relative
+    name without a separator takes the identical branch on POSIX, which keeps
+    the regression visible on Linux CI.
+    """
+    script = _write_console_script(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    cmd = ng._autoinfo_cmd("python")
+
+    assert len(cmd) == 1, cmd
+    assert Path(cmd[0]).resolve() == script.resolve()
+
+
+def test_autoinfo_cmd_finds_windows_console_script_exe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Windows venv ships ``Scripts/autoinfo.exe`` — the lookup must try it too."""
+    script = _write_console_script(tmp_path, "autoinfo.exe")
+    monkeypatch.chdir(tmp_path)
+
+    cmd = ng._autoinfo_cmd("python.exe")
+
+    assert len(cmd) == 1, cmd
+    assert Path(cmd[0]).resolve() == script.resolve()
+
+
+def test_autoinfo_cmd_falls_back_to_documented_module_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No console script beside the interpreter → the documented ``-m`` entry.
+
+    ``python -m autoinfo`` has no ``__main__.py``, so ``-m autoinfo`` would die
+    with "No module named autoinfo.__main__"; ``-m autoinfo.cli`` is the form
+    README documents and is what the nightly job must call.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    assert ng._autoinfo_cmd("python") == ["python", "-m", "autoinfo.cli"]

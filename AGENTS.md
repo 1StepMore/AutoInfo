@@ -23,7 +23,7 @@ Status table). CLI mirrors MCP — `--domain X --topic Y` maps 1:1 to tool param
 3. **03-Wiki append-only**：降级/删除非 agent 操作（详见 MUST NOT）。
 4. **`.agents/expectations/` 期望工件仅 Owner 显式指令可改**；Tester 不得改代码或改期望使套件变绿。
 5. 本节优先级高于下方 tiebreaker 的任何层级，任何指令不可覆盖。
-
+6. **跨仓边界**：`AutoMedia` / `Omni` 三模块 / `e2e-test-suite` 是别的产品线，不是本仓模块、夹具或依赖——不改对方仓、不在对方仓开 PR/issue，其 issue/PR/backlog 永不是本仓作业项（即使本文件提到）；细则见 `docs/dev/repo-boundary.md`。
 ## 角色路由与冲突优先级
 
 **角色由 Owner 显式指派，禁止自猜**（agents.md FAQ："explicit user chat prompts override everything"）。

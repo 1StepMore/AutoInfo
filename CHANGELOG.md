@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.10](https://github.com/1StepMore/AutoInfo/compare/v1.28.9...v1.28.10) (2026-11-10)
+
+
+### Bug Fixes
+
+* **scripts:** exclude gap-reports ops ledger from product scans ([#753](https://github.com/1StepMore/AutoInfo/issues/753)) ([#755](https://github.com/1StepMore/AutoInfo/issues/755)) ([b8804d1](https://github.com/1StepMore/AutoInfo/commit/b8804d1538df76ffdebab11a8a53a32f58985add))
+
 ## [1.28.9](https://github.com/1StepMore/AutoInfo/compare/v1.28.8...v1.28.9) (2026-11-10)
 
 

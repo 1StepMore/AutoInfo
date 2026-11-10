@@ -8,7 +8,9 @@ roots so the tests never touch the real ``outputs/`` tree:
    ``failures == []``;
 2. a product carrying a future year → exit 1 with the failure recorded under
    ``_no_year_hallucination``;
-3. an unknown assertion name → exit 2 with the valid names listed.
+3. an unknown assertion name → exit 2 with the valid names listed;
+4. a ``gap-reports/`` ops ledger is excluded by the built-in defaults (#753)
+   while sibling domain products and explicit ``--exclude`` stacking still work.
 """
 
 from __future__ import annotations
@@ -132,3 +134,58 @@ def test_unknown_assertion_exits_two(tmp_path: Path, capsys: pytest.CaptureFixtu
     err = capsys.readouterr().err
     assert "definitely_not_an_assertion" in err
     assert _ASSERTION in err
+
+
+def test_gap_reports_dir_excluded_by_default(tmp_path: Path) -> None:
+    # #753 — the nightly-gap ops ledger under ``gap-reports/`` quotes failure
+    # samples verbatim, so scanning it makes the scan self-reference its own
+    # findings.  The built-in DEFAULT_EXCLUDES must keep it out while sibling
+    # domain products are still scanned; explicit ``--exclude`` adds on top.
+    _write(
+        tmp_path,
+        "gap-reports/nightly-gap-2026-11-11.md",
+        "# Nightly gap ledger\n\n- placeholders=_No articles found here._\n",
+    )
+    _write(
+        tmp_path,
+        "some-domain/clean.md",
+        "# Clean Product\n\n## Summary\n\nNo problems worth reporting here.\n",
+    )
+    json_out = tmp_path / "evidence.json"
+
+    code = rpa.main(
+        [
+            "--roots",
+            str(tmp_path),
+            "--assertions",
+            _ASSERTION,
+            "--json-out",
+            str(json_out),
+        ]
+    )
+
+    assert code == 0
+    evidence: dict[str, Any] = json.loads(json_out.read_text(encoding="utf-8"))
+    assert evidence["files_scanned"] == 1
+    assert evidence["failures"] == []
+    assert all("gap-reports" not in f["path"] for f in evidence["failures"])
+
+    # Explicit --exclude still stacks on top of the defaults.
+    json_out2 = tmp_path / "evidence2.json"
+    code2 = rpa.main(
+        [
+            "--roots",
+            str(tmp_path),
+            "--assertions",
+            _ASSERTION,
+            "--exclude",
+            "some-domain/*",
+            "--json-out",
+            str(json_out2),
+        ]
+    )
+
+    assert code2 == 0
+    evidence2: dict[str, Any] = json.loads(json_out2.read_text(encoding="utf-8"))
+    assert evidence2["files_scanned"] == 0
+    assert evidence2["failures"] == []

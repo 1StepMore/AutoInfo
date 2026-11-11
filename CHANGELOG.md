@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.11](https://github.com/1StepMore/AutoInfo/compare/v1.28.10...v1.28.11) (2026-11-11)
+
+
+### Bug Fixes
+
+* **process:** grade G0-blocked items into exit code 2 ([#751](https://github.com/1StepMore/AutoInfo/issues/751)) ([#759](https://github.com/1StepMore/AutoInfo/issues/759)) ([9c07118](https://github.com/1StepMore/AutoInfo/commit/9c07118553ab615065f561cca2a44e243332c3df))
+
 ## [1.28.10](https://github.com/1StepMore/AutoInfo/compare/v1.28.9...v1.28.10) (2026-11-10)
 
 

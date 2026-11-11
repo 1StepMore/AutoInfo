@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.29.0](https://github.com/1StepMore/AutoInfo/compare/v1.28.12...v1.29.0) (2026-11-11)
+
+
+### Features
+
+* **scripts:** archive stale outputs by date cutoff with manifest rollback (AutoInfo[#754](https://github.com/1StepMore/AutoInfo/issues/754)) ([#763](https://github.com/1StepMore/AutoInfo/issues/763)) ([eaaab2b](https://github.com/1StepMore/AutoInfo/commit/eaaab2b590e267c7316bedacba21d8ac2105b0ef))
+
+
+### Bug Fixes
+
+* **kb:** store index file paths relative to knowledge root ([#695](https://github.com/1StepMore/AutoInfo/issues/695)) ([#762](https://github.com/1StepMore/AutoInfo/issues/762)) ([f7ad791](https://github.com/1StepMore/AutoInfo/commit/f7ad7913a4e6033870de4e3f57c531be0a28cc02))
+
 ## [1.28.12](https://github.com/1StepMore/AutoInfo/compare/v1.28.11...v1.28.12) (2026-11-11)
 
 

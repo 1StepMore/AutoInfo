@@ -347,6 +347,10 @@ class ProcessResult:
         Number of items that passed all quality gates (G2 + G3).
     kb_entries_created : int
         Number of KB entries actually written.
+    extraction_failed : int
+        Number of items whose LLM extraction came back empty (missing
+        credentials, unreachable endpoint, or unparseable response). These
+        are also reported in ``errors`` so the CLI exits 2 (#750).
     errors : list[dict]
         Per-item error details.
     g0_blocked : int
@@ -365,6 +369,7 @@ class ProcessResult:
     is_complete: bool = True
     passed_gates: int = 0
     kb_entries_created: int = 0
+    extraction_failed: int = 0
     errors: list[dict[str, Any]] = field(default_factory=list)
     g0_blocked: int = 0
     duration_s: float = 0.0
@@ -1279,6 +1284,7 @@ def run_processing(
             },
             "kb_entries_created": 0,
             "passed_gates": 0,
+            "extraction_failed": 0,
             "errors": [],
             "g0_blocked": 0,
             "discovered": [],
@@ -1342,6 +1348,24 @@ def run_processing(
             )
             item_log["extraction_failed"] = extraction_failed
             if extraction_failed:
+                # #750: an empty extraction is a run-level failure, not a
+                # silent success. The entry is still stored and the ledger
+                # still marks the item processed (retrying cannot repair a
+                # missing credential), but the run must exit 2 so schedulers
+                # and MCP callers can see it.
+                stats["extraction_failed"] = 1
+                stats["errors"].append(
+                    {
+                        "item_id": item.id,
+                        "error": (
+                            "LLM extraction returned an empty result "
+                            "(missing credentials, unreachable endpoint, or "
+                            "unparseable response); entry was indexed with "
+                            "an empty summary"
+                        ),
+                        "error_type": "ExtractionFailed",
+                    }
+                )
                 logger.warning(
                     "LLM extraction returned empty result for item %s — "
                     "entry will be indexed with empty summary",
@@ -1828,6 +1852,7 @@ def run_processing(
             result.token_usage["items_with_usage"] += stats["token_usage"]["items_with_usage"]
             result.kb_entries_created += stats["kb_entries_created"]
             result.passed_gates += stats["passed_gates"]
+            result.extraction_failed += stats["extraction_failed"]
             result.errors.extend(stats["errors"])
             result.g0_blocked += stats["g0_blocked"]
 

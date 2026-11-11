@@ -142,6 +142,7 @@ def process(
             "is_complete": result.is_complete,
             "passed_gates": result.passed_gates,
             "kb_entries_created": result.kb_entries_created,
+            "extraction_failed": result.extraction_failed,
             "errors": result.errors,
             "g0_blocked": result.g0_blocked,
             "duration_s": result.duration_s,

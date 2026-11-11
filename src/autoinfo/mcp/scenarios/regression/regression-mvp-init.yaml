@@ -85,10 +85,15 @@ steps:
       assert "medical-research" in [d.get("name") for d in cfg["domains"]], cfg["domains"]
 
       user_dir = Path("mvp/u1")
-      products = [p for p in user_dir.glob("*.md") if not p.name.startswith("gate-report-")]
+      products = [
+          p for p in user_dir.glob("*.md")
+          if not p.name.startswith(("gate-report-", "README", "SOURCES"))
+      ]
       assert len(products) == 1, [p.name for p in products]
       assert products[0].read_text(encoding="utf-8").strip(), "empty product"
-      reports = sorted(user_dir.glob("gate-report-*"))
+      assert (user_dir / "README-给试点用户.md").is_file(), "pilot README missing"
+      assert (user_dir / "SOURCES.md").is_file(), "SOURCES.md missing"
+      reports = sorted((user_dir / "01-QA-GATES").glob("gate-report-*"))
       assert any(g.suffix == ".md" for g in reports) and any(g.suffix == ".json" for g in reports), reports
       payload = json.loads(next(g for g in reports if g.suffix == ".json").read_text(encoding="utf-8"))
       assert payload["delivered"] is True and payload["quality"] == "PASS", payload
@@ -108,7 +113,10 @@ steps:
       from pathlib import Path
       from autoinfo.user_store import list_subscriptions
       assert len(list_subscriptions("u1")) == 1, "duplicate subscription"
-      products = [p for p in Path("mvp/u1").glob("*.md") if not p.name.startswith("gate-report-")]
+      products = [
+          p for p in Path("mvp/u1").glob("*.md")
+          if not p.name.startswith(("gate-report-", "README", "SOURCES"))
+      ]
       assert len(products) == 1, [p.name for p in products]
       print("MVP_IDEMPOTENT_OK")
       '

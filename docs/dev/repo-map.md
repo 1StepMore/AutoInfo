@@ -69,7 +69,7 @@ AutoInfo generates runtime state at execution time. Distinguish from source:
 | `collections/` | Runtime | Raw JSON cache from `collect`, gitignored |
 | `knowledge/` | Runtime | 4-tier KB pipeline output (01-Raw, 02-Draft, 03-Wiki), gitignored |
 | `outputs/` | Runtime | Generated digests, reports, exports, gitignored |
-| `mvp/` | Runtime | Concierge MVP pilot delivery dirs (`mvp/<user_id>/`: product + gate report + provenance), gitignored |
+| `mvp/` | Runtime | Concierge MVP pilot delivery dirs (`mvp/<user_id>/`: product, `01-QA-GATES/`, `SOURCES.md`, `README-给试点用户.md`, provenance), gitignored |
 | `autoinfo.db` | Runtime | SQLite KB + user + cost stores, gitignored |
 | `logs/` | Runtime | Structured pipeline logs, gitignored |
 | `.autoinfo/` | Runtime | Project config (`config.yaml`), gitignored — modify via MCP tools, not by hand |

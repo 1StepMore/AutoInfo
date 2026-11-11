@@ -47,7 +47,7 @@ from typing import Any
 
 import typer
 
-from autoinfo.config import get_config_path
+from autoinfo.config import get_config_path, load_config
 
 from ._output import emit_if_global, fail_if_global, global_json  # noqa: E402
 
@@ -62,9 +62,12 @@ _NO_CONFIG_ERROR = (
 )
 
 
+_PILOT_NON_PRODUCT_MD = ("gate-report-", "README", "SOURCES")
+
+
 def _existing_product_files(user_dir: Path) -> list[Path]:
-    """Product markdown files in *user_dir* (gate reports excluded)."""
-    return [p for p in user_dir.glob("*.md") if not p.name.startswith("gate-report-")]
+    """Product markdown files in *user_dir* (reports/readme excluded)."""
+    return [p for p in user_dir.glob("*.md") if not p.name.startswith(_PILOT_NON_PRODUCT_MD)]
 
 
 # ---------------------------------------------------------------------------
@@ -72,53 +75,77 @@ def _existing_product_files(user_dir: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 
-def _hermetic_entries() -> list[dict[str, Any]]:
-    """Static fixture entries injected through the patched KBStore.
+def _domain_sources(domain: str) -> list[tuple[str, str, str]]:
+    """Return up to three configured sources as (url, type, platform)."""
+    fallback = (f"https://example.com/{domain}", "web", "pilot-source")
+    config_path = get_config_path()
+    if config_path is None:
+        return [fallback]
+    try:
+        config = load_config(config_path)
+    except Exception:  # noqa: BLE001 — a malformed config must not block the pilot
+        return [fallback]
+    domain_cfg = next((d for d in config.domains if d.name == domain), None)
+    if domain_cfg is None or not domain_cfg.sources:
+        return [fallback]
+    return [
+        (
+            source.url or fallback[0],
+            source.type or "web",
+            source.name or "pilot-source",
+        )
+        for source in domain_cfg.sources[:3]
+    ]
 
-    Realistic (non-placeholder) titles/summaries with complete source
-    provenance (source_url / source_type / source_platform) and a fresh
-    ``collected_at`` (1 day ago) so D3-Freshness does not false-reject.
-    The ``pubmed`` platform matches the seeded medical-research domain
-    config, so the selection-time source-drift filter (#119) keeps them.
+
+def _hermetic_entries(domain: str) -> list[dict[str, Any]]:
+    """Static, domain-agnostic fixtures for a clean pilot project.
+
+    A clean checkout has no collected items, so the first product is built
+    from three substantive sample entries with complete source provenance.
+    The text adapts to *domain*; each entry's URL/type/platform comes from
+    the domain's configured sources, so the same command works for every
+    demo domain instead of hardcoding medical-research.
     """
+    sources = _domain_sources(domain)
     collected = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     base: list[tuple[str, str]] = [
         (
-            "Time-lapse imaging improves live-birth rates in IVF cohorts",
-            "A multicenter study reports a statistically significant improvement "
-            "in live-birth rates when embryos are monitored via time-lapse "
-            "imaging before transfer.",
+            f"Evidence review: current practice and outcomes in {domain}",
+            f"A structured review compares recent {domain} practice patterns "
+            "with measured outcomes and identifies where the evidence base is "
+            "still thin.",
         ),
         (
-            "Neuroplasticity markers predict recovery in stroke rehabilitation",
-            "Longitudinal data link early neuroplasticity markers to better "
-            "motor-recovery outcomes in structured post-stroke rehabilitation "
-            "programs.",
+            f"Adoption signals and operational constraints in {domain}",
+            f"A second analysis tracks adoption signals across {domain} and "
+            "documents the operational constraints teams report when scaling.",
         ),
         (
-            "Genomic screening reshapes reproductive-medicine clinical pathways",
-            "A guideline update now recommends expanded genomic screening "
-            "before assisted reproductive treatment in selected patient "
-            "cohorts.",
+            f"Updated guidance for {domain}: what changed and what to watch",
+            f"A guidance update consolidates the latest {domain} evidence, "
+            "flags changed recommendations, and lists the open questions to "
+            "monitor.",
         ),
     ]
     entries: list[dict[str, Any]] = []
     for i, (title, summary) in enumerate(base, start=1):
+        source_url, source_type, source_platform = sources[(i - 1) % len(sources)]
         entries.append(
             {
                 "entry_id": f"mvp-fixture-{i}",
                 "title": title,
                 "summary": summary,
                 "content": summary,
-                "source_url": f"https://pubmed.ncbi.nlm.nih.gov/3400000{i}/",
-                "source_type": "api",
-                "source_platform": "pubmed",
-                "source_label": "PubMed",
+                "source_url": source_url,
+                "source_type": source_type,
+                "source_platform": source_platform,
+                "source_label": source_platform,
                 "relevance_score": 90.0 - i,
                 "tags": "[]",
                 "tier": "01-Raw",
                 "collected_at": collected,
-                "domain": "medical-research",
+                "domain": domain,
             }
         )
     return entries
@@ -156,30 +183,29 @@ def _generate_first_product(
         generate_report,
     )
 
-    entries = _hermetic_entries()
+    entries = _hermetic_entries(domain)
     generated_at = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     file_name = f"{product}-{period}-{generated_at}.md"
 
     empty_extract = ExtractionResult(item_id="mvp-seam", title="", custom_fields={})
     group = [
         {
-            "theme": "Clinical Developments",
-            "description": ("Recent peer-reviewed findings tracked for this pilot domain."),
+            "theme": f"{domain} developments",
+            "description": f"Recent evidence tracked for the {domain} pilot.",
             "entries": entries,
         }
     ]
     synthesis = {
         "executive_summary": (
-            f"This briefing summarizes three recent peer-reviewed developments "
-            f"tracked for the {domain} pilot: time-lapse IVF monitoring, "
-            "neuroplasticity-based stroke rehabilitation, and expanded genomic "
-            "screening in reproductive medicine."
+            f"This briefing summarizes three recent developments tracked for "
+            f"the {domain} pilot: current practice and outcomes, adoption "
+            "constraints, and updated guidance."
         ),
         "key_findings": [e["summary"] for e in entries],
         "recommendations": [
-            "Monitor the time-lapse IVF evidence base for guideline updates.",
-            "Track neuroplasticity-marker validation in larger cohorts.",
-            "Review the expanded genomic-screening guidance against local practice.",
+            f"Track new {domain} evidence against the current practice baseline.",
+            f"Review adoption constraints before scaling the {domain} workflow.",
+            f"Monitor the updated {domain} guidance for changes that affect the pilot.",
         ],
     }
 
@@ -280,6 +306,67 @@ def _write_provenance(
     return path
 
 
+def _write_sources(
+    user_dir: Path,
+    entries: list[dict[str, Any]],
+    *,
+    domain: str,
+    product: str,
+    contact: str,
+) -> Path:
+    """Write ``SOURCES.md`` mapping every key finding to its source URL."""
+    lines = [
+        "# Sources",
+        "",
+        f"Pilot product: `{product}` · domain: `{domain}`",
+        "",
+        "Every key finding in the product maps to one numbered source below.",
+        "This pilot runs in hermetic fixture mode: entries are static fixtures "
+        "injected through the KB seam, not live collected items. The URLs are "
+        "the configured source endpoints; they are not fetched during init.",
+        "",
+        "| # | Claim | Source URL | Type | Platform | Collected |",
+        "|---|-------|------------|------|----------|-----------|",
+    ]
+    for i, entry in enumerate(entries, start=1):
+        claim = str(entry.get("summary") or entry.get("title") or "").replace("|", "\\|")
+        lines.append(
+            f"| {i} | {claim} | {entry.get('source_url', '')} | "
+            f"{entry.get('source_type', '')} | {entry.get('source_platform', '')} | "
+            f"{entry.get('collected_at', '')} |"
+        )
+    if contact.strip():
+        lines.extend(["", f"Contact: {contact.strip()}"])
+    path = user_dir / "SOURCES.md"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _write_readme(
+    user_dir: Path,
+    *,
+    user_id: str,
+    domain: str,
+    product: str,
+    frequency: str,
+    product_path: Path,
+    contact: str,
+) -> Path:
+    """Write the three-sentence pilot README (contact is a placeholder)."""
+    contact_text = contact.strip() or "（待填写）"
+    text = (
+        f"# 给试点用户\n\n"
+        f"这是为 {user_id} 生成的 {product} 试点产物，域为 {domain}，"
+        f"按 {frequency} 频率更新。\n\n"
+        f"打开 `{product_path.name}` 阅读；每一条结论都能在 `SOURCES.md` "
+        f"找到来源。\n\n"
+        f"有问题请联系：{contact_text}。\n"
+    )
+    path = user_dir / "README-给试点用户.md"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
 # ---------------------------------------------------------------------------
 # `mvp init`
 # ---------------------------------------------------------------------------
@@ -299,13 +386,19 @@ def init(
     frequency: str = typer.Option(
         "weekly", "--frequency", help="Delivery frequency: daily, weekly"
     ),
+    contact: str = typer.Option(
+        "",
+        "--contact",
+        help="Contact placeholder for the pilot README (no PII required)",
+    ),
 ) -> None:
     """Provision a Concierge MVP pilot end-to-end (idempotent).
 
     Creates the premium end-user profile + subscription (no Stripe), imports
     the demo domain config, generates the first product via the hermetic
-    seam, and writes the ``mvp/<user>/`` delivery directory (product + gate
-    report + provenance + user.json).
+    seam, and writes the ``mvp/<user>/`` delivery directory: product,
+    ``01-QA-GATES/`` reports, ``SOURCES.md``, ``README-给试点用户.md``,
+    ``provenance.json`` and ``user.json``.
     """
     if product not in _VALID_PRODUCTS:
         fail_if_global(
@@ -443,8 +536,17 @@ def init(
             key_path = product_path.relative_to(Path.cwd())
         except ValueError:
             key_path = product_path
-        gate = write_gate_report(user_dir, key_path, kind="PROCESSED")
+        gate_dir = user_dir / "01-QA-GATES"
+        gate_dir.mkdir(parents=True, exist_ok=True)
+        gate = write_gate_report(gate_dir, key_path, kind="PROCESSED", key=product)
         generated_product_path = product_path
+        _write_sources(
+            user_dir,
+            entries,
+            domain=domain,
+            product=product,
+            contact=contact,
+        )
         _write_provenance(
             user_dir,
             product_path,
@@ -460,12 +562,27 @@ def init(
             f"(gate: {gate['quality']}, hermetic seam: no LLM call)."
         )
 
+    product_for_readme = generated_product_path or (
+        existing_products[-1] if existing_products else None
+    )
+    if product_for_readme is not None:
+        _write_readme(
+            user_dir,
+            user_id=user,
+            domain=domain,
+            product=product,
+            frequency=frequency,
+            product_path=product_for_readme,
+            contact=contact,
+        )
+
     # --- (5) user.json placeholder metadata ---------------------------------
     meta_path = user_dir / "user.json"
     meta = {
         "user_id": user,
         "name": user,
         "email": "",
+        "contact": contact,
         "domain": domain,
         "product": product,
         "frequency": frequency,
@@ -485,6 +602,7 @@ def init(
             "domain": domain,
             "product": product,
             "frequency": frequency,
+            "contact": contact,
             "subscription_id": sub.subscription_id,
             "mvp_dir": user_dir.as_posix(),
             "product_path": (generated_product_path.as_posix() if generated_product_path else None),
@@ -534,15 +652,37 @@ def list_cmd() -> None:
         sub_status = subs[0].status if subs else "?"
         products = _existing_product_files(d)
         latest = max(products, key=lambda p: p.stat().st_mtime) if products else None
+        product_name = str(meta.get("product", "?"))
+        gate_json = d / "01-QA-GATES" / f"gate-report-{product_name}.json"
+        if not gate_json.is_file():
+            gate_json = d / f"gate-report-{product_name}.json"
+        gate_passed: bool | None = None
+        if gate_json.is_file():
+            try:
+                gate_payload = json.loads(gate_json.read_text(encoding="utf-8"))
+                gate_passed = bool(gate_payload.get("delivered"))
+            except (json.JSONDecodeError, OSError):
+                gate_passed = None
+        generated_at = (
+            datetime.fromtimestamp(latest.stat().st_mtime, tz=timezone.utc).strftime(
+                "%Y-%m-%d %H:%M"
+            )
+            if latest
+            else "-"
+        )
         items.append(
             {
                 "user_id": uid,
+                "domain": meta.get("domain", "?"),
                 "tier": tier,
                 "plan": plan,
                 "status": status,
                 "subscription_status": sub_status,
-                "product": meta.get("product", "?"),
+                "product": product_name,
                 "frequency": meta.get("frequency", "?"),
+                "product_generated": latest is not None,
+                "generated_at": generated_at,
+                "gate_passed": gate_passed,
                 "latest_product": latest.as_posix() if latest else None,
             }
         )
@@ -558,13 +698,29 @@ def list_cmd() -> None:
         return
 
     typer.echo(f"MVP pilot users ({len(pilots)}):")
+    header = (
+        f"{'USER':<12} {'DOMAIN':<22} {'PRODUCT':<18} {'FREQUENCY':<10} "
+        f"{'GENERATED':<9} {'GENERATED_AT':<16} {'GATE':<6}"
+    )
+    typer.echo(header)
+    typer.echo("-" * len(header))
     for item in items:
-        typer.echo(
-            f"  {item['user_id']}: tier={item['tier']} plan={item['plan']} "
-            f"status={item['status']} subscription={item['subscription_status']} "
-            f"product={item['product']} frequency={item['frequency']}"
+        gate = (
+            "PASS"
+            if item["gate_passed"] is True
+            else ("FAIL" if item["gate_passed"] is False else "?")
         )
-        typer.echo(f"      latest product: {item['latest_product'] or 'none'}")
+        typer.echo(
+            f"{item['user_id']:<12} {str(item['domain']):<22} "
+            f"{str(item['product']):<18} {str(item['frequency']):<10} "
+            f"{('yes' if item['product_generated'] else 'no'):<9} "
+            f"{item['generated_at']:<16} {gate:<6}"
+        )
+        typer.echo(
+            f"      tier={item['tier']} plan={item['plan']} status={item['status']} "
+            f"subscription={item['subscription_status']} latest product: "
+            f"{item['latest_product'] or 'none'}"
+        )
 
 
 if __name__ == "__main__":

@@ -8,12 +8,13 @@ Covers the acceptance contract from
   EndUserProfile with ``profile.tier == "premium"`` + status ``active``
   (check_access premium fast path reads UserProfile.tier — billing.py:736),
   a matching premium subscription, the demo domain config imported, and
-  ``mvp/u1/`` containing the product file + gate report (md+json) +
-  provenance + user.json placeholder metadata.
+  ``mvp/u1/`` containing the product file, ``01-QA-GATES/gate-report-<product>``
+  (md+json), ``SOURCES.md``, ``README-给试点用户.md``, provenance and
+  user.json placeholder metadata.
 - ``check_access(premium)`` returns ``allowed=True`` for the provisioned
   user — no Stripe, no trial status.
-- ``mvp list`` shows the pilot user with subscription status and the
-  latest product path.
+- ``mvp list`` shows the pilot table (user/domain/product/frequency/
+  generated/generated_at/gate) plus subscription status and latest path.
 - Idempotency: a second init does not duplicate profile/subscription/
   product files and exits 0 with clear messages.
 - Hermetic: no LLM key, no network — the first product is generated via
@@ -97,12 +98,18 @@ def _init(runner: CliRunner, **overrides: str) -> Any:
         "--frequency",
         overrides.get("frequency", "weekly"),
     ]
+    if "contact" in overrides:
+        args.extend(["--contact", overrides["contact"]])
     return runner.invoke(main_app, args)
 
 
 def _product_files(user_dir: Path) -> list[Path]:
-    """The generated product files (not gate reports / metadata)."""
-    return [p for p in user_dir.glob("*.md") if not p.name.startswith("gate-report-")]
+    """The generated product files (not gate reports / readme / sources)."""
+    return [
+        p
+        for p in user_dir.glob("*.md")
+        if not p.name.startswith(("gate-report-", "README", "SOURCES"))
+    ]
 
 
 class TestMvpInitHappyPath:
@@ -160,10 +167,10 @@ class TestMvpInitHappyPath:
         body = products[0].read_text(encoding="utf-8")
         assert body.strip(), "product file is empty"
 
-        gate_reports = sorted(user_dir.glob("gate-report-*"))
-        assert any(g.suffix == ".md" for g in gate_reports), gate_reports
-        assert any(g.suffix == ".json" for g in gate_reports), gate_reports
-        gate_json = next(g for g in gate_reports if g.suffix == ".json")
+        gate_dir = user_dir / "01-QA-GATES"
+        assert (gate_dir / "gate-report-digest.md").is_file(), list(gate_dir.iterdir())
+        gate_json = gate_dir / "gate-report-digest.json"
+        assert gate_json.is_file(), list(gate_dir.iterdir())
         payload = json.loads(gate_json.read_text(encoding="utf-8"))
         assert payload["delivered"] is True
         assert payload["quality"] == "PASS", payload
@@ -174,6 +181,8 @@ class TestMvpInitHappyPath:
             "authenticity",
         ]
 
+        assert (user_dir / "SOURCES.md").is_file(), "SOURCES.md missing"
+        assert (user_dir / "README-给试点用户.md").is_file(), "pilot README missing"
         assert (user_dir / "provenance.json").is_file(), "provenance missing"
         prov = json.loads((user_dir / "provenance.json").read_text(encoding="utf-8"))
         # Source provenance: every entry carries source_url/type/platform.
@@ -256,3 +265,110 @@ class TestMvpGroupIdentity:
         result = runner.invoke(main_app, ["--help"])
         assert result.exit_code == 0
         assert "mvp" in strip_ansi(result.output)
+
+
+class TestMvpPilotPackage:
+    """The delivery package a pilot can actually read and verify (#740)."""
+
+    def test_sources_md_maps_every_provenance_entry(self, runner: CliRunner) -> None:
+        result = _init(runner)
+        assert result.exit_code == 0, result.output
+
+        user_dir = Path.cwd() / "mvp" / "u1"
+        prov = json.loads((user_dir / "provenance.json").read_text(encoding="utf-8"))
+        sources = (user_dir / "SOURCES.md").read_text(encoding="utf-8")
+        assert "hermetic" in sources.lower()
+        for entry in prov["entries"]:
+            assert entry["source_url"] in sources, entry
+
+    def test_readme_is_three_sentences_with_contact_placeholder(self, runner: CliRunner) -> None:
+        result = _init(runner)
+        assert result.exit_code == 0, result.output
+
+        readme = (Path.cwd() / "mvp" / "u1" / "README-给试点用户.md").read_text(encoding="utf-8")
+        assert readme.count("。") == 3, readme
+        assert "（待填写）" in readme
+
+    def test_contact_is_persisted_and_surfaced(self, runner: CliRunner) -> None:
+        result = _init(runner, contact="pilot@example.com")
+        assert result.exit_code == 0, result.output
+
+        user_dir = Path.cwd() / "mvp" / "u1"
+        meta = json.loads((user_dir / "user.json").read_text(encoding="utf-8"))
+        assert meta["contact"] == "pilot@example.com"
+        assert "pilot@example.com" in (user_dir / "README-给试点用户.md").read_text(
+            encoding="utf-8"
+        )
+        assert "pilot@example.com" in (user_dir / "SOURCES.md").read_text(encoding="utf-8")
+
+    def test_list_table_has_required_fields(self, runner: CliRunner) -> None:
+        result = _init(runner)
+        assert result.exit_code == 0, result.output
+
+        listing = runner.invoke(main_app, ["mvp", "list"])
+        assert listing.exit_code == 0, listing.output
+        for token in (
+            "USER",
+            "DOMAIN",
+            "PRODUCT",
+            "FREQUENCY",
+            "GENERATED",
+            "GENERATED_AT",
+            "GATE",
+        ):
+            assert token in listing.output, token
+        assert "medical-research" in listing.output
+        assert "PASS" in listing.output
+
+    def test_pilot_is_domain_agnostic(self, runner: CliRunner) -> None:
+        result = _init(runner, domain="ai-commercial")
+        assert result.exit_code == 0, result.output
+
+        user_dir = Path.cwd() / "mvp" / "u1"
+        product = _product_files(user_dir)[0].read_text(encoding="utf-8")
+        assert "ai-commercial" in product
+        assert "ai-commercial" in (user_dir / "SOURCES.md").read_text(encoding="utf-8")
+        prov = json.loads((user_dir / "provenance.json").read_text(encoding="utf-8"))
+        assert len({e["source_url"] for e in prov["entries"]}) == 3
+
+    def test_short_circuited_gate_report_leaves_package_incomplete(
+        self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Reverse proof: if gate-report writing is skipped, the DoD package
+        assertion fails because ``01-QA-GATES/gate-report-digest.*`` is absent.
+        """
+
+        def _fake_write_gate_report(
+            out_dir: Path,
+            product_file: Path,
+            *,
+            kind: str = "PROCESSED",
+            bucket: str = "PROCESSED",
+            key: str | None = None,
+        ) -> dict[str, Any]:
+            report_key = key or "digest"
+            return {
+                "quality": "PASS",
+                "delivered": True,
+                "gates": [],
+                "key": report_key,
+                "md": out_dir / f"gate-report-{report_key}.md",
+                "json": out_dir / f"gate-report-{report_key}.json",
+            }
+
+        monkeypatch.setattr(
+            "autoinfo.delivery.gate_report.write_gate_report",
+            _fake_write_gate_report,
+        )
+        result = _init(runner)
+        assert result.exit_code == 0, result.output
+
+        user_dir = Path.cwd() / "mvp" / "u1"
+        assert _product_files(user_dir), "product still generated"
+        assert not (user_dir / "01-QA-GATES" / "gate-report-digest.md").is_file()
+        assert not (user_dir / "01-QA-GATES" / "gate-report-digest.json").is_file()
+
+    def test_mvp_output_is_gitignored(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        ignore = (repo_root / ".gitignore").read_text(encoding="utf-8")
+        assert "mvp/" in ignore.splitlines()

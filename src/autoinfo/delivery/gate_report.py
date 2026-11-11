@@ -601,6 +601,7 @@ def write_gate_report(
     *,
     kind: str = "PROCESSED",
     bucket: str = "PROCESSED",
+    key: str | None = None,
 ) -> dict[str, Any]:
     """Gate-check one product file and write its gate report into *out_dir*.
 
@@ -611,6 +612,8 @@ def write_gate_report(
     ``scripts/validation_delivery.py``) loops over the same building blocks
     (:func:`run_delivery_gates` + :func:`_build_qa_gate_report`).
 
+    ``key`` overrides the deterministic filename key (the MVP pilot uses
+    the product name so consumers can find ``gate-report-<product>.json``).
     ``delivered`` is honest: ``True`` only when every delivery gate passes;
     a failed product keeps its file but the report records
     ``delivered=false`` plus the failure reason.
@@ -619,10 +622,10 @@ def write_gate_report(
     """
     gates_result = run_delivery_gates(product_file, bucket)
     used: set[str] = set()
-    key = _qa_product_key(product_file, used)
+    report_key = key or _qa_product_key(product_file, used)
     delivered = gates_result["quality"] == "PASS"
     md_text, json_text = _build_qa_gate_report(
-        key,
+        report_key,
         product=product_file.name,
         kind=kind,
         delivered=delivered,
@@ -630,15 +633,15 @@ def write_gate_report(
         gates=gates_result["gates"],
         rejected_reason="" if delivered else _failure_reason(gates_result["gates"]),
     )
-    md_path = out_dir / f"gate-report-{key}.md"
-    json_path = out_dir / f"gate-report-{key}.json"
+    md_path = out_dir / f"gate-report-{report_key}.md"
+    json_path = out_dir / f"gate-report-{report_key}.json"
     md_path.write_text(md_text, encoding="utf-8")
     json_path.write_text(json_text, encoding="utf-8")
     return {
         "quality": gates_result["quality"],
         "delivered": delivered,
         "gates": gates_result["gates"],
-        "key": key,
+        "key": report_key,
         "md": md_path,
         "json": json_path,
     }

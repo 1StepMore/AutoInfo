@@ -60,6 +60,17 @@ def _hash8(basis: str) -> str:
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:8]
 
 
+def _relative_path(path: str | Path, kb_root: Path) -> str:
+    """Return *path* relative to *kb_root* when possible."""
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        return candidate.as_posix()
+    try:
+        return candidate.resolve().relative_to(kb_root.resolve()).as_posix()
+    except (ValueError, OSError):
+        return str(candidate)
+
+
 def _date_of(value: Any, path: Path) -> str:
     if isinstance(value, datetime):
         return value.date().isoformat()
@@ -190,11 +201,14 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     return row is not None
 
 
-def rekey_index(db_path: Path, changes: list[Change]) -> list[dict[str, str]]:
+def rekey_index(
+    db_path: Path, changes: list[Change], kb_root: Path | None = None
+) -> list[dict[str, str]]:
     """Rekey dependent rows before the caller rebuilds the index from disk."""
     if not db_path.is_file() or not changes:
         return []
 
+    root = (kb_root or (db_path.parent / "knowledge")).resolve()
     errors: list[dict[str, str]] = []
     id_map = {change.old_id: change.new_id for change in changes}
     conn = sqlite3.connect(db_path)
@@ -220,7 +234,7 @@ def rekey_index(db_path: Path, changes: list[Change]) -> list[dict[str, str]]:
                         continue
                     conn.execute(
                         "UPDATE entries SET entry_id = ?, file_path = ? WHERE entry_id = ?",
-                        (change.new_id, change.new_path, change.old_id),
+                        (change.new_id, _relative_path(change.new_path, root), change.old_id),
                     )
                 if tables["entities"]:
                     conn.execute(
@@ -270,6 +284,39 @@ def rekey_index(db_path: Path, changes: list[Change]) -> list[dict[str, str]]:
     return errors
 
 
+def normalize_index_paths(db_path: Path, kb_root: Path, *, apply: bool = False) -> dict[str, int]:
+    """Rewrite absolute ``file_path`` values to KB-relative POSIX paths."""
+    counts = {"entries": 0, "versions": 0}
+    if not db_path.is_file():
+        return counts
+
+    conn = sqlite3.connect(db_path)
+    try:
+        with conn:
+            for table, key, count_key in (
+                ("entries", "entry_id", "entries"),
+                ("entry_versions", "version_id", "versions"),
+            ):
+                if not _table_exists(conn, table):
+                    continue
+                rows = conn.execute(f"SELECT {key}, file_path FROM {table}").fetchall()
+                for row_key, stored in rows:
+                    if not stored:
+                        continue
+                    relative = _relative_path(stored, kb_root)
+                    if relative == stored:
+                        continue
+                    counts[count_key] += 1
+                    if apply:
+                        conn.execute(
+                            f"UPDATE {table} SET file_path = ? WHERE {key} = ?",
+                            (relative, row_key),
+                        )
+    finally:
+        conn.close()
+    return counts
+
+
 def rebuild_index(kb_root: Path) -> dict[str, Any]:
     from autoinfo.kb import KBStore
 
@@ -305,12 +352,14 @@ def main(argv: list[str] | None = None) -> int:
     changes, errors, skipped = plan_migration(kb_root, include_wiki=args.include_wiki)
     applied_errors: list[dict[str, str]] = []
     reindexed: dict[str, Any] | None = None
+    path_rewrites = normalize_index_paths(root / "autoinfo.db", kb_root, apply=False)
 
     if args.apply and not errors:
         applied_errors = apply_changes(changes)
         if not applied_errors:
-            applied_errors = rekey_index(root / "autoinfo.db", changes)
+            applied_errors = rekey_index(root / "autoinfo.db", changes, kb_root=kb_root)
         if not applied_errors:
+            path_rewrites = normalize_index_paths(root / "autoinfo.db", kb_root, apply=True)
             reindexed = rebuild_index(kb_root)
             if reindexed.get("errors"):
                 applied_errors = [dict(item) for item in reindexed["errors"]]
@@ -323,6 +372,7 @@ def main(argv: list[str] | None = None) -> int:
         "changes": [asdict(change) for change in changes],
         "errors": errors,
         "skipped": skipped,
+        "path_rewrites": path_rewrites,
         "reindexed": reindexed,
     }
     if args.json:

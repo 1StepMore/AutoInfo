@@ -50,9 +50,7 @@ def _iter_entries(knowledge_root: Path) -> Iterator[Path]:
                 continue
             for md_file in tier_dir.rglob("*.md"):
                 if _WIKI_MARKER in md_file.parts:
-                    raise RuntimeError(
-                        f"refusing to touch 03-Wiki path: {md_file}"
-                    )
+                    raise RuntimeError(f"refusing to touch 03-Wiki path: {md_file}")
                 yield md_file
 
 
@@ -112,9 +110,10 @@ def prune_missing_index_rows(
     outside: list[tuple[str, str]] = []
     for row in rows:
         entry_id, domain, file_path = row["entry_id"], row["domain"] or "", row["file_path"] or ""
-        if not (file_path and Path(file_path).is_file()):
+        resolved = store.index._resolve_file_path(file_path)
+        if not (resolved and Path(resolved).is_file()):
             missing.append((entry_id, domain))
-        elif not _is_kb_file(file_path, knowledge_root):
+        elif not _is_kb_file(resolved, knowledge_root):
             outside.append((entry_id, domain))
 
     per_domain: dict[str, list[int]] = {}
@@ -188,8 +187,7 @@ def main(argv: list[str]) -> int:
             print(entry)
 
     print(
-        f"{len(empty)} empty {verb} / {scanned} scanned "
-        f"(min content: {MIN_KB_CONTENT_CHARS} chars)"
+        f"{len(empty)} empty {verb} / {scanned} scanned (min content: {MIN_KB_CONTENT_CHARS} chars)"
     )
     return 0
 

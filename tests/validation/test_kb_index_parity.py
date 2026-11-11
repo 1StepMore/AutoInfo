@@ -53,6 +53,8 @@ def test_no_index_row_points_at_missing_or_non_tier_file() -> None:
     offenders = []
     for entry_id, file_path in rows:
         path = Path(file_path) if file_path else None
+        if path is not None and not path.is_absolute():
+            path = KNOWLEDGE / path
         if path is None or not path.is_file():
             offenders.append(f"{entry_id}: file missing ({file_path!r})")
             continue

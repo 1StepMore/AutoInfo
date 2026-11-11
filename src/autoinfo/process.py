@@ -349,6 +349,9 @@ class ProcessResult:
         Number of KB entries actually written.
     errors : list[dict]
         Per-item error details.
+    g0_blocked : int
+        Items blocked by the G0 schema-integrity hard gate (they never reach
+        extraction or storage; graded into CLI exit code 2, #751).
     duration_s : float
         Wall-clock duration of the run.
     per_item_logs : list[dict]
@@ -363,6 +366,7 @@ class ProcessResult:
     passed_gates: int = 0
     kb_entries_created: int = 0
     errors: list[dict[str, Any]] = field(default_factory=list)
+    g0_blocked: int = 0
     duration_s: float = 0.0
     per_item_logs: list[dict[str, Any]] = field(default_factory=list)
     token_usage: dict[str, Any] = field(
@@ -1276,6 +1280,7 @@ def run_processing(
             "kb_entries_created": 0,
             "passed_gates": 0,
             "errors": [],
+            "g0_blocked": 0,
             "discovered": [],
             "logged": True,
         }
@@ -1301,6 +1306,7 @@ def run_processing(
                     "G0 blocked item %s — skipping extraction and storage",
                     item.id,
                 )
+                stats["g0_blocked"] = 1
                 stats["logged"] = False
                 return item_log, stats
 
@@ -1799,6 +1805,7 @@ def run_processing(
                     "kb_entries_created": 0,
                     "passed_gates": 0,
                     "errors": [{"item_id": str(idx), "error": str(exc)}],
+                    "g0_blocked": 0,
                     "discovered": [],
                     "logged": True,
                 }
@@ -1822,6 +1829,7 @@ def run_processing(
             result.kb_entries_created += stats["kb_entries_created"]
             result.passed_gates += stats["passed_gates"]
             result.errors.extend(stats["errors"])
+            result.g0_blocked += stats["g0_blocked"]
 
             # Keyword auto-discovery writes (single-threaded — file I/O).
             # Toggle + cap (#179): when disabled nothing is written; once the

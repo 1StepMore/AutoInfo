@@ -7,9 +7,10 @@ Usage::
 Exit codes (#725): ``0`` all items processed successfully; ``1``
 environment/config error (the run aborted — e.g. domain not found, invalid
 config; fixing it never means retrying items); ``2`` partial dirty-data
-failure (the run completed but some items failed — review the items, don't
-blindly rerun). Any non-zero code still means "needs attention": schedulers
-keyed on ``rc == 0`` are unaffected.
+failure (the run completed but some items failed or were blocked by the G0
+schema-integrity gate — review the items, don't blindly rerun). Any non-zero
+code still means "needs attention": schedulers keyed on ``rc == 0`` are
+unaffected.
 """
 
 from __future__ import annotations
@@ -24,9 +25,10 @@ from ._output import emit_if_global, fail_if_global  # noqa: E402
 
 app = typer.Typer()
 
-# Partial dirty-data failure (#725): the run completed but ``result.errors``
-# is non-empty. Kept non-zero (rc == 0 schedulers unchanged) while distinct
-# from ``1`` so "review the data" is tellable apart from "fix the environment".
+# Partial dirty-data failure (#725/#751): the run completed but ``result.errors``
+# is non-empty or the G0 hard gate blocked items. Kept non-zero (rc == 0
+# schedulers unchanged) while distinct from ``1`` so "review the data" is
+# tellable apart from "fix the environment".
 EXIT_PARTIAL_FAILURE = 2
 
 
@@ -123,8 +125,8 @@ def process(
             "domain": result.domain,
         }
         if emit_if_global(noop):
-            if result.errors:
-                # Partial dirty-data failure (#725) → 2.
+            if result.errors or result.g0_blocked:
+                # Partial dirty-data failure (#725/#751) → 2.
                 raise typer.Exit(code=EXIT_PARTIAL_FAILURE)
             return
         if json_output:
@@ -141,12 +143,13 @@ def process(
             "passed_gates": result.passed_gates,
             "kb_entries_created": result.kb_entries_created,
             "errors": result.errors,
+            "g0_blocked": result.g0_blocked,
             "duration_s": result.duration_s,
             "per_item_logs": result.per_item_logs,
         }
         if emit_if_global(full):
-            if result.errors:
-                # Partial dirty-data failure (#725) → 2.
+            if result.errors or result.g0_blocked:
+                # Partial dirty-data failure (#725/#751) → 2.
                 raise typer.Exit(code=EXIT_PARTIAL_FAILURE)
             return
         if json_output:
@@ -157,7 +160,7 @@ def process(
     # Partial dirty-data failure (#725): the run completed but some items
     # failed → exit 2, still non-zero (rc == 0 schedulers unaffected); the
     # code separates "review the data" from "fix the environment" (1).
-    if result.errors:
+    if result.errors or result.g0_blocked:
         raise typer.Exit(code=EXIT_PARTIAL_FAILURE)
 
 
@@ -220,3 +223,8 @@ def _print_human(result: ProcessResult) -> None:
     if result.errors:
         summary = f"  {len(result.errors)} item(s) failed processing"
         typer.echo(summary, err=True)
+    if result.g0_blocked:
+        typer.echo(
+            f"  {result.g0_blocked} item(s) blocked by G0 schema integrity",
+            err=True,
+        )

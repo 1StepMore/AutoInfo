@@ -126,11 +126,6 @@ jobs:
         run: python scripts/surface_parity.py --check
       - name: End-user coverage matrix parity (coverage_matrix --check-enduser-doc)
         run: python scripts/coverage_matrix.py --check-enduser-doc docs/dev/enduser-coverage-matrix.md
-      # Agent-governance consistency gate (A13, guideline §6.3): C3 line ceiling /
-      # C4 contract four-elements / C5 placeholder residue / C7 expectations orphans.
-      # Deterministic, non-LLM; exit != 0 fails this required check and blocks merge.
-      - name: Agent-governance consistency checks (C3/C4/C5/C7)
-        run: python .agents/scripts/consistency_check.py --check
       # Governance (plan 2026-11-06, T09) — BLOCKING as of the observation
       # period's end (7 governance PRs merged, one deliberate red drill
       # recorded: PR #712 caught a tampered count report-only; PR #713 is
@@ -145,3 +140,22 @@ jobs:
         run: |
           python -m autoinfo.gov check --write-evidence --json
           python -m autoinfo.gov status --only derived_parity --json
+
+  # Agent-governance consistency gate (A13, guideline §6.3; issue #728): C3 line
+  # ceiling / C4 contract four-elements / C5 placeholder residue / C7
+  # expectations orphans. Its own job so the governance verdict is an
+  # independent red/green signal (and independently re-runnable) rather than a
+  # step inside "Derived doc/surface parity". Deterministic, stdlib-only,
+  # non-LLM; exit != 0 fails the job. The ruleset registration of this check as
+  # required is a post-merge Owner/code-profile operation — this PR only adds
+  # the job.
+  agent-governance-consistency:
+    name: Agent-governance consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Agent-governance consistency checks (C3/C4/C5/C7)
+        run: python .agents/scripts/consistency_check.py --check

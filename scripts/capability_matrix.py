@@ -480,7 +480,8 @@ def repo_relative(path: Path) -> str:
     try:
         return path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
-        return str(path)
+        # Portable published form: forward slashes on every platform (#757).
+        return path.as_posix()
 
 
 def check_l2(artifact_path: Path) -> dict[str, Any] | None:

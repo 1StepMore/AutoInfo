@@ -376,14 +376,14 @@ class TestAudioPersistence:
         from autoinfo.output import _make_audio_persist_path
 
         path = _make_audio_persist_path("my-domain")
-        assert path.startswith("exports/my-domain/podcast/ep-")
+        assert Path(path).as_posix().startswith("exports/my-domain/podcast/ep-")
         assert path.endswith(".mp3")
 
     def test_make_audio_persist_path_none_domain(self) -> None:
         from autoinfo.output import _make_audio_persist_path
 
         path = _make_audio_persist_path(None)
-        assert path.startswith("exports/all/podcast/ep-")
+        assert Path(path).as_posix().startswith("exports/all/podcast/ep-")
         assert path.endswith(".mp3")
 
 

@@ -141,7 +141,9 @@ def export_kb(
             for d in known_domains:
                 entries.extend(index.list_entries(d, limit=99999))
 
-    domain_label = domain if domain else "*"
+    # ``*`` is forbidden in Windows filenames (OSError 22 on every export
+    # format for domain=None) — use a plain token (#757).
+    domain_label = domain if domain else "all"
 
     # --- Source attribution enrichment for text formats (F46) --------------
     if entries and format in ("json", "csv"):
@@ -326,7 +328,10 @@ def _export_markdown(
     with tarfile.open(str(out_path), "w:gz") as tar:
         if source_dir.is_dir():
             for md_file in sorted(source_dir.rglob("*.md")):
-                arcname = str(md_file.relative_to(knowledge_dir))
+                # POSIX-style member names: tar/zip archives use ``/`` per
+                # the archive format spec; ``str(Path)`` would embed ``\``
+                # on Windows (#757).
+                arcname = md_file.relative_to(knowledge_dir).as_posix()
                 tar.add(str(md_file), arcname=arcname)
                 count += 1
 
@@ -380,6 +385,7 @@ def _export_json(
     out_path.write_text(
         json.dumps(export_data, ensure_ascii=False, indent=2),
         encoding="utf-8",
+        newline="\n",
     )
 
     return {
@@ -921,7 +927,7 @@ def _export_sitemap(
         base_url=base_url,
         entries=sitemap_entries,
     )
-    out_path.write_text(xml, encoding="utf-8")
+    out_path.write_text(xml, encoding="utf-8", newline="\n")
 
     return {
         "format": "sitemap",
@@ -1084,7 +1090,7 @@ def _export_graphml(
 
     out_name = f"autoinfo-graphml-{domain_label}-{timestamp}.graphml"
     out_path = domain_dir / out_name
-    out_path.write_text(xml_bytes, encoding="utf-8")
+    out_path.write_text(xml_bytes, encoding="utf-8", newline="\n")
 
     return {
         "format": "graphml",

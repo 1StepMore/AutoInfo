@@ -1177,7 +1177,9 @@ def _package(
         gates = gate_eval.get("gates", {})
         quality = gate_eval.get("quality", "FAIL")
         entry = {
-            "file": str(dest.relative_to(stage)),
+            # POSIX separators: archive/manifest paths are portable across
+            # platforms; ``str(Path)`` would embed ``\`` on Windows (#757).
+            "file": dest.relative_to(stage).as_posix(),
             "kind": bucket,
             "source": rel,
             "size": src.stat().st_size,
@@ -1198,7 +1200,7 @@ def _package(
                     pass
             rejected.append(
                 {
-                    "file": str(rej_dest.relative_to(stage)),
+                    "file": rej_dest.relative_to(stage).as_posix(),
                     "source": rel,
                     "reason": _failure_reason(gates),
                     # 01-QA-GATES: the gate determinations at rejection time, so
@@ -1381,7 +1383,10 @@ def _package(
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in stage.rglob("*"):
             if f.is_file():
-                zf.write(f, f.relative_to(stage))
+                # ZIP (APPNOTE) member names use ``/`` regardless of the
+                # host OS; a Windows ``str(Path)`` arcname breaks unzip on
+                # the receiving side (#757).
+                zf.write(f, f.relative_to(stage).as_posix())
     shutil.rmtree(stage)
     return zip_path
 

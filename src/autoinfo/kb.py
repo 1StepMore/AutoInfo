@@ -3157,7 +3157,7 @@ class KBStore:
         body = _build_body(item, extraction)
 
         full_content = f"---\n{frontmatter}---\n\n{body}"
-        file_path.write_text(full_content, encoding="utf-8")
+        file_path.write_text(full_content, encoding="utf-8", newline="\n")
 
         # --- index in SQLite + FTS5 -------------------------------------------
         # Versioning: save a .bak copy if this entry_id already exists
@@ -3729,7 +3729,7 @@ class KBStore:
                 parts.append(f"- {su}\n")
             parts.append("\n")
         parts.append(merged_body)
-        file_path.write_text("".join(parts), encoding="utf-8")
+        file_path.write_text("".join(parts), encoding="utf-8", newline="\n")
 
         # Index in SQLite
         self.index.index_entry(entry)
@@ -3811,7 +3811,7 @@ class KBStore:
             new_path = Path(*parts)
 
             new_path.parent.mkdir(parents=True, exist_ok=True)
-            new_path.write_text(raw_content, encoding="utf-8")
+            new_path.write_text(raw_content, encoding="utf-8", newline="\n")
             file_path.unlink()
 
             custom_fields_raw = meta.get("custom_fields") or "{}"
@@ -3855,7 +3855,7 @@ class KBStore:
             archive_dir = self.base_path / "_archive" / meta["domain"]
             archive_path = archive_dir / file_path.name
             archive_dir.mkdir(parents=True, exist_ok=True)
-            archive_path.write_text(raw_content, encoding="utf-8")
+            archive_path.write_text(raw_content, encoding="utf-8", newline="\n")
             file_path.unlink()
 
             with self.index._connect() as conn:
@@ -3960,7 +3960,7 @@ class KBStore:
             "The admission gate rejected this 02-Draft entry; it was **not** "
             "moved to 03-Wiki and remains in 02-Draft.\n"
         )
-        marker.write_text(f"---\n{frontmatter}---\n\n{body}", encoding="utf-8")
+        marker.write_text(f"---\n{frontmatter}---\n\n{body}", encoding="utf-8", newline="\n")
         logger.warning(
             "Promotion rejected for %s (%s) — marker written to %s",
             entry.entry_id,
@@ -4089,7 +4089,7 @@ class KBStore:
         new_path = Path(*parts)
 
         new_path.parent.mkdir(parents=True, exist_ok=True)
-        new_path.write_text(raw_content, encoding="utf-8")
+        new_path.write_text(raw_content, encoding="utf-8", newline="\n")
         file_path.unlink()
 
         promoted_entry = replace(
@@ -4340,7 +4340,7 @@ class KBStore:
         new_path = Path(*parts)
 
         new_path.parent.mkdir(parents=True, exist_ok=True)
-        new_path.write_text(raw_content, encoding="utf-8")
+        new_path.write_text(raw_content, encoding="utf-8", newline="\n")
         file_path.unlink()
 
         demoted_entry = replace(
@@ -4876,7 +4876,7 @@ class KBStore:
                 body = body.rstrip() + new_section
 
             new_content = f"---\n{info['fm_text']}---\n\n{body}"
-            Path(info["file_path"]).write_text(new_content, encoding="utf-8")
+            Path(info["file_path"]).write_text(new_content, encoding="utf-8", newline="\n")
             stats["files_updated"] += 1
 
         return stats
@@ -5064,7 +5064,11 @@ class KBStore:
                         width=120,
                     )
                     body = raw[end + 3 :].lstrip("\n")
-                    file_path.write_text(f"---\n{new_fm}---\n\n{body}", encoding="utf-8")
+                    file_path.write_text(
+                        f"---\n{new_fm}---\n\n{body}",
+                        encoding="utf-8",
+                        newline="\n",
+                    )
 
         return {
             "deleted": True,
@@ -5120,7 +5124,11 @@ class KBStore:
                         width=120,
                     )
                     body = raw[end + 3 :].lstrip("\n")
-                    file_path.write_text(f"---\n{new_fm}---\n\n{body}", encoding="utf-8")
+                    file_path.write_text(
+                        f"---\n{new_fm}---\n\n{body}",
+                        encoding="utf-8",
+                        newline="\n",
+                    )
 
         return {
             "restored": True,
@@ -5482,7 +5490,7 @@ def update_frontmatter_field(file_path: str, key: str, value: Any) -> bool:
         width=120,
     )
     body = raw[end + 3 :].lstrip("\n")
-    fp.write_text(f"---\n{new_fm}---\n\n{body}", encoding="utf-8")
+    fp.write_text(f"---\n{new_fm}---\n\n{body}", encoding="utf-8", newline="\n")
     return True
 
 

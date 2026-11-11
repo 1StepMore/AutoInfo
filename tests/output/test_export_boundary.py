@@ -154,9 +154,7 @@ def _build_project(root: Path) -> Path:
     config_dir = root / ".autoinfo"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "config.yaml"
-    config_path.write_text(
-        yaml.dump(_SAMPLE_CONFIG, default_flow_style=False), encoding="utf-8"
-    )
+    config_path.write_text(yaml.dump(_SAMPLE_CONFIG, default_flow_style=False), encoding="utf-8")
 
     with patch("autoinfo.config.get_config_path", return_value=config_path):
         store = KBStore(base_path=root / "knowledge")
@@ -185,10 +183,7 @@ def _build_project(root: Path) -> Path:
                 source_type="api",
                 source_url=_ENTRY_URLS[1],
                 title="Embryo selection advances with AI scoring",
-                content=(
-                    "AI-based embryo scoring selects viable embryos more "
-                    "accurately."
-                ),
+                content=("AI-based embryo scoring selects viable embryos more accurately."),
                 collected_at="2026-07-16T10:00:00Z",
                 domain=DOMAIN,
                 source_platform="pubmed",
@@ -240,10 +235,48 @@ def _export(project_dir: Path, fmt: str, **kwargs: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _mask_project_prefix(text: str, project_dir: Path) -> str:
+    """Mask the tmp project root with ``<PROJECT>``, portable across OSes.
+
+    Exported paths render OS-natively (``C:\\...`` on Windows, JSON-escaped
+    as ``C:\\\\...``), while the committed golden is POSIX. Replace the
+    project prefix in every separator style, then normalize the separators
+    of the masked path tail. Both steps are no-ops on POSIX, so the golden
+    form is unchanged there (#757).
+    """
+    root = str(project_dir.resolve())
+    raw = root
+    json_escaped = raw.replace("\\", "\\\\")
+    posix = project_dir.as_posix()
+    json_escaped_posix = posix.replace("/", "\\/")
+    for form in (raw, json_escaped, posix, json_escaped_posix):
+        text = text.replace(form, "<PROJECT>")
+    if "\\" not in text:
+        return text
+    # Normalize separators inside each masked path (from ``<PROJECT>`` up to
+    # the end-of-token boundary); text outside masked paths is untouched, so
+    # legitimate ``\\n`` JSON escapes in content survive.
+    out: list[str] = []
+    i = 0
+    marker = "<PROJECT>"
+    while True:
+        j = text.find(marker, i)
+        if j == -1:
+            out.append(text[i:])
+            break
+        out.append(text[i:j])
+        k = j + len(marker)
+        while k < len(text) and text[k] not in "\"' \n\r\t)]}":
+            k += 1
+        out.append(text[j:k].replace("\\\\", "/").replace("\\", "/"))
+        i = k
+    return "".join(out)
+
+
 def _normalized_json(export_path: Path, project_dir: Path) -> str:
     """Return the JSON export text with the tmp project root masked."""
     text = export_path.read_text(encoding="utf-8")
-    return text.replace(str(project_dir.resolve()), "<PROJECT>")
+    return _mask_project_prefix(text, project_dir)
 
 
 def _normalized_markdown(tar_path: Path) -> str:
@@ -339,9 +372,7 @@ class TestExportSqlite:
 
         conn = sqlite3.connect(str(out_path))
         try:
-            rows = conn.execute(
-                "SELECT title FROM entries ORDER BY collected_at DESC"
-            ).fetchall()
+            rows = conn.execute("SELECT title FROM entries ORDER BY collected_at DESC").fetchall()
             count = conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
         finally:
             conn.close()
@@ -422,16 +453,12 @@ class TestExportGraphml:
         # No entities seeded in the fixture KB.
         assert result["entries_count"] == 0
         out_path = Path(result["path"])
-        assert out_path.name == (
-            f"autoinfo-graphml-{DOMAIN}-{FROZEN_TIMESTAMP}.graphml"
-        )
+        assert out_path.name == (f"autoinfo-graphml-{DOMAIN}-{FROZEN_TIMESTAMP}.graphml")
 
         root = ET.parse(str(out_path)).getroot()
         ns = "{http://graphml.graphdrawing.org/xmlns}"
         assert root.tag == f"{ns}graphml"
-        assert {k.get("id") for k in root.findall(f"{ns}key")} == {
-            "k0", "k1", "k2", "k3"
-        }
+        assert {k.get("id") for k in root.findall(f"{ns}key")} == {"k0", "k1", "k2", "k3"}
         assert root.find(f"{ns}graph") is not None
 
 
@@ -440,9 +467,7 @@ class TestExportAgent:
         result = _export(project, "agent")
 
         assert result["@type"] == "KnowledgeBaseExport"
-        assert result["@context"] == (
-            "https://autoinfo.ai/schemas/knowledge-base-export-v1"
-        )
+        assert result["@context"] == ("https://autoinfo.ai/schemas/knowledge-base-export-v1")
         assert result["success"] is True
         assert result["domain"] == DOMAIN_LABEL
         # Frozen uuid + clock.
@@ -517,8 +542,8 @@ class TestGoldenRenders:
         # Guard against goldens drifting back into gitignored locations.
         assert _MARKDOWN_GOLDEN.is_file()
         assert _JSON_GOLDEN.is_file()
-        assert "tests/fixtures/golden" in str(_MARKDOWN_GOLDEN)
-        assert "tests/fixtures/golden" in str(_JSON_GOLDEN)
+        assert "tests/fixtures/golden" in _MARKDOWN_GOLDEN.as_posix()
+        assert "tests/fixtures/golden" in _JSON_GOLDEN.as_posix()
 
 
 # ---------------------------------------------------------------------------
@@ -531,8 +556,7 @@ class TestOptionalFormats:
     @pytest.mark.skipif(
         not HAVE_WEASYPRINT,
         reason=(
-            "PDF export requires weasyprint + markdown "
-            "(PyMuPDF/fitz is only used for PDF *import*)"
+            "PDF export requires weasyprint + markdown (PyMuPDF/fitz is only used for PDF *import*)"
         ),
     )
     def test_pdf_export_writes_pdf(self, project: Path) -> None:
@@ -545,9 +569,7 @@ class TestOptionalFormats:
         assert out_path.read_bytes().startswith(b"%PDF")
 
     @pytest.mark.optional
-    @pytest.mark.skipif(
-        not HAVE_EBOOKLIB, reason="EPUB export requires ebooklib"
-    )
+    @pytest.mark.skipif(not HAVE_EBOOKLIB, reason="EPUB export requires ebooklib")
     def test_epub_export_writes_epub(self, project: Path) -> None:
         result = _export(project, "epub")
 
@@ -583,9 +605,7 @@ def _capture_goldens() -> None:
 
     with tempfile.TemporaryDirectory() as td:
         project_dir = _build_project(Path(td))
-        _MARKDOWN_GOLDEN.write_text(
-            _render_markdown_golden(project_dir), encoding="utf-8"
-        )
+        _MARKDOWN_GOLDEN.write_text(_render_markdown_golden(project_dir), encoding="utf-8")
         _JSON_GOLDEN.write_text(_render_json_golden(project_dir), encoding="utf-8")
     print(f"wrote {_MARKDOWN_GOLDEN}")
     print(f"wrote {_JSON_GOLDEN}")

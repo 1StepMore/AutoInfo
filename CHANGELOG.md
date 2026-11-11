@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.30.0](https://github.com/1StepMore/AutoInfo/compare/v1.29.0...v1.30.0) (2026-11-11)
+
+
+### Features
+
+* **mvp:** complete pilot delivery package ([#740](https://github.com/1StepMore/AutoInfo/issues/740)) ([#761](https://github.com/1StepMore/AutoInfo/issues/761)) ([4fff040](https://github.com/1StepMore/AutoInfo/commit/4fff04039ddfc1a0805dbda80958f02a71c2ae36))
+
 ## [1.29.0](https://github.com/1StepMore/AutoInfo/compare/v1.28.12...v1.29.0) (2026-11-11)
 
 

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.28.12](https://github.com/1StepMore/AutoInfo/compare/v1.28.11...v1.28.12) (2026-11-11)
+
+
+### Bug Fixes
+
+* **process:** fail the run when LLM extraction returns empty ([#750](https://github.com/1StepMore/AutoInfo/issues/750)) ([#760](https://github.com/1StepMore/AutoInfo/issues/760)) ([b601475](https://github.com/1StepMore/AutoInfo/commit/b6014753758f79ee21f279db0fcea729ca572e5c))
+
 ## [1.28.11](https://github.com/1StepMore/AutoInfo/compare/v1.28.10...v1.28.11) (2026-11-11)
 
 

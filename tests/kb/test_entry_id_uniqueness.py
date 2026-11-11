@@ -197,8 +197,11 @@ class TestEntryIdMigration:
 
         with closing(sqlite3.connect(tmp_path / "autoinfo.db")) as conn:
             ids = {row[0] for row in conn.execute("SELECT entry_id FROM entries")}
+            paths = dict(conn.execute("SELECT entry_id, file_path FROM entries"))
         assert "medical-research-general-duplicate-title" not in ids
         assert {change.new_id for change in changes} <= ids
+        for change in changes:
+            assert paths[change.new_id] == Path(change.new_path).relative_to(kb).as_posix()
 
         again, again_errors, _ = migration.plan_migration(kb)
         assert again_errors == []

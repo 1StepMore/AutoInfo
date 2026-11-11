@@ -559,8 +559,43 @@ class SQLiteIndex:
     and ordering without reading Markdown files.
     """
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, base_path: Path | None = None) -> None:
         self.db_path = db_path
+        # ``file_path`` is stored relative to the KB root so a checkout can
+        # move between machines (#695).  The DB sits beside ``knowledge/``
+        # in production; tests may pass an explicit base.
+        self.base_path = (base_path or (db_path.parent / "knowledge")).resolve()
+
+    def _store_file_path(self, file_path: str | Path | None) -> str:
+        """Normalise a path for the database: relative to the KB root."""
+        if not file_path:
+            return ""
+        path = Path(file_path)
+        if not path.is_absolute():
+            return path.as_posix()
+        try:
+            return path.resolve().relative_to(self.base_path).as_posix()
+        except (ValueError, OSError):
+            # A path outside the KB root (e.g. /tmp fixture) cannot be
+            # represented relatively; keep the absolute path.
+            return str(path)
+
+    def _resolve_file_path(self, file_path: str | Path | None) -> str:
+        """Turn a stored path back into an absolute path for callers."""
+        if not file_path:
+            return ""
+        path = Path(file_path)
+        if path.is_absolute():
+            return str(path)
+        return str((self.base_path / path).resolve())
+
+    def _resolved_row(self, row: Any) -> dict[str, Any]:
+        """Copy a DB row, resolving ``file_path`` for the public API."""
+        data = dict(row)
+        stored = data.get("file_path")
+        if stored:
+            data["file_path"] = self._resolve_file_path(stored)
+        return data
 
     # ------------------------------------------------------------------
     # Connection management
@@ -854,7 +889,7 @@ class SQLiteIndex:
                     entry.relevance_score,
                     entry.dedup_status,
                     entry.source_score,
-                    entry.file_path,
+                    self._store_file_path(entry.file_path),
                     json.dumps(entry.tags, ensure_ascii=False),
                     json.dumps(custom_fields, ensure_ascii=False),
                     entry.language,
@@ -922,7 +957,7 @@ class SQLiteIndex:
                 f"SELECT * FROM entries WHERE {where} ORDER BY collected_at DESC LIMIT ? OFFSET ?",
                 (*params, limit, offset),
             ).fetchall()
-            return [dict(r) for r in rows]
+            return [self._resolved_row(r) for r in rows]
 
     def list_entries_by_tier(
         self,
@@ -1019,7 +1054,7 @@ class SQLiteIndex:
                 f"SELECT * FROM entries WHERE {where} ORDER BY collected_at DESC LIMIT ? OFFSET ?",
                 (*params, limit, offset),
             ).fetchall()
-            return [dict(r) for r in rows]
+            return [self._resolved_row(r) for r in rows]
 
     def get_entry(self, entry_id: str) -> dict[str, Any] | None:
         """Return a single entry dict by *entry_id*, or ``None``."""
@@ -1028,7 +1063,7 @@ class SQLiteIndex:
                 "SELECT * FROM entries WHERE entry_id = ?",
                 (entry_id,),
             ).fetchone()
-            return dict(row) if row else None
+            return self._resolved_row(row) if row else None
 
     def get_entry_by_source_url(self, source_url: str) -> dict[str, Any] | None:
         """Return the most recent entry whose ``source_url`` exactly matches.
@@ -1043,7 +1078,7 @@ class SQLiteIndex:
                 "SELECT * FROM entries WHERE source_url = ? ORDER BY collected_at DESC LIMIT 1",
                 (source_url,),
             ).fetchone()
-            return dict(row) if row else None
+            return self._resolved_row(row) if row else None
 
     def delete_index_row(self, entry_id: str) -> bool:
         """Remove *entry_id* from every index table, leaving the file on disk.
@@ -1103,7 +1138,7 @@ class SQLiteIndex:
                 return False
 
             _ensure_wiki_delete_allowed(row["tier"], actor=actor, entry_id=entry_id)
-            file_path = row["file_path"]
+            file_path = self._resolve_file_path(row["file_path"])
 
         if not self.delete_index_row(entry_id):
             return False
@@ -1129,6 +1164,7 @@ class SQLiteIndex:
             "source_type",
             "source_platform",
             "dedup_status",
+            "file_path",
         }
         if field not in allowed:
             raise ValueError(
@@ -1140,7 +1176,7 @@ class SQLiteIndex:
                 f"SELECT * FROM entries WHERE {field} LIKE ? ORDER BY collected_at DESC",
                 (f"%{value}%",),
             ).fetchall()
-            return [dict(r) for r in rows]
+            return [self._resolved_row(r) for r in rows]
 
     # ------------------------------------------------------------------
     # Relations (item linking)
@@ -1383,7 +1419,7 @@ class SQLiteIndex:
                 """INSERT INTO entry_versions
                    (version_id, entry_id, version_num, file_path, comment, git_sha)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (version_id, entry_id, next_ver, str(bak_path), comment, git_sha),
+                (version_id, entry_id, next_ver, self._store_file_path(bak_path), comment, git_sha),
             )
 
         # Prune to max 5 versions
@@ -1410,7 +1446,7 @@ class SQLiteIndex:
                 return
             to_remove = len(rows) - max_versions
             for row in rows[:to_remove]:
-                fp = Path(row["file_path"])
+                fp = Path(self._resolve_file_path(row["file_path"]))
                 if fp.is_file():
                     fp.unlink(missing_ok=True)
                 conn.execute(
@@ -1428,7 +1464,7 @@ class SQLiteIndex:
                    ORDER BY version_num DESC""",
                 (entry_id,),
             ).fetchall()
-            return [dict(r) for r in rows]
+            return [self._resolved_row(r) for r in rows]
 
     def restore_entry_version(self, version_id: str) -> dict[str, Any]:
         """Restore an entry from a saved version backup.
@@ -1449,7 +1485,7 @@ class SQLiteIndex:
                 }
             version = dict(row)
 
-        bak_path = Path(version["file_path"])
+        bak_path = Path(self._resolve_file_path(version["file_path"]))
         if not bak_path.is_file():
             return {
                 "restored": False,
@@ -1469,7 +1505,7 @@ class SQLiteIndex:
                 "error": f"Entry '{version['entry_id']}' not found in index",
             }
 
-        orig_path = Path(entry_row["file_path"])
+        orig_path = Path(self._resolve_file_path(entry_row["file_path"]))
         orig_path.write_bytes(bak_path.read_bytes())
 
         return {
@@ -1583,8 +1619,8 @@ class SQLiteIndex:
                 "changed_fields_count": 0,
             }
 
-        va_path = Path(dict(va_row)["file_path"])
-        vb_path = Path(dict(vb_row)["file_path"])
+        va_path = Path(self._resolve_file_path(dict(va_row)["file_path"]))
+        vb_path = Path(self._resolve_file_path(dict(vb_row)["file_path"]))
 
         if not va_path.is_file():
             return {
@@ -1777,7 +1813,7 @@ class SQLiteIndex:
                 (since_collection_id,),
             ).fetchall()
 
-        entries = [dict(r) for r in rows]
+        entries = [self._resolved_row(r) for r in rows]
         domains: dict[str, int] = {}
         for e in entries:
             d = e.get("domain", "unknown")
@@ -2142,7 +2178,7 @@ class SQLiteIndex:
                     like_params,
                 ).fetchall()
                 # Convert to match FTS5 output shape
-                entries = [dict(r) for r in rows]
+                entries = [self._resolved_row(r) for r in rows]
                 total = len(entries)
                 paged = entries[offset : offset + limit]
 
@@ -2172,7 +2208,7 @@ class SQLiteIndex:
                     mode=mode,
                 )
 
-        entries = [dict(r) for r in rows]
+        entries = [self._resolved_row(r) for r in rows]
         total = len(entries)
         paged = entries[offset : offset + limit]
 
@@ -2406,7 +2442,7 @@ class SQLiteIndex:
         for row in rows:
             d = dict(row)
             rowid = d["rowid"]
-            file_path = d.get("file_path") or ""
+            file_path = self._resolve_file_path(d.get("file_path"))
             content = ""
             if file_path and Path(file_path).is_file():
                 raw = Path(file_path).read_text(encoding="utf-8")
@@ -2776,7 +2812,7 @@ class KBStore:
         self.min_content_chars = min_content_chars
         # Place the SQLite db alongside the knowledge directory
         db_path = self.base_path.parent / "autoinfo.db"
-        self.index = SQLiteIndex(db_path)
+        self.index = SQLiteIndex(db_path, base_path=self.base_path)
         self.index.init_db()
         # Ensure schema version is compatible (auto-migrates if needed)
         with self.index._connect() as conn:
@@ -3463,7 +3499,10 @@ class KBStore:
 
     def get_entry_by_path(self, file_path: str) -> dict[str, Any] | None:
         """Look up an entry by its file path and return full content."""
-        meta = self.index.search_by_field("file_path", file_path)
+        stored_path = self.index._store_file_path(file_path)
+        meta = self.index.search_by_field("file_path", stored_path)
+        if not meta and stored_path != file_path:
+            meta = self.index.search_by_field("file_path", file_path)
         if not meta:
             return None
         return self.get_entry(meta[0]["entry_id"])

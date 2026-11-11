@@ -17,6 +17,7 @@ htmlcov/
 collections/
 knowledge/
 outputs/
+outputs-archive/
 
 # Validation / delivery artifacts (reproducible, not for git)
 validation-deliveries/

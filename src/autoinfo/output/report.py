@@ -313,6 +313,7 @@ def _generate_executive_summary(
     try:
         fault_inject.maybe_fault("summary")
     except Exception:
+        _hub("mark_kb_fallback")("report_synthesis_deterministic")
         fallback = _hub("_deterministic_synthesis_fallback")(
             entries, summary_prefix="This report covers"
         )
@@ -412,6 +413,9 @@ def _generate_executive_summary(
     # N entries grouped into M themes: - **API**: N entry(ies)") leaked the
     # internal grouping/search mechanics to end users — use the user-facing
     # summary derived from the real entry titles instead.
+    # The product below is KB-derived template output, not LLM synthesis —
+    # provenance must say so or the matrix records a fake-green L3 (#771).
+    _hub("mark_kb_fallback")("report_synthesis_deterministic")
     fallback = _hub("_deterministic_synthesis_fallback")(
         entries, summary_prefix="This report covers"
     )

@@ -85,6 +85,44 @@ class TestComputeLayersDegraded:
         assert "L2-degraded" not in cm.HONEST_BLOCKS
 
 
+def test_auth_error_marks_report_fallback_provenance() -> None:
+    """#771 DoD: AuthenticationError during synthesis must flip provenance.
+
+    The real report path is exercised: the LLM synthesis call raises
+    litellm.AuthenticationError (present-but-invalid key), the extractor
+    legacy path fails the same way, and the deterministic fallback that
+    produces the artifact must mark the KB fallback so the matrix row can
+    never record llm_generated=true / L3.
+    """
+    import litellm
+
+    from autoinfo.output import report as report_mod
+
+    def boom(*_args: Any, **_kwargs: Any) -> str:
+        raise litellm.AuthenticationError(
+            message="401 - Invalid bearer token", llm_provider="openai", model="qwen"
+        )
+
+    output.reset_llm_provenance()
+    entries = [{"title": "t", "summary": "s", "source_url": "https://x"}]
+    with (
+        patch.object(report_mod, "_call_llm_for_report_synthesis", boom),
+        patch.object(report_mod, "_llm_json_extract", boom),
+    ):
+        result = report_mod._generate_executive_summary(
+            extractor=None,
+            entries=entries,
+            groupings=[],
+            product_family="report",
+            max_synthesis_attempts=1,
+            retry_backoff_seconds=0,
+        )
+    assert result["recommendations"], "deterministic fallback must produce content"
+    state = output.llm_provenance()
+    assert state["llm_generated"] is False, state
+    assert "report_synthesis_deterministic" in state["kb_fallback_reasons"]
+
+
 class TestMatrixRowRecordsProvenance:
     def _row(self, artifact: Path) -> dict[str, Any]:
         combo = SimpleNamespace(product="tutorial", format="markdown", gated=True, key="t")

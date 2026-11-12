@@ -26,6 +26,9 @@ import json
 import os
 import signal
 import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -47,9 +50,7 @@ class TestB02PortalPreferenceRename:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """show/update roundtrip works without AttributeError and persists prefs."""
-        monkeypatch.setattr(
-            "autoinfo.user_store._get_db_path", lambda: tmp_path / "users.db"
-        )
+        monkeypatch.setattr("autoinfo.user_store._get_db_path", lambda: tmp_path / "users.db")
         from typer.testing import CliRunner
 
         from autoinfo.cli import portal as portal_cli
@@ -84,15 +85,11 @@ class TestB02PortalPreferenceRename:
         }
 
         # show path must not raise (it read profile.delivery_prefs before)
-        result = runner.invoke(
-            portal_cli.app, ["preferences", "show", "--user-id", "b11-user"]
-        )
+        result = runner.invoke(portal_cli.app, ["preferences", "show", "--user-id", "b11-user"])
         assert result.exit_code == 0, result.exception
         assert "digest: False" in result.output
 
-    def test_api_portal_preferences_roundtrip(
-        self, tmp_path: Path
-    ) -> None:
+    def test_api_portal_preferences_roundtrip(self, tmp_path: Path) -> None:
         """GET/PUT /api/v1/portal/preferences roundtrip on delivery_preferences."""
         from autoinfo.api.server import app
         from autoinfo.models import UserProfile
@@ -111,9 +108,7 @@ class TestB02PortalPreferenceRename:
                 user_id=user_id,
                 name=profile.name,
                 email=kwargs.get("email", profile.email),
-                delivery_preferences=kwargs.get(
-                    "delivery_prefs", profile.delivery_preferences
-                ),
+                delivery_preferences=kwargs.get("delivery_prefs", profile.delivery_preferences),
             )
             return profile
 
@@ -122,9 +117,7 @@ class TestB02PortalPreferenceRename:
             patch("autoinfo.user_store.update_profile", side_effect=_update),
         ):
             with TestClient(app) as client:
-                resp = client.get(
-                    "/api/v1/portal/preferences", params={"user_id": "b11-api"}
-                )
+                resp = client.get("/api/v1/portal/preferences", params={"user_id": "b11-api"})
                 assert resp.status_code == 200
                 data = resp.json()["data"]
                 assert "delivery_preferences" in data
@@ -141,12 +134,8 @@ class TestB02PortalPreferenceRename:
                 assert data2["delivery_preferences"] == {"format": "json"}
 
                 # read-back roundtrip
-                resp3 = client.get(
-                    "/api/v1/portal/preferences", params={"user_id": "b11-api"}
-                )
-                assert resp3.json()["data"]["delivery_preferences"] == {
-                    "format": "json"
-                }
+                resp3 = client.get("/api/v1/portal/preferences", params={"user_id": "b11-api"})
+                assert resp3.json()["data"]["delivery_preferences"] == {"format": "json"}
 
 
 # ---------------------------------------------------------------------------
@@ -245,9 +234,7 @@ class TestB05CliExportMissingKeys:
         from autoinfo.cli.output import app as output_app
 
         runner = CliRunner()
-        with patch(
-            "autoinfo.cli.output.export_kb", return_value={"entries_count": 3}
-        ):
+        with patch("autoinfo.cli.output.export_kb", return_value={"entries_count": 3}):
             result = runner.invoke(
                 output_app,
                 ["export", "--domain", "medical-research", "--format", "json"],
@@ -293,12 +280,8 @@ class TestB07EbookLangDerivation:
                 "language": "zh",
             }
         ]
-        with patch(
-            "autoinfo.output.ebook.render_epub"
-        ) as mock_render:
-            mock_render.return_value = {
-                "data_b64": base64.b64encode(b"book").decode("ascii")
-            }
+        with patch("autoinfo.output.ebook.render_epub") as mock_render:
+            mock_render.return_value = {"data_b64": base64.b64encode(b"book").decode("ascii")}
             _export_epub(
                 tmp_path,
                 entries,
@@ -315,12 +298,8 @@ class TestB07EbookLangDerivation:
             {"title": "Untitled", "summary": "", "language": ""},
             {"title": "More", "summary": "body", "language": ""},
         ]
-        with patch(
-            "autoinfo.output.ebook.render_epub"
-        ) as mock_render:
-            mock_render.return_value = {
-                "data_b64": base64.b64encode(b"book").decode("ascii")
-            }
+        with patch("autoinfo.output.ebook.render_epub") as mock_render:
+            mock_render.return_value = {"data_b64": base64.b64encode(b"book").decode("ascii")}
             _export_epub(
                 tmp_path,
                 entries,
@@ -344,14 +323,10 @@ class TestB07EbookLangDerivation:
             patch("autoinfo.output.ebook.render_epub") as mock_render,
             patch(
                 "autoinfo.output.ebook.render_mobi",
-                return_value={
-                    "data_b64": base64.b64encode(b"mobi").decode("ascii")
-                },
+                return_value={"data_b64": base64.b64encode(b"mobi").decode("ascii")},
             ),
         ):
-            mock_render.return_value = {
-                "data_b64": base64.b64encode(b"book").decode("ascii")
-            }
+            mock_render.return_value = {"data_b64": base64.b64encode(b"book").decode("ascii")}
             _export_mobi(
                 tmp_path,
                 entries,
@@ -365,12 +340,8 @@ class TestB07EbookLangDerivation:
         """zh-CN / en-US normalize to their primary subtag (RFC 5646)."""
         from autoinfo.output import _derive_export_lang
 
-        assert _derive_export_lang(
-            [{"title": "t", "summary": "s", "language": "zh-CN"}]
-        ) == "zh"
-        assert _derive_export_lang(
-            [{"title": "t", "summary": "s", "language": "en-US"}]
-        ) == "en"
+        assert _derive_export_lang([{"title": "t", "summary": "s", "language": "zh-CN"}]) == "zh"
+        assert _derive_export_lang([{"title": "t", "summary": "s", "language": "en-US"}]) == "en"
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +350,15 @@ class TestB07EbookLangDerivation:
 
 
 class TestB08SubprocessOrphan:
-    """``_run_cli_step`` spawns the CLI in its own session and reaps the group."""
+    """``_run_cli_step`` spawns the CLI in its own session and reaps the group.
+
+    Windows has no ``setsid``/process-group query API (issue #772): the
+    platform equivalents are ``CREATE_NEW_PROCESS_GROUP`` at spawn time and a
+    ``taskkill /F /T`` tree kill — asserted with the same strength, never by
+    skipping.
+    """
+
+    IS_WINDOWS = os.name == "nt"
 
     def test_run_cli_step_uses_start_new_session(self) -> None:
         from autoinfo.mcp.validation import _run_cli_step
@@ -393,23 +372,130 @@ class TestB08SubprocessOrphan:
             env = _run_cli_step("echo hi")
 
         assert env["success"] is True
-        assert mock_popen.call_args.kwargs["start_new_session"] is True
+        if self.IS_WINDOWS:
+            # Windows counterpart of start_new_session=True: the child must be
+            # created as its own process group.
+            kwargs = mock_popen.call_args.kwargs
+            assert kwargs["creationflags"] & subprocess.CREATE_NEW_PROCESS_GROUP
+            assert not kwargs.get("start_new_session", False)
+        else:
+            assert mock_popen.call_args.kwargs["start_new_session"] is True
 
-    def test_run_cli_step_spawns_own_session(self) -> None:
+    def test_run_cli_step_spawns_own_session(self, tmp_path: Path) -> None:
         """A real spawned step runs in a different session than the test process."""
-        from autoinfo.mcp.validation import _run_cli_step
+        from autoinfo.mcp.validation import _kill_process_group, _run_cli_step
+
+        if self.IS_WINDOWS:
+            # os.getsid is POSIX-only and Windows has no queryable process
+            # group, so the platform-equivalent proof combines three real
+            # observations made while the step is still running: (1) the real
+            # Popen call carried CREATE_NEW_PROCESS_GROUP (recorded by
+            # wrapping the real Popen — never mocked out), (2) via psutil the
+            # reported child hangs under a fresh shell wrapper parented by
+            # this process — the step is its own tree, and (3) killing that
+            # tree reaps it (the same _kill_process_group production path).
+            import psutil
+
+            real_popen = subprocess.Popen
+            seen: dict[str, Any] = {}
+
+            def recording_popen(*args: Any, **kwargs: Any) -> subprocess.Popen[bytes]:
+                proc = real_popen(*args, **kwargs)
+                seen["kwargs"] = kwargs
+                seen["proc"] = proc
+                return proc
+
+            # The child stays alive long enough to be inspected: it writes its
+            # own pid to a file, then sleeps.  stdout is consumed by
+            # communicate() inside the worker thread, hence the file channel.
+            # sys.executable carries no spaces here, and it must stay unquoted:
+            # a leading quote trips cmd.exe's /C quote-stripping, which nests a
+            # second cmd layer and changes the observed tree.
+            pid_path = tmp_path / "child.pid"
+            py_code = (
+                "import os, sys, time; "
+                "open(sys.argv[1], 'w').write(str(os.getpid())); time.sleep(60)"
+            )
+            command = f'{sys.executable} -c "{py_code}" "{pid_path}"'
+            result: dict[str, Any] = {}
+
+            def runner() -> None:
+                try:
+                    result["env"] = _run_cli_step(command, timeout=180.0)
+                except Exception as exc:  # pragma: no cover — surfaced below
+                    result["error"] = exc
+
+            with patch(
+                "autoinfo.mcp.validation.subprocess.Popen",
+                side_effect=recording_popen,
+            ):
+                worker = threading.Thread(target=runner)
+                worker.start()
+                try:
+                    child_pid = self._await_pid_file(pid_path, budget=30.0)
+                    assert child_pid is not None, "step never reported its own pid"
+                    assert (
+                        seen["kwargs"].get("creationflags", 0) & subprocess.CREATE_NEW_PROCESS_GROUP
+                    ), f"real spawn missed CREATE_NEW_PROCESS_GROUP: {seen['kwargs']!r}"
+                    child = psutil.Process(child_pid)
+                    assert child.is_running()
+                    # Walk the ancestor chain: the step must hang under a fresh
+                    # cmd.exe wrapper (shell=True) whose ancestry reaches this
+                    # test process.  The venv python.exe may be a launcher
+                    # trampoline that adds one extra python.exe hop — walk past
+                    # it instead of assuming a fixed depth.
+                    chain: list[psutil.Process] = [child]
+                    cur: psutil.Process | None = child
+                    for _ in range(5):
+                        cur = cur.parent()
+                        if cur is None:
+                            break
+                        chain.append(cur)
+                    assert any(p.name() == "cmd.exe" for p in chain[1:]), (
+                        f"spawned step has no shell wrapper: {[p.name() for p in chain]!r}"
+                    )
+                    assert os.getpid() in [p.pid for p in chain], (
+                        "spawned step tree does not root at the test process: "
+                        f"{[(p.pid, p.name()) for p in chain]!r}"
+                    )
+                finally:
+                    proc = seen.get("proc")
+                    if proc is not None:
+                        _kill_process_group(proc)
+                        proc.wait(timeout=5)
+                    worker.join(timeout=10)
+                assert not worker.is_alive(), "killed step worker did not return"
+            env = result["env"]
+            assert env["success"] is False, env
+            assert not psutil.pid_exists(child_pid), (
+                f"tree kill left the step child alive (pid={child_pid})"
+            )
+            return
 
         parent_sid = os.getsid(os.getpid())
-        env = _run_cli_step(
-            "python3 -c \"import os; print(os.getsid(0))\""
-        )
+        env = _run_cli_step('python3 -c "import os; print(os.getsid(0))"')
         assert env["success"] is True, env
         child_sid = int(env["data"]["stdout"].strip())
         assert child_sid != parent_sid
 
+    @staticmethod
+    def _await_pid_file(pid_path: Path, budget: float) -> int | None:
+        deadline = time.monotonic() + budget
+        while time.monotonic() < deadline:
+            if pid_path.exists():
+                text = pid_path.read_text(encoding="utf-8").strip()
+                if text.isdigit():
+                    return int(text)
+            time.sleep(0.05)
+        return None
+
     def test_kill_process_group_reaps_group(self) -> None:
         """Killing the group SIGKILLs the shell AND its children."""
         from autoinfo.mcp.validation import _kill_process_group
+
+        if self.IS_WINDOWS:
+            self._kill_reaps_group_windows()
+            return
 
         proc = subprocess.Popen(
             "sleep 300",
@@ -431,6 +517,57 @@ class TestB08SubprocessOrphan:
         with pytest.raises(ProcessLookupError):
             os.killpg(proc.pid, 0)
 
+    def _kill_reaps_group_windows(self) -> None:
+        """Windows counterpart: the tree kill force-terminates the whole tree.
+
+        Mirrors the POSIX assertions: the shell dies (exit code observed), and
+        no descendant survives as an orphan (psutil children probe, polled —
+        a probe that cannot run must raise, never pass vacuously).
+        """
+        import psutil
+
+        from autoinfo.mcp.validation import _kill_process_group
+
+        proc = subprocess.Popen(
+            "sleep 300",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+        try:
+            # cmd.exe needs a moment to resolve and spawn sleep.exe — poll for
+            # the grandchild instead of asserting a race.
+            deadline = time.monotonic() + 5.0
+            tree_pids = [proc.pid]
+            while time.monotonic() < deadline:
+                tree_pids = [proc.pid] + [
+                    child.pid for child in psutil.Process(proc.pid).children(recursive=True)
+                ]
+                if len(tree_pids) >= 2:
+                    break
+                time.sleep(0.05)
+            assert len(tree_pids) >= 2, f"expected shell + grandchild tree, got pids={tree_pids!r}"
+
+            _kill_process_group(proc)
+            proc.wait(timeout=5)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+        # taskkill /F terminates the victim with exit code 1 — the Windows
+        # counterpart of dying to SIGKILL.
+        assert proc.returncode == 1, f"shell survived the tree kill: rc={proc.returncode}"
+        # The whole tree must be gone (no orphaned `sleep`).
+        deadline = time.monotonic() + 5.0
+        survivors: list[int] = tree_pids
+        while survivors and time.monotonic() < deadline:
+            survivors = [pid for pid in tree_pids if psutil.pid_exists(pid)]
+            if survivors:
+                time.sleep(0.05)
+        assert survivors == [], f"orphaned tree members survived: pids={survivors!r}"
+
 
 # ---------------------------------------------------------------------------
 # query_collected — KBStore() default base_path anchored to project root
@@ -450,9 +587,7 @@ class TestQueryCollectedKBStoreBasePath:
 
         project = tmp_path / "proj"
         (project / ".autoinfo").mkdir(parents=True)
-        (project / ".autoinfo" / "config.yaml").write_text(
-            "domains: []\n", encoding="utf-8"
-        )
+        (project / ".autoinfo" / "config.yaml").write_text("domains: []\n", encoding="utf-8")
         subdir = project / "sub" / "dir"
         subdir.mkdir(parents=True)
         monkeypatch.chdir(subdir)

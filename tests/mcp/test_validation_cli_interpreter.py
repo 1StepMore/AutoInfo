@@ -44,6 +44,32 @@ def test_run_cli_step_uses_the_running_interpreter() -> None:
     assert result["data"]["stdout"].strip() == sys.executable
 
 
+def test_cmd_quote_compat_translates_posix_spans() -> None:
+    """#774: single-quoted spans become cmd-safe double-quoted spans."""
+    from autoinfo.mcp.validation import _cmd_quote_compat
+
+    assert _cmd_quote_compat("'D:/path/py.exe' -c 'print(1)'") == ('"D:/path/py.exe" -c "print(1)"')
+    # An embedded double quote must not end cmd's argument early.
+    assert _cmd_quote_compat("py -c 'x = \"a\"; print(x)'") == 'py -c "x = \\"a\\"; print(x)"'
+    # Backslash paths outside spans pass through untouched.
+    assert _cmd_quote_compat("C:\\bin\\py.exe -q") == "C:\\bin\\py.exe -q"
+
+
+def test_cmd_quote_compat_collapses_multiline_bodies() -> None:
+    """#774: newlines cannot reach the child argv; collapse them semantically."""
+    from autoinfo.mcp.validation import _cmd_quote_compat
+
+    # Leading/blank lines produce no residue; statements separate with '; '
+    # (a blank line leaves one extra harmless space).
+    assert _cmd_quote_compat("py -c '\nfrom x import y\n\nprint(y)\n'") == (
+        'py -c "from x import y;  print(y); "'
+    )
+    # A newline inside open brackets is a soft continuation (plain space).
+    assert _cmd_quote_compat("py -c 'f(a,\n b)'") == 'py -c "f(a,  b)"'
+    # Double-quoted spans collapse the same way (statement separator).
+    assert _cmd_quote_compat('py -c "a\nb"') == 'py -c "a; b"'
+
+
 def test_cleanup_failure_summary_exposes_failed_steps() -> None:
     summary = _cleanup_failure_summary(
         [

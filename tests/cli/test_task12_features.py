@@ -559,7 +559,7 @@ class TestConfigureLlm:
         result = _handle_configure_llm(model="gpt-4")
         assert result["success"] is True
         assert "config_path" in result["data"]
-        assert result["data"]["config_path"].endswith(".autoinfo/config.yaml")
+        assert Path(result["data"]["config_path"]).as_posix().endswith(".autoinfo/config.yaml")
 
 
 # ==========================================================================

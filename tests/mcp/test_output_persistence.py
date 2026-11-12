@@ -106,7 +106,11 @@ class TestDigestPersist:
         assert result["success"] is True
         assert "persisted_path" in result["data"]
         file = _unique_output_file(outputs_dir, "medical-research", "digest-json-*.json")
-        assert result["data"]["persisted_path"].endswith(f"medical-research/{file.name}")
+        assert (
+            Path(result["data"]["persisted_path"])
+            .as_posix()
+            .endswith(f"medical-research/{file.name}")
+        )
         written = json.loads(file.read_text(encoding="utf-8"))
         assert written == payload
 

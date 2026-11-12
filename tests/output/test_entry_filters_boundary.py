@@ -702,7 +702,7 @@ class TestGoldenDigest:
     def test_golden_exists_under_committed_fixtures(self) -> None:
         # Guard against goldens drifting back into a gitignored location.
         assert _GOLDEN_PATH.is_file()
-        assert "tests/fixtures/golden" in str(_GOLDEN_PATH)
+        assert "tests/fixtures/golden" in _GOLDEN_PATH.as_posix()
 
     def test_digest_byte_identical_to_golden(
         self, project: Path, frozen_clock: None, monkeypatch: pytest.MonkeyPatch

@@ -65,7 +65,9 @@ def _write_base_config(cfg_dir: Path) -> Path:
     path = cfg_dir / "config.yaml"
     text = yaml.safe_dump(cfg, sort_keys=False)
     _BASE_CONFIG_BYTES = text.encode("utf-8")
-    path.write_text(text, encoding="utf-8")
+    # write_bytes: the comparison baseline is the exact bytes below;
+    # text mode would emit CRLF on Windows and break byte equality (#757).
+    path.write_bytes(_BASE_CONFIG_BYTES)
     return path
 
 
@@ -110,12 +112,8 @@ def test_same_model_second_call_does_not_duplicate(config_dir: Path) -> None:
     """Re-writing the same (provider, model) identity merges, never appends."""
     config_path = _write_base_config(config_dir)
 
-    _handle_configure_llm(
-        llm_fallback=[{"model": "mimo-v2.5", "base_url": OPENGATE_BASE_URL}]
-    )
-    _handle_configure_llm(
-        llm_fallback=[{"model": "mimo-v2.5", "base_url": OPENGATE_BASE_URL}]
-    )
+    _handle_configure_llm(llm_fallback=[{"model": "mimo-v2.5", "base_url": OPENGATE_BASE_URL}])
+    _handle_configure_llm(llm_fallback=[{"model": "mimo-v2.5", "base_url": OPENGATE_BASE_URL}])
 
     loaded = load_config(config_path)
     assert len(loaded.llm.fallback) == 1
@@ -126,13 +124,9 @@ def test_same_model_call_updates_fields(config_dir: Path) -> None:
     """Same (provider, model) identity with new fields updates in place."""
     config_path = _write_base_config(config_dir)
 
+    _handle_configure_llm(llm_fallback=[{"model": "mimo-v2.5", "base_url": OPENGATE_BASE_URL}])
     _handle_configure_llm(
-        llm_fallback=[{"model": "mimo-v2.5", "base_url": OPENGATE_BASE_URL}]
-    )
-    _handle_configure_llm(
-        llm_fallback=[
-            {"model": "mimo-v2.5", "base_url": "https://new.example.com/v1"}
-        ]
+        llm_fallback=[{"model": "mimo-v2.5", "base_url": "https://new.example.com/v1"}]
     )
 
     loaded = load_config(config_path)
@@ -205,8 +199,7 @@ def test_judgment_tasks_ignore_tasks_override(config_dir: Path) -> None:
     for task_name in ("g4_factual", "g5_translation", "llm_judge"):
         effective = _resolve_task_llm_config(loaded, task_name)
         assert effective.model == "openai/deepseek-v4-flash", (
-            f"{task_name} must resolve to the deployment model, "
-            f"got {effective.model}"
+            f"{task_name} must resolve to the deployment model, got {effective.model}"
         )
 
 
@@ -215,9 +208,7 @@ def test_judgment_task_names_allowed_to_write(config_dir: Path) -> None:
     runtime pinning."""
     config_path = _write_base_config(config_dir)
 
-    result = _handle_configure_llm(
-        llm_tasks={"g4_factual": {"model": "evil-judge"}}
-    )
+    result = _handle_configure_llm(llm_tasks={"g4_factual": {"model": "evil-judge"}})
 
     assert result["success"] is True
     assert "运行期仍强制 judgment model" in result["data"]["message"]
@@ -370,9 +361,7 @@ def test_fallback_entry_not_dict_validation_error(config_dir: Path) -> None:
     config_path = _write_base_config(config_dir)
     mtime_before = config_path.stat().st_mtime_ns
 
-    result = _handle_configure_llm(
-        llm_fallback=cast(list[dict[str, Any]], ["mimo-v2.5"])
-    )
+    result = _handle_configure_llm(llm_fallback=cast(list[dict[str, Any]], ["mimo-v2.5"]))
 
     assert result["success"] is False
     assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR.value
@@ -385,9 +374,7 @@ def test_tasks_invalid_field_type_validation_error(config_dir: Path) -> None:
     config_path = _write_base_config(config_dir)
     mtime_before = config_path.stat().st_mtime_ns
 
-    result = _handle_configure_llm(
-        llm_tasks={"summarization": {"max_tokens": "not-an-int"}}
-    )
+    result = _handle_configure_llm(llm_tasks={"summarization": {"max_tokens": "not-an-int"}})
 
     assert result["success"] is False
     assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR.value
@@ -413,9 +400,7 @@ def test_tasks_unknown_field_validation_error(config_dir: Path) -> None:
     config_path = _write_base_config(config_dir)
     mtime_before = config_path.stat().st_mtime_ns
 
-    result = _handle_configure_llm(
-        llm_tasks={"summarization": {"model": "x", "temperature": 0.7}}
-    )
+    result = _handle_configure_llm(llm_tasks={"summarization": {"model": "x", "temperature": 0.7}})
 
     assert result["success"] is False
     assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR.value
@@ -462,7 +447,10 @@ def test_default_config_ships_judgment_model() -> None:
     and an unconfigured deployment fails loudly instead of guessing."""
     path = (
         Path(__file__).resolve().parent.parent.parent
-        / "src" / "autoinfo" / "data" / "default_config.yaml"
+        / "src"
+        / "autoinfo"
+        / "data"
+        / "default_config.yaml"
     )
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert raw["llm"]["judgment_model"] == "openai/deepseek-v4-flash"
@@ -500,8 +488,7 @@ def test_judgment_model_override_wins_when_set(config_dir: Path) -> None:
     for task_name in ("g4_factual", "g5_translation", "llm_judge"):
         effective = _resolve_task_llm_config(loaded, task_name)
         assert effective.model == "deepseek-v4-flash", (
-            f"{task_name} must resolve to the judgment_model override, "
-            f"got {effective.model}"
+            f"{task_name} must resolve to the judgment_model override, got {effective.model}"
         )
 
 

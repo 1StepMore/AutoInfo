@@ -167,7 +167,7 @@ class TestBundleGeneration:
         with zipfile.ZipFile(result["path"], "r") as zf:
             yaml_bytes = zf.read("metadata.yaml")
             meta = yaml.safe_load(yaml_bytes)
-            assert meta["domain"] == "*"
+            assert meta["domain"] == "all"
             assert meta["entry_count"] == result["entries_count"]
             assert "formats_included" in meta
             assert "generated_at" in meta
@@ -263,9 +263,7 @@ class TestBundleFormatValidation:
 
 
 class TestBundlePdfGracefulSkip:
-    def test_pdf_skipped_when_weasyprint_unavailable(
-        self, project_dir: Path
-    ) -> None:
+    def test_pdf_skipped_when_weasyprint_unavailable(self, project_dir: Path) -> None:
         """When weasyprint is not importable, PDF is skipped gracefully."""
         with (
             patch("autoinfo.output.get_config_path") as mock_cfg,

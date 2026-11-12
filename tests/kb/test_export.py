@@ -396,7 +396,7 @@ class TestResultMetadata:
             mock_cfg.return_value = project_dir / ".autoinfo" / "config.yaml"
             result = export_kb(format="json")
 
-        assert result["domain"] == "*"
+        assert result["domain"] == "all"
 
     def test_domain_label_filtered(self, project_dir: Path) -> None:
         """With domain filter, domain label matches input."""

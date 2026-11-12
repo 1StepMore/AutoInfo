@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import logging
 import os
-import urllib.parse
 from datetime import timezone
 from typing import Any
+from urllib.request import url2pathname
 
 import feedparser
 import httpx
@@ -104,9 +104,12 @@ class RSSHandler(BaseHandler):
             # Local file (path or file:// URI — tests/offline fixtures)
             # parses directly; remote URLs are fetched over httpx with a
             # bounded timeout — feedparser itself has no timeout and can
-            # hang on a dead feed. file:// paths may carry URL-encoded
-            # characters (e.g. %E8 for non-ASCII) — decode before isfile.
-            local_path = urllib.parse.unquote(url[7:]) if url.startswith("file://") else url
+            # hang on a dead feed. file:// URLs are converted via
+            # url2pathname, which handles percent-encoded characters and
+            # the Windows ``/D:/...`` drive form (``url[7:]`` slicing is
+            # POSIX-only and leaves an unresolvable ``/D:/`` prefix,
+            # #757).
+            local_path = url2pathname(url[7:]) if url.startswith("file://") else url
             if os.path.isfile(local_path):
                 with open(local_path, "rb") as fh:
                     parsed = feedparser.parse(fh.read(), agent=_RSS_USER_AGENT)

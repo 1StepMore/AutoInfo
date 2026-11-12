@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.31.1](https://github.com/1StepMore/AutoInfo/compare/v1.31.0...v1.31.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **gov:** inject empty artifact dir into simulation drills ([#776](https://github.com/1StepMore/AutoInfo/issues/776)) ([#782](https://github.com/1StepMore/AutoInfo/issues/782)) ([23cd85f](https://github.com/1StepMore/AutoInfo/commit/23cd85f07ac84c96f35bed4cf9a1e4bc7ecbd3a3))
+
 ## [1.31.0](https://github.com/1StepMore/AutoInfo/compare/v1.30.2...v1.31.0) (2026-11-12)
 
 

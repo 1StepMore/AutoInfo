@@ -19,8 +19,9 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from autoinfo.gov import artifacts as artifacts_mod
 from autoinfo.gov import policy as policy_mod
 from autoinfo.gov import sources as sources_mod
 from autoinfo.gov import status as status_mod
@@ -289,8 +290,27 @@ def case_cloud_forbidden(root: Path) -> dict[str, Any]:
 
 
 def case_degrade_offline(root: Path) -> dict[str, Any]:
-    """The offline drill must flip affected gates non-PASS; turning it off restores."""
+    """The offline drill must flip affected gates non-PASS; turning it off restores.
+
+    The drill is a parameter-scoped simulation, so it observes an injected
+    empty artifact directory (#776): machine-local runtime evidence
+    (``.autoinfo/gov/derived-parity.json`` etc.) must not turn the baseline
+    red and mask what the drill itself does.
+    """
     contract = load(root)
+    with tempfile.TemporaryDirectory() as tmp:
+        sandbox = Path(tmp) / "gov-artifacts"
+        sandbox.mkdir()
+
+        saved_artifact_dir = artifacts_mod.artifact_dir
+        artifacts_mod.artifact_dir = cast(Any, lambda root: sandbox)
+        try:
+            return _degrade_offline_evidence(contract)
+        finally:
+            artifacts_mod.artifact_dir = saved_artifact_dir
+
+
+def _degrade_offline_evidence(contract: Any) -> dict[str, Any]:
     drilled = status_mod.status(contract, {}, simulate="offline")
     affected = set(drilled["simulation"]["affected_gates"])
     flipped = all(g["state"] != "PASS" for g in drilled["gates"] if g["id"] in affected)

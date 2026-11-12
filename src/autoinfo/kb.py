@@ -2912,8 +2912,12 @@ class KBStore:
         entries into this tier — agent-facing write methods must reject
         any attempt to create or modify files under ``03-Wiki/``.
         """
-        path_str = str(file_path)
-        if "/03-Wiki/" in path_str or path_str.endswith("/03-Wiki"):
+        # Separator-agnostic component match: ``str(Path(...))`` renders
+        # backslashes on Windows, so the previous ``"/03-Wiki/"`` substring
+        # check silently passed on Windows and bypassed the append-only
+        # guard (#773).  Normalize both separators, then compare components.
+        components = str(file_path).replace("\\", "/").split("/")
+        if "03-Wiki" in components:
             raise PermissionError("03-Wiki is append-only. Only promote_kb_draft() can write here.")
 
     def store_entry(

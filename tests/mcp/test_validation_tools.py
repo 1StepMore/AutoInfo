@@ -1068,9 +1068,7 @@ steps:
 
     async def test_http_success(self, tmp_path: Path) -> None:
         with self._local_http_endpoint() as base_url:
-            sd = self._write(
-                tmp_path, "http-scenario", self._http_scenario_yaml(f"{base_url}/")
-            )
+            sd = self._write(tmp_path, "http-scenario", self._http_scenario_yaml(f"{base_url}/"))
             result = await run_scenario("http-scenario", dispatch=None, scenarios_dir=sd)
         assert result["status"] == "passed"
         assert result["summary"]["passed"] == 1
@@ -1082,9 +1080,7 @@ steps:
                 "http-json-scenario",
                 self._http_json_scenario_yaml(f"{base_url}/todos/1"),
             )
-            result = await run_scenario(
-                "http-json-scenario", dispatch=None, scenarios_dir=sd
-            )
+            result = await run_scenario("http-json-scenario", dispatch=None, scenarios_dir=sd)
         assert result["status"] == "passed"
         assert result["summary"]["passed"] == 1
 
@@ -3669,16 +3665,42 @@ class TestUniversalTimeoutCancellation:
 
     @staticmethod
     def _pgrep(pattern: str) -> str:
-        """Return matching PIDs (``pgrep -f``); raise if pgrep is unavailable.
+        """Return matching PIDs (``pgrep -f`` / psutil scan); raise if the probe
+        is unavailable.
 
         ``pgrep`` exits 1 when there is no match (expected) and 0 when it
         matched.  Any other status means the probe itself failed — raising
         keeps a broken probe from being mistaken for "no orphan".
         """
+        if os.name == "nt":
+            return TestUniversalTimeoutCancellation._pgrep_windows(pattern)
         proc = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
         if proc.returncode not in (0, 1):
             raise RuntimeError(f"pgrep probe failed (rc={proc.returncode}): {proc.stderr!r}")
         return proc.stdout.strip()
+
+    @staticmethod
+    def _pgrep_windows(pattern: str) -> str:
+        """Windows ``pgrep -f`` equivalent scoped to this process's tree.
+
+        Scans the cmdline of every *descendant* of the current process with
+        psutil (issue #772 contract): a sleeper left behind by an earlier run
+        is not our descendant, so historical orphans can never pollute the
+        assertion.  A probe that cannot run must raise, never pass vacuously —
+        a missing psutil therefore fails the test with an explicit ImportError
+        instead of being mistaken for "no orphan".
+        """
+        import psutil  # noqa: PLC0415 — Windows-only probe (issue #772)
+
+        matches: list[str] = []
+        for proc in psutil.Process().children(recursive=True):
+            try:
+                cmdline = proc.cmdline()
+            except psutil.Error:
+                continue
+            if cmdline and pattern in " ".join(cmdline):
+                matches.append(str(proc.pid))
+        return " ".join(matches)
 
     async def _wait_until_no_process(self, pattern: str, budget: float) -> str:
         """Poll ``pgrep`` until *pattern* disappears; return the last match."""

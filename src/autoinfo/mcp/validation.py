@@ -507,14 +507,43 @@ def diff_scenario_runs(
     }
 
 
-def _kill_process_group(proc: subprocess.Popen[Any]) -> None:
-    """SIGKILL the whole process group of *proc*.
+def _platform_detach_kwargs() -> dict[str, Any]:
+    """Popen kwargs that detach the child into its own session/process group.
 
-    The CLI step runs in its own session/process group
-    (``start_new_session=True``), so killing the group is the only reliable
-    way to reap orphaned grandchildren (background children spawned by the
-    ``shell=True`` wrapper) after a timeout.
+    POSIX: ``start_new_session=True`` calls ``setsid()`` in the child, so the
+    whole session can be SIGKILLed via ``os.killpg``.  Windows has no
+    ``setsid`` — CPython silently ignores ``start_new_session`` there — so use
+    the platform equivalent, ``CREATE_NEW_PROCESS_GROUP``, and reap the tree
+    with ``taskkill /F /T`` in :func:`_kill_process_group`.
     """
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _kill_process_group(proc: subprocess.Popen[Any]) -> None:
+    """Kill the whole process group (POSIX) / process tree (Windows) of *proc*.
+
+    The CLI step runs detached from the harness — its own session on POSIX
+    (``start_new_session=True``), its own process group on Windows
+    (``CREATE_NEW_PROCESS_GROUP``) — so killing the group/tree is the only
+    reliable way to reap orphaned grandchildren (background children spawned
+    by the ``shell=True`` wrapper) after a timeout.
+    """
+    if os.name == "nt":
+        # Windows has no process groups: ``taskkill /F /T`` walks the
+        # parent-child tree and force-terminates every descendant, which is
+        # the platform counterpart of a group-wide ``SIGKILL``.
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            pass
+        return
+
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
@@ -537,8 +566,9 @@ class _StepCancelToken:
     the OS resource it blocks on (a subprocess process group, or an
     ``httpx.Client`` with an in-flight request) and the event loop calls
     :meth:`cancel` when the step times out.  ``cancel`` then releases the
-    resource from outside the worker — SIGKILLing the process group / closing
-    the HTTP client — which unblocks the thread promptly.
+    resource from outside the worker — killing the process group (POSIX) /
+    process tree (Windows) / closing the HTTP client — which unblocks the
+    thread promptly.
 
     Registration is race-safe in both directions: a resource registered after
     ``cancel`` has already been requested is released immediately, so a worker
@@ -616,13 +646,15 @@ def _run_cli_step(
     Returns ``{"success": exit_code == 0, "data": {exit_code, stdout, stderr}}``.
     Real process execution — never mocked.  Raises on timeout.
 
-    The subprocess is spawned in its own session (``start_new_session=True``)
-    so that a timeout can SIGKILL the entire process group — including any
-    background children the shell may have spawned — instead of leaving
-    orphaned processes behind.  When *cancel_token* is supplied the process is
-    registered with it, so the event loop can reap the group the moment the
-    step's wall-clock budget expires (the thread's own ``communicate`` timeout
-    is a backstop, not the sole defence).
+    The subprocess is spawned detached from the harness — its own session on
+    POSIX (``start_new_session=True``), its own process group on Windows
+    (``CREATE_NEW_PROCESS_GROUP``, see :func:`_platform_detach_kwargs`) — so
+    that a timeout can kill the entire process group (POSIX) / process tree
+    (Windows) — including any background children the shell may have spawned —
+    instead of leaving orphaned processes behind.  When *cancel_token* is
+    supplied the process is registered with it, so the event loop can reap the
+    group the moment the step's wall-clock budget expires (the thread's own
+    ``communicate`` timeout is a backstop, not the sole defence).
     """
     proc = subprocess.Popen(
         _resolve_cli_interpreter(command),
@@ -630,7 +662,7 @@ def _run_cli_step(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        start_new_session=True,
+        **_platform_detach_kwargs(),
     )
     if cancel_token is not None:
         cancel_token.register_process(proc)

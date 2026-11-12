@@ -517,7 +517,9 @@ def _platform_detach_kwargs() -> dict[str, Any]:
     with ``taskkill /F /T`` in :func:`_kill_process_group`.
     """
     if os.name == "nt":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        # typeshed marks CREATE_NEW_PROCESS_GROUP Windows-only; resolve it
+        # dynamically so POSIX mypy stays clean (the branch never runs there).
+        return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
     return {"start_new_session": True}
 
 

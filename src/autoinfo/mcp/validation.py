@@ -18,6 +18,8 @@ import os
 import re
 import shlex
 import signal
+import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -656,6 +658,43 @@ def _close_quietly(client: Any) -> None:
         pass
 
 
+def _abort_http_client(client: Any) -> None:
+    """Abortively close an httpx client's in-flight connections (RST, not FIN).
+
+    Graceful ``close()`` only queues a FIN: a dribbling server keeps the
+    connection alive and never sees an abort (issue #775).  ``SO_LINGER``(1,0)
+    before close forces an RST — what the peer must observe on cancellation.
+    Reaches the raw sockets through httpcore's connection pool; anything
+    unreachable degrades to a plain close so cancellation never crashes.
+    """
+    socks: list[Any] = []
+    try:
+        # httpx.HTTPTransport wraps the httpcore connection pool at `_pool`
+        # (older httpx exposed the pool directly as `_transport`).
+        transport = getattr(client, "_transport", None)
+        pool = getattr(transport, "_pool", transport)
+        for conn in getattr(pool, "_connections", None) or []:
+            inner = getattr(conn, "_connection", None)
+            stream = getattr(inner, "_network_stream", None)
+            sock = getattr(stream, "_sock", None)
+            if sock is None and stream is not None and hasattr(stream, "get_extra_info"):
+                try:
+                    sock = stream.get_extra_info("socket")
+                except Exception:  # noqa: BLE001 — best-effort socket discovery
+                    sock = None
+            if sock is not None:
+                socks.append(sock)
+    except Exception:  # noqa: BLE001 — best-effort socket discovery
+        socks = []
+    for sock in socks:
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            sock.close()
+        except OSError:
+            pass
+    _close_quietly(client)
+
+
 class _StepCancelToken:
     """Cooperative cancellation handle for a step running in a worker thread.
 
@@ -697,7 +736,7 @@ class _StepCancelToken:
             self._http_client = client
             cancelled = self._cancelled
         if cancelled:
-            _close_quietly(client)
+            _abort_http_client(client)
 
     def clear_http_client(self, client: Any) -> None:
         with self._lock:
@@ -712,7 +751,7 @@ class _StepCancelToken:
         if proc is not None:
             _kill_process_group(proc)
         if client is not None:
-            _close_quietly(client)
+            _abort_http_client(client)
 
 
 _PYTHON_COMMAND_RE = re.compile(r"(^|[;&|(\n])([ \t]*)(python3?(?:\.\d+)?)(?=\s|$)")

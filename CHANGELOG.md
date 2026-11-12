@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.30.1](https://github.com/1StepMore/AutoInfo/compare/v1.30.0...v1.30.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **portability:** make product+tests Windows-safe for paths, filenames, newlines ([#757](https://github.com/1StepMore/AutoInfo/issues/757)) ([#769](https://github.com/1StepMore/AutoInfo/issues/769)) ([c161612](https://github.com/1StepMore/AutoInfo/commit/c16161267ce35bd06a05b3b05f4ec179bdbebde3))
+
 ## [1.30.0](https://github.com/1StepMore/AutoInfo/compare/v1.29.0...v1.30.0) (2026-11-11)
 
 

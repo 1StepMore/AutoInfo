@@ -81,6 +81,22 @@ class TestRunVerb:
 
 
 class TestDegrade:
+    @pytest.fixture(autouse=True)
+    def _isolate_runtime_artifacts(self, tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Simulation drills must not read machine-local runtime evidence (#776).
+
+        ``.autoinfo/gov/derived-parity.json`` and friends are machine-local
+        artifacts: a stale one turns the live baseline red, and a drill that
+        only degrades its affected gates can then never read amber. The
+        drills are parameter-scoped simulations, so the artifact directory
+        they observe is injected as empty.
+        """
+        from autoinfo.gov import artifacts as artifacts_mod
+
+        sandbox = tmp_path / "gov-artifacts"
+        sandbox.mkdir()
+        monkeypatch.setattr(artifacts_mod, "artifact_dir", lambda root: sandbox)
+
     def test_offline_flips_network_gates(self) -> None:
         affected = degrade_mod.affected_gates(list(degrade_mod.GATE_DEPS), "offline")
         assert {"derived_parity", "known_red", "preview_smoke", "coverage_base"} <= set(affected)

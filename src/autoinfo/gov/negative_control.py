@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from autoinfo.gov import artifacts as artifacts_mod
 from autoinfo.gov import policy as policy_mod
@@ -302,11 +302,8 @@ def case_degrade_offline(root: Path) -> dict[str, Any]:
         sandbox = Path(tmp) / "gov-artifacts"
         sandbox.mkdir()
 
-        def _injected_artifact_dir(_root: Path) -> Path:
-            return sandbox
-
         saved_artifact_dir = artifacts_mod.artifact_dir
-        artifacts_mod.artifact_dir = _injected_artifact_dir
+        artifacts_mod.artifact_dir = cast(Any, lambda root: sandbox)
         try:
             return _degrade_offline_evidence(contract)
         finally:

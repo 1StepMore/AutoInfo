@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.30.2](https://github.com/1StepMore/AutoInfo/compare/v1.30.1...v1.30.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* **kb:** make 03-Wiki append-only guard separator-agnostic ([#773](https://github.com/1StepMore/AutoInfo/issues/773)) ([#777](https://github.com/1StepMore/AutoInfo/issues/777)) ([dfd4abb](https://github.com/1StepMore/AutoInfo/commit/dfd4abbc2380713edd4f50ce9b74442933bb8ae8))
+
 ## [1.30.1](https://github.com/1StepMore/AutoInfo/compare/v1.30.0...v1.30.1) (2026-11-12)
 
 

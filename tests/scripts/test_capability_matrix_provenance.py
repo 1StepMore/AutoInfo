@@ -14,6 +14,7 @@ model was broken.  These tests pin the separation:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -118,7 +119,17 @@ class TestMatrixRowRecordsProvenance:
         assert row["l3"] is False
         assert row["l2"] is True
         assert row["llm_generated"] is False
+        assert row["llm_status"] == "fallback"
+        assert "non-LLM-direct" in row["detail"]
         assert row["provenance"] == "synthesis_empty"
+        # #771: the artifact must reveal its provenance without matrix.json.
+        sidecar = artifact.with_name(artifact.name + ".provenance.json")
+        assert sidecar.is_file(), "fallback artifact must carry a provenance sidecar"
+        sidecar_data = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert sidecar_data["llm_status"] == "fallback"
+        assert sidecar_data["llm_generated"] is False
+        assert sidecar_data["kb_fallback_reasons"] == ["synthesis_empty"]
+        assert sidecar_data["artifact"].endswith("tutorial-markdown.md")
 
     def test_clean_cell_row_still_reports_l3(self, tmp_path: Path) -> None:
         artifact = tmp_path / "tutorial-markdown.md"
@@ -143,6 +154,12 @@ class TestMatrixRowRecordsProvenance:
             )
         assert row["reached"] == "L3"
         assert row["llm_generated"] is True
+        assert row["llm_status"] == "llm"
+        sidecar = tmp_path / "tutorial-markdown.md.provenance.json"
+        assert sidecar.is_file(), "llm artifact must carry a provenance sidecar"
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert data["llm_status"] == "llm"
+        assert data["kb_fallback_reasons"] == []
 
     def test_markdown_exposes_the_llm_column(self) -> None:
         row = {

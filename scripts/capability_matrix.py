@@ -615,6 +615,7 @@ def _base_row(combo: Combination, domain: str, keyed: str) -> dict[str, Any]:
         "detail": "",
         "duration_s": 0.0,
         "llm_generated": True,
+        "llm_status": "pending",
         "provenance": "",
     }
 
@@ -622,6 +623,7 @@ def _base_row(combo: Combination, domain: str, keyed: str) -> dict[str, Any]:
 def _blocked(row: dict[str, Any], reason: str, detail: str, started: float) -> dict[str, Any]:
     row["reached"] = reason
     row["l1"] = row["l2"] = row["l3"] = False
+    row["llm_status"] = "blocked"
     row["detail"] = detail
     row["duration_s"] = round(time.monotonic() - started, 3)
     return row
@@ -739,7 +741,8 @@ def generate_cell(
             (
                 ""
                 if provenance["llm_generated"]
-                else "kb_fallback=" + ",".join(provenance["kb_fallback_reasons"])
+                else "llm_status=fallback (non-LLM-direct); kb_fallback="
+                + ",".join(provenance["kb_fallback_reasons"])
             ),
         ]
     )
@@ -789,6 +792,25 @@ def generate_cell(
         )
 
     size = artifact.stat().st_size
+    # Reverse-derivability (#771): the artifact itself must reveal whether it
+    # was LLM-synthesised or a KB-derived fallback template. The row carries
+    # the fields too, but the sidecar survives matrix.json rebuilds.
+    llm_status = "llm" if provenance["llm_generated"] else "fallback"
+    sidecar = artifact.with_name(artifact.name + ".provenance.json")
+    sidecar.write_text(
+        json.dumps(
+            {
+                "artifact": repo_relative(artifact),
+                "llm_status": llm_status,
+                "llm_generated": bool(provenance["llm_generated"]),
+                "kb_fallback_reasons": list(provenance["kb_fallback_reasons"]),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     l2_result = check_l2(artifact)
     if l2_result is None:
         return _blocked(
@@ -825,6 +847,7 @@ def generate_cell(
             "l2": verdict.l2,
             "l3": verdict.l3,
             "llm_generated": bool(provenance["llm_generated"]),
+            "llm_status": llm_status,
             "provenance": ",".join(provenance["kb_fallback_reasons"]),
             "detail": _detail_parts([f"bytes={size}", l2_detail, detail]),
             "duration_s": round(time.monotonic() - started, 3),
@@ -898,6 +921,9 @@ def reevaluate_cell(row: dict[str, Any], *, keyed: str) -> dict[str, Any]:
 
     l2_passed = bool(l2_result.get("passed"))
     llm_generated = bool(updated.get("llm_generated", True))
+    # Rows recorded before the llm_status field existed (#771) derive it from
+    # llm_generated so the column is always present after a reevaluation.
+    updated.setdefault("llm_status", "llm" if llm_generated else "fallback")
     verdict = compute_layers(
         l1_pass=l1_pass,
         l2_passed=l2_passed,

@@ -14,6 +14,7 @@ model was broken.  These tests pin the separation:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -84,6 +85,44 @@ class TestComputeLayersDegraded:
         assert "L2-degraded" not in cm.HONEST_BLOCKS
 
 
+def test_auth_error_marks_report_fallback_provenance() -> None:
+    """#771 DoD: AuthenticationError during synthesis must flip provenance.
+
+    The real report path is exercised: the LLM synthesis call raises
+    litellm.AuthenticationError (present-but-invalid key), the extractor
+    legacy path fails the same way, and the deterministic fallback that
+    produces the artifact must mark the KB fallback so the matrix row can
+    never record llm_generated=true / L3.
+    """
+    import litellm
+
+    from autoinfo.output import report as report_mod
+
+    def boom(*_args: Any, **_kwargs: Any) -> str:
+        raise litellm.AuthenticationError(
+            message="401 - Invalid bearer token", llm_provider="openai", model="qwen"
+        )
+
+    output.reset_llm_provenance()
+    entries = [{"title": "t", "summary": "s", "source_url": "https://x"}]
+    with (
+        patch.object(report_mod, "_call_llm_for_report_synthesis", boom),
+        patch.object(report_mod, "_llm_json_extract", boom),
+    ):
+        result = report_mod._generate_executive_summary(
+            extractor=None,
+            entries=entries,
+            groupings=[],
+            product_family="report",
+            max_synthesis_attempts=1,
+            retry_backoff_seconds=0,
+        )
+    assert result["recommendations"], "deterministic fallback must produce content"
+    state = output.llm_provenance()
+    assert state["llm_generated"] is False, state
+    assert "report_synthesis_deterministic" in state["kb_fallback_reasons"]
+
+
 class TestMatrixRowRecordsProvenance:
     def _row(self, artifact: Path) -> dict[str, Any]:
         combo = SimpleNamespace(product="tutorial", format="markdown", gated=True, key="t")
@@ -118,7 +157,17 @@ class TestMatrixRowRecordsProvenance:
         assert row["l3"] is False
         assert row["l2"] is True
         assert row["llm_generated"] is False
+        assert row["llm_status"] == "fallback"
+        assert "non-LLM-direct" in row["detail"]
         assert row["provenance"] == "synthesis_empty"
+        # #771: the artifact must reveal its provenance without matrix.json.
+        sidecar = artifact.with_name(artifact.name + ".provenance.json")
+        assert sidecar.is_file(), "fallback artifact must carry a provenance sidecar"
+        sidecar_data = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert sidecar_data["llm_status"] == "fallback"
+        assert sidecar_data["llm_generated"] is False
+        assert sidecar_data["kb_fallback_reasons"] == ["synthesis_empty"]
+        assert sidecar_data["artifact"].endswith("tutorial-markdown.md")
 
     def test_clean_cell_row_still_reports_l3(self, tmp_path: Path) -> None:
         artifact = tmp_path / "tutorial-markdown.md"
@@ -143,6 +192,12 @@ class TestMatrixRowRecordsProvenance:
             )
         assert row["reached"] == "L3"
         assert row["llm_generated"] is True
+        assert row["llm_status"] == "llm"
+        sidecar = tmp_path / "tutorial-markdown.md.provenance.json"
+        assert sidecar.is_file(), "llm artifact must carry a provenance sidecar"
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert data["llm_status"] == "llm"
+        assert data["kb_fallback_reasons"] == []
 
     def test_markdown_exposes_the_llm_column(self) -> None:
         row = {

@@ -301,8 +301,12 @@ def case_degrade_offline(root: Path) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmp:
         sandbox = Path(tmp) / "gov-artifacts"
         sandbox.mkdir()
+
+        def _injected_artifact_dir(_root: Path) -> Path:
+            return sandbox
+
         saved_artifact_dir = artifacts_mod.artifact_dir
-        artifacts_mod.artifact_dir = lambda r: sandbox
+        artifacts_mod.artifact_dir = _injected_artifact_dir
         try:
             return _degrade_offline_evidence(contract)
         finally:

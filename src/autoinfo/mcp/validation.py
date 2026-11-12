@@ -523,6 +523,103 @@ def _platform_detach_kwargs() -> dict[str, Any]:
     return {"start_new_session": True}
 
 
+def _cmd_quote_compat(command: str) -> str:
+    """Translate POSIX-style quoting into what cmd.exe can actually run (#774).
+
+    Scenario/CLI commands arrive POSIX-styled: single-quoted arguments
+    (including the ``shlex.quote``'d interpreter token) and multi-line
+    ``python -c`` bodies.  Three Windows facts must be translated at the
+    spawn site: cmd.exe has no single-quote semantics; the C runtime splits
+    the child's argv on newlines; and a ``"`` inside a re-emitted span would
+    end cmd's argument early.  So ``'...'`` spans become ``"..."`` with
+    embedded ``"`` escaped as ``\"``; newlines inside a span collapse —
+    inside open brackets to a plain space (soft line continuation), across
+    statements to ``"; "`` — and before the first content of a span they
+    disappear entirely (a leading space is a Python syntax error).  Bare
+    text, double-quoted spans and backslash paths pass through untouched.
+
+    Assumes single-quoted span bodies carry no single quotes (POSIX
+    ``'...\\'...'`` escaping) and that bracket characters inside embedded
+    string literals stay balanced — true for every scenario/CLI command in
+    the repo; a violating command degrades to a child-side error surfaced
+    honestly in the step detail.
+    """
+    out: list[str] = []
+    bare, single, double = 0, 1, 2
+    state = bare
+    seen_content = False  # any non-blank span content seen yet
+    since_nl = False  # non-blank span content since the last collapsed newline
+    depth = 0  # open-bracket depth within the current span
+    escaped = False  # previous char inside a span was a backslash
+
+    for ch in command:
+        if state == bare:
+            if ch == "'":
+                state = single
+                seen_content = since_nl = False
+                depth = 0
+                escaped = False
+                out.append('"')
+            elif ch == '"':
+                state = double
+                seen_content = since_nl = False
+                depth = 0
+                escaped = False
+                out.append(ch)
+            else:
+                out.append(ch)
+            continue
+        # Inside a span. A closing quote: single spans are re-emitted as
+        # double quotes; double spans close on their own quote.
+        if not escaped and ((state == single and ch == "'") or (state == double and ch == '"')):
+            out.append('"' if state == single else ch)
+            state = bare
+            continue
+        if ch == "\n":
+            # Newlines never reach the child argv intact (the C runtime
+            # splits on them): a soft continuation inside brackets, a
+            # statement separator elsewhere, and nothing at all before the
+            # span's first content.  The newline itself is never emitted.
+            if seen_content:
+                out.append(" " if depth > 0 else ("; " if since_nl else " "))
+            since_nl = False
+            continue
+        out.append(ch)
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == '"' and state == single:
+            # cmd must not end the re-emitted span at this quote: replace the
+            # bare quote just appended with its cmd escape.
+            out[-1] = '\\"'
+            seen_content = since_nl = True
+            continue
+        if not ch.isspace():
+            seen_content = since_nl = True
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+    return "".join(out)
+
+
+def _child_env() -> dict[str, str]:
+    """Child environment with explicit UTF-8 I/O (#774).
+
+    Without it a child python writes stderr in the Windows console code page
+    (cp936/GBK) while the parent decodes utf-8, and the reader thread dies
+    mid-``communicate`` — the step is then misjudged.  Explicit beats
+    ambient: setdefault keeps a caller-chosen encoding.
+    """
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+    return env
+
+
 def _kill_process_group(proc: subprocess.Popen[Any]) -> None:
     """Kill the whole process group (POSIX) / process tree (Windows) of *proc*.
 
@@ -658,12 +755,17 @@ def _run_cli_step(
     group the moment the step's wall-clock budget expires (the thread's own
     ``communicate`` timeout is a backstop, not the sole defence).
     """
+    command = _resolve_cli_interpreter(command)
+    if os.name == "nt":
+        command = _cmd_quote_compat(command)
     proc = subprocess.Popen(
-        _resolve_cli_interpreter(command),
+        command,
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_child_env(),
         **_platform_detach_kwargs(),
     )
     if cancel_token is not None:

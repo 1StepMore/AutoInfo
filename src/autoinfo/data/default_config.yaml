@@ -12,6 +12,10 @@ llm:
   # (+ base_url for non-OpenAI gateways) to its own stack; nothing is pinned
   # to a vendor in code.
   provider: openai
+  # Issue #791: write the BARE model name here — the code prepends the
+  # provider prefix when building the LiteLLM candidate ("deepseek-v4-flash"
+  # is sent as "openai/deepseek-v4-flash"). A prefixed name ("openai/x") is
+  # passed through unchanged, never re-prefixed into "openai/openai/x".
   model: deepseek-v4-flash
   api_key: ${AUTOINFO_LLM_API_KEY}
   # base_url: "https://opencode.ai/zen/go/v1"  # custom gateway endpoint

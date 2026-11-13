@@ -6,6 +6,7 @@ pyramid_layer: component
 pipeline_stage: A7
 user_level: B2.1
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "list_domains returns configured domains"
     tool: list_domains

@@ -72,8 +72,8 @@
 BUILD_CMD=pip install -e ".[dev,ebook]"     # ci.yml test job 实际安装命令
 TEST_CMD=pytest -m "not real_api" -q        # ci.yml "Test suite (fast subset)" 逐字
 LINT_CMD=ruff check src/ tests/ && mypy src/  # Makefile lint 目标逐字（本机 make 缺失→直接命令执行）
-E2E_CMD=UNKNOWN                              # → GAP-01
-E2E_RUNNER=UNKNOWN                           # → GAP-01；V13 选型 Owner 已拍板=骨架挂验证场景
+E2E_CMD=pytest tests/e2e/test_e2e_features.py -q   # #729 基线落地（2026-11-14），GAP-01 解除
+E2E_RUNNER=autoinfo.mcp.validation.run_scenario    # 决策 8：既有验证场景引擎，20 旅程挂场景 ID
 REPO=AutoInfo（origin=git@github.com:1StepMore/AutoInfo.git）
 ```
 

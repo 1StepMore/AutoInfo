@@ -18,7 +18,7 @@ PR：https://github.com/1StepMore/AutoInfo/pull/724（**draft，未合并**，�
 | P4-S1 确定性校验 | 2026-11-08 | done（本地可得子集） | ruff 全量 PASS；mypy：4 错误均为 main 既有（干净 worktree 对照验证），A13 零新增，且 CI mypy 仅扫 src/；目标回归 tests/scripts+tests/gov：**526 passed / 3 failed（全部在干净 main worktree 复现=Windows 环境失败，非本分支引入）/ 8 skipped** | full pytest 快子集以 PR CI 为准（D8：本机无 make） |
 | P4-S2 lock 权限复核 | 2026-11-08 | **SKIPPED-D3** | gh-aw 未装（决策 7），无 .lock.yml | 降级期间不宣称 gh-aw gate 生效 |
 | P4-S3 四角色 dry-run | 2026-11-08 | **PASS 4/4** | 全新上下文子代理 ×4（显式点名）：角色/必读顺序/Done 逐条与契约一致 | 附加发现：未点名角色时正确输出 `ESCALATE`（禁自猜防线实测有效，02 稿 §0.1 设计验证） |
-| P4-S4 E2E 基线校准 | 2026-11-08 | **PENDING-前置** | GAP-01（无可执行 E2E 基线） | 转入 Owner 待办；不算失败但显式登记 |
+| P4-S4 E2E 基线校准 | 2026-11-08 → 2026-11-14 | **done（2026-11-14）** | #729 基线落地：E2E_CMD=`pytest tests/e2e/test_e2e_features.py -q`、E2E_RUNNER=验证场景引擎 `run_scenario`、首批 20 旅程挂场景 ID；Windows 校准 18 passed + 5 blocked-unconfigured（key/browser 前提缺失的引擎诚实读数） | GAP-01 解除；DEBT-03 关闭 |
 | P4-S5 人工抽查清单 | 2026-11-08 | done（材料交 Owner） | 见 §8.4 签收清单 | 判定权在 Owner |
 | P5-S1 归档入库 | 2026-11-08 | done | runlog + 双 inventory 入 `.agents/audit/`（commit `d0f86aaf` + 后续更新） | 控制区为权威原件 |
 | P5-S3 控制区归档 | 2026-11-08 | done | 本目录即归档（agent-governance-autoinfo-20261108） | P5-S2 分支清理=Owner 合并后事项 |
@@ -67,7 +67,7 @@ PR：https://github.com/1StepMore/AutoInfo/pull/724（**draft，未合并**，�
 | CP-03 | 零占位符残留；INVENTORY.md AUTO-GENERATED 且与目录一致 | **PASS** | C5 实测（两次抓到真实残留并修复：checkpoints 自引用字面量、归档 runlog 描述性字面量）；C6 实测字节级一致 |
 | CP-04 | 一致性 gate 生效：注入断链→CI 挡住 | **PASS** | 本地注入演练红（orphan 场景→C7 失败）+ **CI 真实抓到** A8 后的 inventory stale（PR #724 check 红→重生成修复） |
 | CP-05 | gh aw compile --strict 全过；.lock.yml 权限最小 | **SKIPPED-D3** | gh-aw 未装（决策 7）；降级期间不宣称 gate 生效 |
-| CP-06 | 20 用法小样本可跑；0% 覆盖显式登记 | **PENDING-前置** | GAP-01 已登记（inventory + e2e README + DEBT-03）；样本待 E2E 基线后由 Tester 跑 |
+| CP-06 | 20 用法小样本可跑；0% 覆盖显式登记 | **PASS（2026-11-14）** | 20 旅程全量可跑（E2E_CMD，Windows 实测 18 绿 + 5 blocked-unconfigured）；未覆盖的 169 场景显式登记于 `tests/e2e/features/README.md` 旅程表（0% 覆盖口径=仅首批 20 旅程挂接 35 场景） | 后续扩样由 Owner 增删旅程文件即自动生效 |
 
 ## 降级与遗留
 

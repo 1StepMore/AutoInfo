@@ -186,12 +186,19 @@ def _requires_configured_domain(scenario: dict[str, Any]) -> bool:
 
 
 def select_candidates(scenarios: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return the keyless, networkless, domain-free candidate scenarios."""
+    """Return the keyless, networkless candidate scenarios.
+
+    Domain-gated scenarios are excluded from the plain pass — EXCEPT the
+    pinned PROJECT_SCENARIOS: the project pass initialises medical-research
+    in a throwaway cwd before running them, so their domain precondition is
+    satisfied there (the pass exists precisely for these config-reading
+    scenarios) rather than by the caller's checkout.
+    """
     return [
         scenario
         for scenario in scenarios
         if not scenario.get("requires_env")
-        and not _requires_configured_domain(scenario)
+        and (scenario["name"] in PROJECT_SCENARIOS or not _requires_configured_domain(scenario))
         and not _uses_llm_tool(scenario)
         and not _has_llm_assert(scenario)
         and not _uses_http(scenario)

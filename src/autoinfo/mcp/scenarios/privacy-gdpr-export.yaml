@@ -127,7 +127,7 @@ steps:
       a, b = "validation-privacy-gdpr-user-a", "validation-privacy-gdpr-user-b"
       result = _handle_delete_user_data("delete_user_data", {"user_id": a, "purge": True})
       assert result.get("user_id") == a, result
-      assert result.get("deleted_count", 0) >= 1, "expected A's KB entries to be deleted: " + str(result)
+      assert result.get("deleted_count", 0) >= 1, "expected the KB entries to be deleted: " + str(result)
       assert get_profile(b) is not None, "user B must be untouched"
       print("GDPR_PURGE_OK")
       PY

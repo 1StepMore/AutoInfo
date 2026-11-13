@@ -105,9 +105,11 @@ def test_auth_error_marks_report_fallback_provenance() -> None:
 
     output.reset_llm_provenance()
     entries = [{"title": "t", "summary": "s", "source_url": "https://x"}]
+    # report.py resolves these names through _hub() from autoinfo.output, so the
+    # stubs must be patched on the hub — patching report_mod would never fire.
     with (
-        patch.object(report_mod, "_call_llm_for_report_synthesis", boom),
-        patch.object(report_mod, "_llm_json_extract", boom),
+        patch.object(output, "_call_llm_for_report_synthesis", boom),
+        patch.object(output, "_llm_json_extract", boom),
     ):
         result = report_mod._generate_executive_summary(
             extractor=None,

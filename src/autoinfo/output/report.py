@@ -365,7 +365,13 @@ def _generate_executive_summary(
             )
             sleep_fn(retry_backoff_seconds)
         attempt_prompt = prompt if attempt == 1 else retry_prompt
-        parsed = _parse_report_markdown(_hub("_call_llm_for_report_synthesis")(attempt_prompt))
+        try:
+            parsed = _parse_report_markdown(
+                _hub("_call_llm_for_report_synthesis")(attempt_prompt)
+            )
+        except Exception as exc:
+            logger.warning("Report synthesis attempt %d failed: %s", attempt, exc)
+            parsed = {}
         if parsed.get("executive_summary"):
             break
 
@@ -384,10 +390,14 @@ def _generate_executive_summary(
                 ", ".join(f for f in product_fields if not parsed.get(f)),
                 len(sections_prompt),
             )
-            sections_parsed = _parse_report_markdown(
-                _hub("_call_llm_for_report_synthesis")(sections_prompt),
-                require_exec_summary=False,
-            )
+            try:
+                sections_parsed = _parse_report_markdown(
+                    _hub("_call_llm_for_report_synthesis")(sections_prompt),
+                    require_exec_summary=False,
+                )
+            except Exception as exc:
+                logger.warning("Report product-section synthesis failed: %s", exc)
+                sections_parsed = {}
             for field in product_fields:
                 if sections_parsed.get(field):
                     parsed[field] = sections_parsed[field]

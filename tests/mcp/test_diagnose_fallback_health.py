@@ -108,7 +108,11 @@ class TestDiagnoseFallbackHealth:
         assert fh["primary"]["model"] == "gpt-4o"
         assert fh["primary"]["provider"] == "openai"
 
-    def test_explicit_provider_and_key_do_not_inherit(self, tmp_path: Path) -> None:
+    def test_explicit_provider_and_key_do_not_inherit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # #792: "explicit_env" means the reference resolves non-empty.
+        monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "inherit-check-secret")
         """Explicit provider / ${ENV} api_key on a fallback → no inheritance."""
         config_path = tmp_path / ".autoinfo" / "config.yaml"
         config_path.parent.mkdir()
@@ -151,7 +155,10 @@ class TestLlmFallbackHealthHelper:
         assert fh["count"] == 0
         assert fh["entries"] == []
 
-    def test_fallback_inheritance_semantics(self) -> None:
+    def test_fallback_inheritance_semantics(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # #792: "explicit_env" now means the reference RESOLVES non-empty —
+        # set the variable so the ${ENV} entry below lands in that state.
+        monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "health-check-secret")
         fh = llm_fallback_health(
             Config(
                 llm=LLMConfig(
@@ -221,3 +228,134 @@ class TestLlmFallbackHealthHelper:
         entry = fh["entries"][0]
         assert entry["inherits_key"] is False
         assert entry["key_status"] == "no_primary_key"
+
+
+class TestEnvUnsetVisibility:
+    """#792: an unset ${ENV} key reference must be loud, not silently empty."""
+
+    def test_unset_reference_reports_explicit_env_unset(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.delenv("AUTOINFO_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("APIGOTO_API_KEY", raising=False)
+        fh = llm_fallback_health(
+            Config(
+                llm=LLMConfig(
+                    provider="openai",
+                    model="gpt-4o",
+                    fallback=[LLMConfig(model="deepseek-flash", api_key="${APIGOTO_API_KEY}")],
+                ),
+            )
+        )
+        entry = fh["entries"][0]
+        assert entry["key_status"] == "explicit_env_unset"
+        assert entry["inherits_key"] is False
+        assert fh["verdict"] == "red"
+        # The warning names the variable, never a value.
+        assert any("APIGOTO_API_KEY" in r.message for r in caplog.records)
+        assert not any("sk-" in r.message for r in caplog.records)
+
+    def test_set_reference_reports_explicit_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("APIGOTO_API_KEY", "apigoto-secret")
+        fh = llm_fallback_health(
+            Config(
+                llm=LLMConfig(
+                    provider="openai",
+                    model="gpt-4o",
+                    fallback=[LLMConfig(model="deepseek-flash", api_key="${APIGOTO_API_KEY}")],
+                ),
+            )
+        )
+        assert fh["entries"][0]["key_status"] == "explicit_env"
+        assert fh["verdict"] == "green"
+
+    def test_verdict_amber_when_some_entries_unusable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("APIGOTO_API_KEY", "apigoto-secret")
+        monkeypatch.delenv("OTHER_KEY", raising=False)
+        fh = llm_fallback_health(
+            Config(
+                llm=LLMConfig(
+                    provider="openai",
+                    model="gpt-4o",
+                    fallback=[
+                        LLMConfig(model="deepseek-flash", api_key="${APIGOTO_API_KEY}"),
+                        LLMConfig(model="glm-4-flash", api_key="${OTHER_KEY}"),
+                    ],
+                ),
+            )
+        )
+        statuses = [e["key_status"] for e in fh["entries"]]
+        assert statuses == ["explicit_env", "explicit_env_unset"]
+        assert fh["verdict"] == "amber"
+
+    def test_verdict_green_when_every_entry_usable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        gateway = "https://gateway.example/v1"
+        monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "primary-secret")
+        fh = llm_fallback_health(
+            Config(
+                llm=LLMConfig(
+                    provider="openai",
+                    model="gpt-4o",
+                    base_url=gateway,
+                    fallback=[LLMConfig(model="mimo-v2.5", base_url=gateway)],
+                ),
+            )
+        )
+        assert fh["entries"][0]["key_status"] == "inherited_same_gateway"
+        assert fh["verdict"] == "green"
+
+    def test_verdict_green_for_unconfigured_chain(self) -> None:
+        fh = llm_fallback_health(Config())
+        assert fh["configured"] is False
+        assert fh["verdict"] == "green"
+
+    def test_primary_reference_unset_warns(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from autoinfo.config import resolve_primary_api_key
+
+        monkeypatch.delenv("AUTOINFO_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("SPARK_API_KEY", raising=False)
+        cfg = Config(llm=LLMConfig(api_key="${SPARK_API_KEY}"))
+        assert resolve_primary_api_key("", cfg) == ""
+        assert any("SPARK_API_KEY" in r.message for r in caplog.records)
+
+    def test_doctor_surfaces_the_verdict(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """diagnose_system's fallback_health carries the graded verdict.
+
+        A config loaded from YAML has its ${ENV} references expanded at load
+        time, so the unset variable warning fires there and the health check
+        sees an empty key on a same-gateway entry (no_primary_key -> red).
+        """
+        import yaml as yaml_mod
+
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            yaml_mod.safe_dump(
+                {
+                    "llm": {
+                        "provider": "openai",
+                        "model": "gpt-4o",
+                        "base_url": "https://gateway.example/v1",
+                        "fallback": [
+                            {"model": "deepseek-flash", "base_url": "https://gateway.example/v1"}
+                        ],
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("AUTOINFO_LLM_API_KEY", raising=False)
+        with patch("autoinfo.config.get_config_path", return_value=config_path):
+            result = _handle_diagnose_system()
+        fh = result["fallback_health"]
+        assert fh["configured"] is True
+        assert fh["entries"][0]["key_status"] == "no_primary_key"
+        assert fh["verdict"] == "red"

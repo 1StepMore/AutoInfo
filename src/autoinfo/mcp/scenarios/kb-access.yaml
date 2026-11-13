@@ -6,6 +6,7 @@ pyramid_layer: component
 pipeline_stage: A3
 user_level: B2.4
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "search_knowledge_base returns entries"
     tool: search_knowledge_base

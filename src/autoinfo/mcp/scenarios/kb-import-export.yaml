@@ -18,6 +18,7 @@ pyramid_layer: component
 pipeline_stage: A3
 user_level: B2.4
 requires_env: []
+requires_domain: ["medical-research"]
 steps:
   - name: "import_kb imports markdown entry"
     tool: import_kb

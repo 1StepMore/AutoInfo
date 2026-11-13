@@ -193,6 +193,13 @@ advisory = false
 source = "autoinfo.gov.escalate:pending"
 not_run_allowed_reason = "no escalation store yet — an empty store is a PASS (nothing awaiting a human)"
 
+[gates.governance_path]
+kind = "gate"
+required = false
+advisory = false
+source = ".github/workflows/governance-path-gate.yml#governance-path-gate"
+not_run_allowed_reason = "state lives in GitHub PR check runs (issue #727); no local reader yet — gov degrades it to UNMEASURED"
+
 # ---------------------------------------------------------------------------
 # Profiles — capability boundary (T15). One contract, two runtime profiles.
 # `gov run --mode <profile> --probe <action>` decides via autoinfo.gov.policy.
@@ -239,6 +246,7 @@ gate = [
     "scripts/nightly_ledger.py",
     "scripts/gen_demo_domains_table.py",
     "scripts/agent_review/battery.py",
+    "scripts/check_governance_paths.py",
 ]
 oneoff = [
     "scripts/dev_capture_digest_golden.py",

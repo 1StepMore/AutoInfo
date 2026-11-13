@@ -22,3 +22,18 @@
 
 # CI/CD and community files.
 /.github/ @1StepMore
+
+# ---------------------------------------------------------------------------
+# Governance surfaces (issue #727) — owner-gated paths.
+#
+# Patterns between the begin/end markers below are enforced by the
+# governance-path-gate CI job: a PR that touches them must carry the
+# `governance-approved` label (owner decision; label requires write access).
+# Review-routing entries above (including the bare `*` catch-all) are NOT
+# enforced by the gate. Parsed by scripts/check_governance_paths.py —
+# do not rename the markers.
+# governance-path-gate: begin
+/.agents/expectations/ @1StepMore
+/.agents/roles/ @1StepMore
+/.specify/ @1StepMore
+# governance-path-gate: end

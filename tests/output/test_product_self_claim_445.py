@@ -29,6 +29,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from autoinfo.output import (
     ProductTemplate,
     _apply_min_content_guard,
@@ -251,8 +253,18 @@ class TestD2SelfClaimGate:
 
         assert result.passed
 
-    def test_escalation_reaches_delivery_warnings(self) -> None:
-        """A flag that never surfaces is not an escalation."""
+    def test_escalation_reaches_delivery_warnings(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A flag that never surfaces is not an escalation.
+
+        The optional LLM product judge (#298) is explicitly disabled (#779):
+        with no explicit config its key check falls through to the *local*
+        ``.autoinfo/config.yaml``, so on a machine that has a judge config but
+        no workable key this test hard-blocked ("judge returned no verdict")
+        while CI stayed green — the result depended on the box, not the code.
+        The D2 escalation semantics under test are independent of the judge;
+        the judge-enabled path is pinned by the injected-verdict test below.
+        """
+        monkeypatch.setenv("AUTOINFO_PRODUCT_JUDGE", "0")
         from autoinfo.output import _apply_delivery_gates
 
         body = _enterprise_briefing(
@@ -273,6 +285,49 @@ class TestD2SelfClaimGate:
 
         assert not delivery.delivery_blocked
         assert any("Zylotron" in w for w in delivery.warnings), delivery.warnings
+
+    def test_escalation_reaches_delivery_warnings_with_passing_judge(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#779 reverse-proof: with the judge forced through an injected PASS
+        verdict, the same D2 orphan-entity warning still reaches delivery
+        warnings — disabling the judge in the sibling test is not what keeps
+        this product shippable. Both the key check and the LLM call are
+        stubbed in the hub namespace (``_run_product_judge`` imports them at
+        call time), so the judge path executes deterministically and stays
+        off the network on every machine."""
+        monkeypatch.delenv("AUTOINFO_PRODUCT_JUDGE", raising=False)
+        from autoinfo.output import _apply_delivery_gates
+
+        judge_calls: list[int] = []
+
+        def _stub_call(*args: Any, **kwargs: Any) -> str:
+            judge_calls.append(1)
+            return '{"ok": true, "reason": ""}'
+
+        monkeypatch.setattr("autoinfo.output.call_with_fallback", _stub_call)
+        monkeypatch.setattr("autoinfo.output._llm_key_available", lambda cfg=None: True)
+
+        body = _enterprise_briefing(
+            "OpenAI has introduced the Zylotron accelerator, a device no supplied "
+            "entry describes, and it undercuts competing suppliers.",
+            "selected 2 of 3 key findings · 3 sources.",
+            ["Finding one rendered in full.", "Finding two rendered in full."],
+        )
+
+        delivery = _apply_delivery_gates(
+            body,
+            "markdown",
+            [],
+            {"product_type": "PROCESSED"},
+            "PROCESSED",
+            delivery_gate_configs={"D1": {"enabled": False}, "D3": {"enabled": False}},
+        )
+
+        assert judge_calls == [1]  # the judge path actually ran (one attempt, PASS verdict)
+        assert not delivery.delivery_blocked
+        assert any("Zylotron" in w for w in delivery.warnings), delivery.warnings
+        assert not any("product judge blocked" in w for w in delivery.warnings)
 
 
 class TestTemplatesRenderNoOrphanSection:

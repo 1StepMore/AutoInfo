@@ -10,6 +10,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
@@ -76,8 +77,10 @@ class TestRenderHyperframes:
         """Lint non-zero exit raises RuntimeError with output."""
         project = _fake_project(temp_dir)
         proc = MagicMock(returncode=1, stdout="lint error", stderr="")
-        with patch("autoinfo.output.video._find_binary", return_value="/usr/bin/bun"), \
-             patch("subprocess.run", return_value=proc):
+        with (
+            patch("autoinfo.output.video._find_binary", return_value="/usr/bin/bun"),
+            patch("subprocess.run", return_value=proc),
+        ):
             with pytest.raises(RuntimeError, match="lint failed"):
                 render_hyperframes(project, os.path.join(temp_dir, "v.mp4"))
 
@@ -86,8 +89,10 @@ class TestRenderHyperframes:
         project = _fake_project(temp_dir)
         lint_ok = MagicMock(returncode=0, stdout="ok", stderr="")
         render_fail = MagicMock(returncode=2, stdout="", stderr="render boom")
-        with patch("autoinfo.output.video._find_binary", return_value="/usr/bin/bun"), \
-             patch("subprocess.run", side_effect=[lint_ok, render_fail]):
+        with (
+            patch("autoinfo.output.video._find_binary", return_value="/usr/bin/bun"),
+            patch("subprocess.run", side_effect=[lint_ok, render_fail]),
+        ):
             with pytest.raises(RuntimeError, match="render failed"):
                 render_hyperframes(project, os.path.join(temp_dir, "v.mp4"))
 
@@ -101,8 +106,10 @@ class TestRenderHyperframes:
 
         lint_ok = MagicMock(returncode=0, stdout="ok", stderr="")
         render_ok = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("autoinfo.output.video._find_binary", return_value="/usr/bin/bun"), \
-             patch("subprocess.run", side_effect=[lint_ok, render_ok]) as mock_run:
+        with (
+            patch("autoinfo.output.video._find_binary", return_value="/usr/bin/bun"),
+            patch("subprocess.run", side_effect=[lint_ok, render_ok]) as mock_run,
+        ):
             result = render_hyperframes(project, output, quality="draft")
         assert result == output
         # Verify the render command includes the quality flag.
@@ -119,8 +126,10 @@ class TestRenderHyperframes:
 class TestGenerateReportVideo:
     def test_full_pipeline_returns_path(self, temp_dir: str) -> None:
         """TTS + project + render produces a video path."""
-        with patch("autoinfo.output.video.generate_audio_narration") as mock_audio, \
-             patch("autoinfo.output.video.render_hyperframes") as mock_render:
+        with (
+            patch("autoinfo.output.video.generate_audio_narration") as mock_audio,
+            patch("autoinfo.output.video.render_hyperframes") as mock_render,
+        ):
             mock_audio.return_value = os.path.join(temp_dir, "narration.mp3")
             mock_render.return_value = os.path.join(temp_dir, "video.mp4")
 
@@ -137,9 +146,12 @@ class TestGenerateReportVideo:
 
     def test_failure_preserves_work_dir(self, temp_dir: str) -> None:
         """Render failure keeps the work dir for post-mortem, then raises."""
-        with patch("autoinfo.output.video.generate_audio_narration") as mock_audio, \
-             patch("autoinfo.output.video.render_hyperframes",
-                   side_effect=RuntimeError("render boom")):
+        with (
+            patch("autoinfo.output.video.generate_audio_narration") as mock_audio,
+            patch(
+                "autoinfo.output.video.render_hyperframes", side_effect=RuntimeError("render boom")
+            ),
+        ):
             mock_audio.return_value = os.path.join(temp_dir, "narration.mp3")
             with pytest.raises(RuntimeError, match="render boom"):
                 generate_report_video(
@@ -194,9 +206,7 @@ def _hyperframes_chrome_launchable() -> bool:
     """
     from pathlib import Path
 
-    candidates = sorted(
-        Path.home().glob(".cache/hyperframes/chrome/**/chrome-headless-shell")
-    )
+    candidates = sorted(Path.home().glob(".cache/hyperframes/chrome/**/chrome-headless-shell"))
     if not candidates:
         return False
     try:
@@ -210,15 +220,54 @@ def _hyperframes_chrome_launchable() -> bool:
     return probe.returncode == 0
 
 
-pytestmark = pytest.mark.skipif(
+# The HyperFrames templates (video_assets/templates/*.j2) load GSAP from the
+# jsdelivr CDN at render time; offline environments cannot exercise the real
+# render and would die on a `sub_timeline_script_failure` correctness warning.
+# That is an environment limitation — report it as a blocked reading with the
+# reason, never as a FAILED product regression (issue #780).
+GSAP_CDN_URL = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
+
+
+@functools.lru_cache(maxsize=1)
+def _gsap_cdn_reachable() -> bool:
+    """True when the GSAP CDN the HyperFrames templates load is reachable."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(GSAP_CDN_URL, timeout=10) as resp:
+            return 200 <= resp.status < 300
+    except OSError:
+        return False
+
+
+def _require_gsap_cdn() -> None:
+    """Skip with a ``blocked-no-cdn`` reading when the GSAP CDN is unreachable.
+
+    The real render cannot run offline, so the honest reading is a skip with
+    the reason, never a FAILED product regression (#780).
+    """
+    if not _gsap_cdn_reachable():
+        pytest.skip(
+            f"blocked-no-cdn: HyperFrames templates load GSAP from {GSAP_CDN_URL} "
+            "at render time — offline environments cannot exercise the real "
+            "render (issue #780)"
+        )
+
+
+@pytest.mark.skipif(
     BUN is None or FFMPEG is None or not _hyperframes_chrome_launchable(),
     reason="bun/ffmpeg/launchable Chrome not available — real HyperFrames render skipped",
 )
-
-
 class TestRealRender:
     def test_real_render_smoke(self, temp_dir: str) -> None:
-        """End-to-end render of a generated project produces an MP4."""
+        """End-to-end render of a generated project produces an MP4.
+
+        Unreachable GSAP CDN is an environment block, not a defect (#780):
+        the render is skipped with a ``blocked-no-cdn`` reason.  When the CDN
+        is up the render runs for real, and any genuine render defect still
+        raises — pinned by ``TestCdnBlockVsRealDefect`` below.
+        """
+        _require_gsap_cdn()
         from autoinfo.output.video import generate_hyperframes_project
 
         project = generate_hyperframes_project(
@@ -232,3 +281,52 @@ class TestRealRender:
         render_hyperframes(project, output, quality="draft")
         assert os.path.isfile(output)
         assert os.path.getsize(output) > 100
+
+
+class TestCdnBlockVsRealDefect:
+    """#780 DoD 2: the blocked reading must never mask a real render defect.
+
+    The ``blocked-no-cdn`` skip fires only on CDN unreachability.  With the
+    CDN up, the render still runs and a correctness warning (the exact
+    failure shape from #780) still raises RuntimeError — red, never blocked.
+    """
+
+    def test_render_correctness_warning_still_raises_with_cdn_reachable(
+        self, temp_dir: str
+    ) -> None:
+        project = _fake_project(temp_dir)
+        lint_ok = MagicMock(returncode=0, stdout="ok", stderr="")
+        render_defect = MagicMock(
+            returncode=1,
+            stdout=(
+                "Render blocked by 1 correctness warning:\n"
+                "- sub_timeline_script_failure: A sub-composition timeline script "
+                "failed to load"
+            ),
+            stderr="",
+        )
+        with (
+            patch("autoinfo.output.video._find_binary", return_value="/usr/bin/bun"),
+            patch("subprocess.run", side_effect=[lint_ok, render_defect]),
+        ):
+            with pytest.raises(RuntimeError, match="sub_timeline_script_failure"):
+                render_hyperframes(project, os.path.join(temp_dir, "v.mp4"))
+
+    def test_cdn_guard_skips_with_reason_when_offline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "tests.output.test_video_integration._gsap_cdn_reachable",
+            lambda: False,
+        )
+        with pytest.raises(pytest.skip.Exception) as excinfo:
+            _require_gsap_cdn()
+        assert "blocked-no-cdn" in str(excinfo.value)
+        assert "issue #780" in str(excinfo.value)
+
+    def test_cdn_guard_passes_when_reachable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "tests.output.test_video_integration._gsap_cdn_reachable",
+            lambda: True,
+        )
+        _require_gsap_cdn()  # must not raise Skipped

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.31.4](https://github.com/1StepMore/AutoInfo/compare/v1.31.3...v1.31.4) (2026-11-13)
+
+
+### Bug Fixes
+
+* **llm:** normalize model names once at candidate construction ([#791](https://github.com/1StepMore/AutoInfo/issues/791)) ([1850621](https://github.com/1StepMore/AutoInfo/commit/1850621ad2796c264d771ecf2e24ef17c73e9909))
+
 ## [1.31.3](https://github.com/1StepMore/AutoInfo/compare/v1.31.2...v1.31.3) (2026-11-13)
 
 

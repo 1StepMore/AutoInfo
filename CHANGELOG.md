@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.0](https://github.com/1StepMore/AutoInfo/compare/v1.31.4...v1.32.0) (2026-11-13)
+
+
+### Features
+
+* **e2e:** executable E2E baseline — 20 journeys on the scenario engine ([#729](https://github.com/1StepMore/AutoInfo/issues/729)) ([07534af](https://github.com/1StepMore/AutoInfo/commit/07534afa5797800cd3a1b047a5582a7fed20d25c))
+
+
+### Bug Fixes
+
+* **config:** make unset ${ENV} key references loud, not silently empty ([#792](https://github.com/1StepMore/AutoInfo/issues/792)) ([9ac3475](https://github.com/1StepMore/AutoInfo/commit/9ac3475be2bfab8f0fb1904b5d17f68dfb58f5d5))
+
 ## [1.31.4](https://github.com/1StepMore/AutoInfo/compare/v1.31.3...v1.31.4) (2026-11-13)
 
 

@@ -64,7 +64,9 @@ def test_kb_promote_yaml_exists_and_parses() -> None:
         assert key in data, f"missing required key: {key}"
     assert data["name"] == "kb-promote"
     assert data["category"] == "edge_case"
-    assert data["requires_env"] == []
+    # #729: promote runs the G4 CurationGate unconditionally, so a resolvable
+    # key is a real prerequisite — the honest keyless reading is unconfigured.
+    assert data["requires_env"] == ["AUTOINFO_LLM_API_KEY"]
     assert data["requires_domain"] == ["medical-research"]
     assert data["collect_artifacts"] == [
         "knowledge/medical-research/01-Raw/**/*.md",

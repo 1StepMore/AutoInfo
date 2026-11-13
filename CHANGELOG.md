@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.31.2](https://github.com/1StepMore/AutoInfo/compare/v1.31.1...v1.31.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* **mcp:** abort in-flight HTTP connections on step timeout ([#775](https://github.com/1StepMore/AutoInfo/issues/775)) ([#786](https://github.com/1StepMore/AutoInfo/issues/786)) ([8ee06fd](https://github.com/1StepMore/AutoInfo/commit/8ee06fd6c39979e2878b42f03fd58e67effe6504))
+* **mcp:** make CLI subprocess pipes platform-honest on Windows ([#774](https://github.com/1StepMore/AutoInfo/issues/774)) ([#785](https://github.com/1StepMore/AutoInfo/issues/785)) ([f6dda36](https://github.com/1StepMore/AutoInfo/commit/f6dda36cd7c97a79ff2abdab6a1a49f81038a98b))
+
 ## [1.31.1](https://github.com/1StepMore/AutoInfo/compare/v1.31.0...v1.31.1) (2026-11-12)
 
 

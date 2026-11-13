@@ -11,7 +11,7 @@
 | EXP-GATES | 质量门禁目录与激活语义（G0–G7/D1–D3） | `docs/dev/specs/quality-gates.md` | Owner | @333a11c2 |
 | EXP-SCEN | 验证场景体系（182 场景三态判定） | `tests/validation/` + 场景引擎 | Owner | @333a11c2 |
 | EXP-DEMO | Demo 发布标准（DoD + 残差登记） | `docs/demo-release-standard.md` + `docs/known-limitations/demo-quality-residuals.md` | Owner | @333a11c2 |
-| EXP-E2E | E2E 旅程基线（执行层 = `tests/e2e/features/`，可执行基线 PENDING-前置 GAP-01） | `tests/e2e/features/README.md` | Owner | skeleton |
+| EXP-E2E | E2E 旅程基线（执行层 = `tests/e2e/features/`；E2E_CMD = `pytest tests/e2e/test_e2e_features.py -q`，E2E_RUNNER = 验证场景引擎 `autoinfo.mcp.validation.run_scenario`；首批 20 旅程，#729） | `tests/e2e/features/README.md` | Owner | v1-baseline-20 (2026-11-14) |
 
 > 版本锚约定：`@<commit>` 指当前基线；期望内容变更时（仅 Owner）须更新对应行版本并记 ADR。
 

@@ -779,10 +779,26 @@ def _as_bool(value: Any) -> bool:
 
 
 def _resolve_env_vars(value: str) -> str:
-    """Replace ``${VAR_NAME}`` placeholders with environment variable values."""
+    """Replace ``${VAR_NAME}`` placeholders with environment variable values.
+
+    #792: a reference to a variable that is NOT SET still resolves to ""
+    (same rule as the primary key, #119/#166) but now says so at load time —
+    the variable NAME is logged, never any value, so a silently-disabled
+    fallback key (or any other silently-empty field) is visible in seconds
+    instead of surfacing as a vendor's "api key not found" three hops later.
+    """
 
     def _replace(match: re.Match[str]) -> str:
-        return os.environ.get(match.group(1), "")
+        name = match.group(1)
+        resolved = os.environ.get(name, "")
+        if not resolved:
+            logger.warning(
+                'config reference "${%s}" resolved to empty — variable not '
+                "set (#792); if this is an LLM api_key, the affected entry "
+                "cannot authenticate",
+                name,
+            )
+        return resolved
 
     return _ENV_VAR_PATTERN.sub(_replace, value)
 
@@ -1866,7 +1882,19 @@ def resolve_primary_api_key(api_key: str, config: Config) -> str:
     cannot drift.
     """
     resolved = api_key or config.llm.api_key or ""
-    resolved = expand_env_reference(resolved)
+    if resolved.startswith("${") and resolved.endswith("}"):
+        # #792: same visibility rule as the fallback entries — an unset
+        # variable must be loud, not a silent empty key.  Variable NAME only.
+        resolved = expand_env_reference(resolved)
+        if not resolved:
+            logger.warning(
+                "LLM primary api_key reference ${%s} resolved to empty — "
+                "variable not set; the primary entry cannot authenticate "
+                "(#792)",
+                (api_key or config.llm.api_key)[2:-1],
+            )
+    else:
+        resolved = expand_env_reference(resolved)
     if not resolved:
         resolved = os.environ.get("AUTOINFO_LLM_API_KEY", "")
     return resolved
@@ -1901,11 +1929,26 @@ def resolve_fallback_api_key(
     different vendor's gateway (director decision: same-gateway only).
 
     Returned status is one of: ``"explicit"``, ``"explicit_env"``,
-    ``"inherited_same_gateway"``, ``"no_primary_key"`` (same gateway but no
-    primary key configured), ``"cross_endpoint_no_key"``.
+    ``"explicit_env_unset"`` (an ``${ENV}`` reference whose variable is not
+    set — the entry cannot authenticate; #792), ``"inherited_same_gateway"``,
+    ``"no_primary_key"`` (same gateway but no primary key configured),
+    ``"cross_endpoint_no_key"``.
     """
     if fallback_api_key.startswith("${") and fallback_api_key.endswith("}"):
-        return expand_env_reference(fallback_api_key), "explicit_env"
+        resolved = expand_env_reference(fallback_api_key)
+        if not resolved:
+            # #792: an unset variable used to degrade silently to an empty
+            # key — the request went out anyway and the gateway answered
+            # "api key not found", indistinguishable from a dead credential.
+            # Say so, loudly, with the variable NAME only (never a value).
+            logger.warning(
+                "LLM fallback api_key reference ${%s} resolved to empty — "
+                "variable not set; this fallback entry cannot authenticate "
+                "(#792)",
+                fallback_api_key[2:-1],
+            )
+            return "", "explicit_env_unset"
+        return resolved, "explicit_env"
     if fallback_api_key:
         return fallback_api_key, "explicit"
     if is_same_gateway(primary_base_url, fallback_base_url):
@@ -1944,8 +1987,15 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
         ``inherits_key`` False.  An explicit ``${ENV}`` reference on the
         entry is NOT inheritance.  ``key_status`` carries the
         machine-readable outcome: ``explicit`` / ``explicit_env`` /
-        ``inherited_same_gateway`` / ``no_primary_key`` /
-        ``cross_endpoint_no_key``.
+        ``explicit_env_unset`` (#792) / ``inherited_same_gateway`` /
+        ``no_primary_key`` / ``cross_endpoint_no_key``.
+
+        ``verdict`` grades the chain from the entries' ``key_status``:
+        ``green`` (every entry can obtain a non-empty key), ``amber`` (at
+        least one entry cannot) and ``red`` (NO entry can).  "Usable" means
+        the entry will actually authenticate, not merely that an ``api_key``
+        line is present (#792).  A chain that is not configured is ``green``
+        — there is nothing to grade.
     """
     llm = config.llm
     primary = {
@@ -1979,11 +2029,20 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
                 "double_prefix": bool(fb.model and fb.model.startswith(f"{effective_provider}/")),
             }
         )
+    usable_statuses = {"explicit", "explicit_env", "inherited_same_gateway"}
+    verdict = "green"
+    if entries:
+        statuses = [str(e["key_status"]) for e in entries]
+        if all(s not in usable_statuses for s in statuses):
+            verdict = "red"
+        elif any(s not in usable_statuses for s in statuses):
+            verdict = "amber"
     return {
         "configured": bool(llm.fallback),
         "count": len(llm.fallback),
         "entries": entries,
         "primary": primary,
+        "verdict": verdict,
     }
 
 

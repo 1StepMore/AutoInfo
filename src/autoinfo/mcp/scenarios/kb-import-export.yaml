@@ -69,8 +69,16 @@ cleanup_steps:
       from autoinfo.kb import KBStore
       store = KBStore()
       removed = []
-      eid = 'medical-research-general-kb-import-export-scenario-entry'
       marker = 'https://kb-import-export.autoinfo.test/kb-import-export-scenario'
+      # Purge by the marker URL: the entry id scheme is date+hash, so a
+      # hardcoded id cannot survive across id-scheme changes or runs (#729).
+      by_url = store.index.get_entry_by_source_url(marker)
+      if by_url is not None:
+          uid = by_url.get('entry_id')
+          if uid:
+              res = store.delete_entry(uid)
+              removed.append(str(uid) + ':' + str(res.get('deleted')))
+      eid = 'medical-research-general-kb-import-export-scenario-entry'
       meta = store.index.get_entry(eid)
       if meta is not None:
           if meta.get('source_url') != marker:

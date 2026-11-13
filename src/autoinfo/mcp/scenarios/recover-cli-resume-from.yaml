@@ -26,7 +26,7 @@ steps:
           (Path(tmp) / ".autoinfo").mkdir()
 
           xml = (
-              '<?xml version="1.0"?><rss version="2.0"><channel>'
+              "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel>"
               "<title>t</title><link>http://example.com</link>"
               "<description>d</description>"
               "<item><title>Item</title><link>http://example.com/1</link>"

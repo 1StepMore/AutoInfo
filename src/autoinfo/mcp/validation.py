@@ -22,6 +22,7 @@ import socket
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -757,6 +758,74 @@ class _StepCancelToken:
 _PYTHON_COMMAND_RE = re.compile(r"(^|[;&|(\n])([ \t]*)(python3?(?:\.\d+)?)(?=\s|$)")
 
 
+_HEREDOC_RE = re.compile(
+    r"(?m)^(?P<prefix>[ \t]*[^\n]*?\S[ \t]+)-[ \t]*<<[ \t]*"
+    r"'(?P<tag>[A-Za-z_][A-Za-z0-9_]*)'[ \t]*\n"
+    r"(?P<body>.*?)"
+    r"^[ \t]*(?P=tag)[ \t]*$",
+    re.DOTALL,
+)
+
+# A ``-c '<body>'`` span whose body carries real newlines — single- or
+# double-quoted (both spellings occur in the scenario library).  cmd.exe's
+# C runtime splits the child's argv on newlines, so a multi-line python
+# body can never survive as an inline ``-c`` argument on Windows.
+_DASH_C_MULTILINE_RE = re.compile(
+    r"^(?P<prefix>[ \t]*[^\n]*?\S[ \t]+)-c[ \t]*"
+    r"(?:'(?P<body1>[^']*)'|\"(?P<body2>[^\"]*)\")[ \t]*\n?[ \t]*$",
+    re.DOTALL,
+)
+
+
+def _materialize_python_body(command: str) -> tuple[str, Path | None]:
+    """Materialize a multi-line python body into a temp script file (Windows).
+
+    Scenario seeding/verification steps feed python bodies through
+    ``python - <<'PY'`` heredocs and ``python -c '<multiline body>'`` spans.
+    cmd.exe has no heredoc, and the C runtime splits the child's argv on
+    newlines — so on Windows such a step dies at the shell (``PY was
+    unexpected``) or at python (``File \"<string>\", line 1``) before doing
+    any work.  :func:`_cmd_quote_compat` can only fold FLAT statement
+    bodies; indented blocks (``for``/``if``/``class``) fold into invalid
+    python.  Writing the body to a temp ``.py`` file and running that
+    instead carries every body — quoting, indentation, single quotes — with
+    no re-encoding at all.
+
+    Only a command that is exactly ONE heredoc block or ONE multi-line
+    ``-c`` span is rewritten; anything else passes through unchanged and
+    degrades to the honest child-side error.  The caller deletes the temp
+    file once the process exits.  POSIX behaviour is unchanged: the
+    translation only runs on the Windows spawn path.
+    """
+    span: re.Match[str] | None = None
+    for pattern in (_HEREDOC_RE, _DASH_C_MULTILINE_RE):
+        found = list(pattern.finditer(command))
+        if len(found) == 1:
+            match = found[0]
+            body_groups = [
+                g
+                for name, g in match.groupdict().items()
+                if name.startswith("body") and g is not None
+            ]
+            if "\n" not in (body_groups[0] if body_groups else ""):
+                continue  # single-line bodies stay on the quote-compat path
+            start, end = match.span()
+            if not command[:start].strip() and not command[end:].strip():
+                span = match
+                break
+    if span is None:
+        return command, None
+    groups = span.groupdict()
+    body = groups.get("body1")
+    if body is None:
+        body = groups.get("body") or groups.get("body2") or ""
+    fd, path_str = tempfile.mkstemp(suffix=".py", prefix="autoinfo-scenario-")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(body)
+    prefix = span.group("prefix").rstrip()
+    return f"{prefix} {shlex.quote(path_str)}", Path(path_str)
+
+
 def _resolve_cli_interpreter(command: str) -> str:
     """Rewrite command-position ``python``/``python3`` to ``sys.executable``.
 
@@ -795,7 +864,9 @@ def _run_cli_step(
     ``communicate`` timeout is a backstop, not the sole defence).
     """
     command = _resolve_cli_interpreter(command)
+    materialized_script: Path | None = None
     if os.name == "nt":
+        command, materialized_script = _materialize_python_body(command)
         command = _cmd_quote_compat(command)
     proc = subprocess.Popen(
         command,
@@ -818,6 +889,11 @@ def _run_cli_step(
     finally:
         if cancel_token is not None:
             cancel_token.clear_process(proc)
+        if materialized_script is not None:
+            try:
+                materialized_script.unlink(missing_ok=True)
+            except OSError:
+                pass
     return {
         "success": proc.returncode == 0,
         "data": {

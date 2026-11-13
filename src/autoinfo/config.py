@@ -882,6 +882,30 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
         for f in fallback_raw
     ]
 
+    # Issue #791: a model that already carries a provider prefix is used
+    # as-is (the prefix is never prepended again at the call sites), so
+    # this combination is legitimate but easy to get wrong by accident —
+    # say so at load time instead of leaving it silent.
+    _llm_provider = str(llm_raw.get("provider", ""))
+    _llm_model = str(llm_raw.get("model", ""))
+    if _llm_model and _llm_provider and "/" in _llm_model:
+        logger.warning(
+            "llm.model %r already carries a provider prefix while llm.provider=%r "
+            "is also set; the prefixed model is used as-is, the provider is not "
+            "prepended again (#791)",
+            _llm_model,
+            _llm_provider,
+        )
+    for _fb in fallback_raw:
+        _fb_model = str(_fb.get("model", ""))
+        _fb_provider = str(_fb.get("provider", "")) or _llm_provider
+        if _fb_model and _fb_provider and "/" in _fb_model:
+            logger.warning(
+                "llm.fallback model %r already carries a provider prefix; it is "
+                "used as-is, the provider is not prepended again (#791)",
+                _fb_model,
+            )
+
     # --- Parse llm.tasks (dict of LLMTaskConfig) ---
     tasks_raw: dict[str, Any] = llm_raw.get("tasks", {}) or {}
     tasks: dict[str, LLMTaskConfig] = {}

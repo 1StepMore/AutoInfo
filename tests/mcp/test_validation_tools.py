@@ -3326,6 +3326,11 @@ class TestLLMJudgeObservability:
             "autoinfo.mcp.validation._resolve_llm_config",
             lambda: {"model": "test-model", "api_key": "k", "api_base": None},
         )
+        # #791: the SENT candidate is provider-qualified ({provider}/{bare}).
+        # Pin the config resolution to "no config" so the provider is always
+        # the code default (openrouter) — the assertion must not depend on
+        # the ambient .autoinfo/config.yaml of the machine running it.
+        monkeypatch.setattr("autoinfo.llm.get_config_path", lambda: None)
         return calls
 
     def test_llm_judge_returns_model_tokens_duration(self, monkeypatch) -> None:
@@ -3338,7 +3343,9 @@ class TestLLMJudgeObservability:
         assert verdict["tokens"] == {"prompt_tokens": 10, "total_tokens": 25}
         assert isinstance(verdict["duration"], float)
         assert verdict["duration"] >= 0.0
-        assert calls["model"] == "test-model"
+        # #791: a bare model name is never sent alone — the candidate is
+        # provider-qualified at construction.
+        assert calls["model"] == "openrouter/test-model"
 
     def test_llm_judge_tokens_none_without_usage(self, monkeypatch) -> None:
         """Without usage info the tokens field is None (not a crash)."""

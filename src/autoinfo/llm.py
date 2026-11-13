@@ -1105,6 +1105,22 @@ def _completion_request(
     return kwargs
 
 
+def _litellm_model_name(raw: str, provider: str) -> str:
+    """Normalize a configured model name into the LiteLLM candidate (#791).
+
+    A name that already carries a provider prefix is sent as-is (never
+    re-prefixed — ``openai/openai/x`` makes the gateway answer "no category
+    route found"); a bare name is never sent alone — LiteLLM rejects it with
+    "LLM Provider NOT provided", so a bare name always becomes
+    ``{provider}/{bare}`` as the first candidate.  Empty input keeps the
+    historical no-config default: ``DEFAULT_MODEL`` is itself namespaced
+    (e.g. ``deepseek/deepseek-chat``) and keeps its ``{provider}/`` wrap.
+    """
+    if not raw:
+        return f"{provider}/{DEFAULT_MODEL}"
+    return raw if "/" in raw else f"{provider}/{raw}"
+
+
 def call_with_fallback(
     messages: list[dict[str, str]],
     *,
@@ -1193,9 +1209,9 @@ def call_with_fallback(
         max_tokens = config.llm.max_tokens or 2000
 
     provider = config.llm.provider or DEFAULT_PROVIDER
-    primary = (
-        model or config.llm.resolve_model() or f"{provider}/{config.llm.model or DEFAULT_MODEL}"
-    )
+    # Issue #791: normalize once at candidate construction — see
+    # :func:`_litellm_model_name`.
+    primary = _litellm_model_name(model or config.llm.resolve_model() or "", provider)
 
     # Primary api_key precedence (shared with llm_fallback_health, config.py):
     # explicit parameter -> config.llm.api_key -> ${ENV} expansion ->
@@ -1218,7 +1234,10 @@ def call_with_fallback(
     ]
     for fb in config.llm.fallback:
         fb_provider = fb.provider or provider
-        fb_full = f"{fb_provider}/{fb.model or config.llm.model or DEFAULT_MODEL}"
+        # Issue #791: same normalization as the primary — a prefixed
+        # fallback model passes through untouched (no double prefix), a
+        # bare one gets the effective fallback provider.
+        fb_full = _litellm_model_name(fb.model or config.llm.model or "", fb_provider)
         if fb_full == primary:
             continue
         fb_key, key_status = resolve_fallback_api_key(

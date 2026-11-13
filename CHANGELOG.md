@@ -2,6 +2,19 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.31.3](https://github.com/1StepMore/AutoInfo/compare/v1.31.2...v1.31.3) (2026-11-13)
+
+
+### Bug Fixes
+
+* **provenance:** patch the hub namespace so the auth-error stub actually fires ([#789](https://github.com/1StepMore/AutoInfo/issues/789)) ([78f956f](https://github.com/1StepMore/AutoInfo/commit/78f956f8eda614e2824c39cca29a94c07aa0da3b))
+
+
+### Tests
+
+* **output:** isolate D2 escalation test from the local judge config ([#779](https://github.com/1StepMore/AutoInfo/issues/779)) ([e95b1c6](https://github.com/1StepMore/AutoInfo/commit/e95b1c6cf5ecc7c8e04bde53bcdbd3b73e07e7fc))
+* **video:** report unreachable GSAP CDN as blocked-no-cdn, not FAILED ([#780](https://github.com/1StepMore/AutoInfo/issues/780)) ([bcb0efe](https://github.com/1StepMore/AutoInfo/commit/bcb0efe526bb3b7eaa1e38b688df8888fc222512))
+
 ## [1.31.2](https://github.com/1StepMore/AutoInfo/compare/v1.31.1...v1.31.2) (2026-11-12)
 
 

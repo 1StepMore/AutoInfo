@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.1](https://github.com/1StepMore/AutoInfo/compare/v1.32.0...v1.32.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **init:** always read/write yaml as UTF-8 ([#805](https://github.com/1StepMore/AutoInfo/issues/805)) ([#806](https://github.com/1StepMore/AutoInfo/issues/806)) ([b89c82f](https://github.com/1StepMore/AutoInfo/commit/b89c82fdb2270962a7642d619b6ab97fa53ee52d))
+
 ## [1.32.0](https://github.com/1StepMore/AutoInfo/compare/v1.31.4...v1.32.0) (2026-11-13)
 
 

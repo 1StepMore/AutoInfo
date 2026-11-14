@@ -21,6 +21,22 @@ MCP tool. The `configure_llm` MCP tool writes an env var *reference*
 (`${AUTOINFO_LLM_API_KEY}`) into config rather than the raw key, so the
 secret stays in your environment.
 
+A third layer sits underneath the environment: when `load_config()` reads
+the config file it first loads one `.env` file into the process environment.
+Lookup order (first existing file wins; files are not merged):
+
+1. `$AUTOINFO_DOTENV` (when set)
+2. `.autoinfo/.env` (next to the config file)
+3. `.env` in the project root (the parent of the config directory)
+
+Precedence is **real environment variable > `.env` > config-file default** —
+`.env` values are injected with `setdefault`, so an already-set environment
+variable is never overwritten. Only those two config-relative locations are
+read; a `.env` in the current working directory is ignored, and with no
+`.env` present behavior is unchanged. `${ENV}` expansion in config values
+happens *after* the `.env` layer is loaded, so `${VAR}` references resolve
+against both real environment variables and `.env` entries.
+
 ### `llm.fallback[].api_key` — per-entry key semantics
 
 Each `llm.fallback` entry may carry its own `api_key` field. The value is

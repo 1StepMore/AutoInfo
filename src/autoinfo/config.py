@@ -14,7 +14,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Iterator
 
 import yaml
 
@@ -848,6 +848,72 @@ def _normalize_gate_config_keys(raw: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _iter_dotenv_candidates(config_path: Path) -> Iterator[Path]:
+    """Yield dotenv paths in lookup order (first existing file wins).
+
+    ``AUTOINFO_DOTENV`` (when set) takes precedence, then the directory that
+    holds the config file, then its parent (the project root).  The current
+    working directory is deliberately never consulted.
+    """
+    override = os.environ.get("AUTOINFO_DOTENV")
+    if override:
+        yield Path(override)
+    yield config_path.parent / ".env"
+    yield config_path.parent.parent / ".env"
+
+
+def _parse_dotenv(path: Path) -> dict[str, str]:
+    """Parse a dotenv file with stdlib only.
+
+    Supports ``KEY=value``, optional ``export`` prefix, blank lines, ``#``
+    comments, and paired surrounding quotes.  No interpolation, no escaping.
+    """
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :]
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        if not key:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("\"", "'"):
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def _load_dotenv_layer(config_path: Path) -> None:
+    """Load the first available dotenv file into ``os.environ``.
+
+    Real environment variables always win: values are injected with
+    ``setdefault``.  A missing or broken file never raises, and only the
+    variable count and path are logged — never any value.
+    """
+    override = os.environ.get("AUTOINFO_DOTENV")
+    first = True
+    for candidate in _iter_dotenv_candidates(config_path):
+        is_override = first and bool(override)
+        first = False
+        if candidate.is_file():
+            try:
+                values = _parse_dotenv(candidate)
+            except (OSError, UnicodeDecodeError) as exc:
+                logger.warning("failed to read dotenv %s — ignored (%s)", candidate, exc)
+                continue
+            for key, value in values.items():
+                os.environ.setdefault(key, value)
+            logger.info("loaded %d variable(s) from %s", len(values), candidate)
+            return
+        if is_override:
+            logger.warning("AUTOINFO_DOTENV points at %s which is not a file — ignored", candidate)
+
+
 def load_config(path: Path | str) -> Config:
     """Parse *path* as YAML and return a :class:`Config` instance.
 
@@ -874,6 +940,7 @@ def load_config(path: Path | str) -> Config:
         line = f" (line {mark.line + 1})" if mark is not None else ""
         raise yaml.YAMLError(f"Invalid YAML in {path}{line}: {exc}") from exc
 
+    _load_dotenv_layer(path)
     raw = _resolve_env_vars_recursively(raw)
     return _dict_to_config(raw)
 

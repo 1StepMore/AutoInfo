@@ -215,10 +215,22 @@ process inherits it (not just your terminal session):
 export AUTOINFO_LLM_API_KEY="sk-..."
 ```
 
-AutoInfo does not load `.env` files automatically. The key has to be
-present in the environment of whatever process spawns the MCP server. For
-the full catalog of environment variables each source and feature expects,
-see [`docs/dev/required-api-keys.md`](docs/dev/required-api-keys.md).
+AutoInfo also loads a single `.env` layer when it reads configuration, so
+the key can live in a dotenv file instead of the shell. Lookup order (the
+first file that exists wins; files are not merged):
+
+1. `$AUTOINFO_DOTENV` (when set)
+2. `.autoinfo/.env` (next to the config file)
+3. `.env` in the project root (the parent of the config directory)
+
+Precedence is **real environment variable > `.env` > config-file default** —
+`.env` values never overwrite an already-set environment variable. AutoInfo
+only reads those two config-relative locations; it never reads a `.env` from
+the current working directory. With no `.env` present, behavior is unchanged,
+and the key still has to be present in the environment of whatever process
+spawns the MCP server. For the full catalog of environment variables each
+source and feature expects, see
+[`docs/dev/required-api-keys.md`](docs/dev/required-api-keys.md).
 
 ### 3. What the `${...}` placeholder in the configs means
 

@@ -33,15 +33,16 @@ make test        # 全量；单文件测试用 <py> -m pytest -q <path>
 make doc-check   # 只在改了 docs/ 或任何文档时追加
 ```
 
-**`make doc-check` 漏跑的代价**：PR 的 `Derived doc/surface parity` 会红（它跑 `autoinfo.gov check` + coverage-matrix + demo-domains 三段）。改文档必须带上它，这是本仓最常见的假绿。
+**`make doc-check` ≠ CI doc 门**：PR 的 `Derived doc/surface parity`（guard.yml `derived-facts` job）跑**四段**——`doc_inventory --check`、`surface_parity --check`、`coverage_matrix --check-enduser-doc`、`autoinfo.gov check`；`make doc-check` 只含 gov check + coverage-matrix + demo-domains，**不含 doc_inventory**。改任何 docs/ 文件必须：`make doc-check` + `python3 scripts/doc_inventory.py`（再生成 `docs/dev/doc-inventory.md` 与 `.agents/audit/INVENTORY.md`）+ `python3 scripts/surface_parity.py --check`。这是本仓最常见的假绿——实测踩过：只跑 make doc-check 三段本地全绿，CI 仍红在 doc_inventory stale。
 
 ## 已知坑
 
-1. **本仓无 `windows-latest` CI job**（缺口 #803）：Windows 侧回归只能靠人工撞，别把"CI 绿"读成"Windows 可用"。
+1. **Windows CI ≠ 全量等价**：`windows-smoke` job（#803/#804）只覆盖安装 + ruff + `mypy --platform linux` + E2E baseline + 小型 Windows 敏感子集；Chrome/ffmpeg/外网依赖与全量 ~3000 测试不上该 runner——别把"CI 绿"读成"Windows 全量可用"。
 2. **`make lint` 含 mypy**：`mypy src/` 是硬门，类型标注缺失会直接红，不是警告。
 3. **产物判据不放宽**：`outputs/<domain>/` 为空就是未达标，不许拿 `outputs-archive/` 的旧产物凑数。
 4. **`${ENV}` 未设 ≠ 空串静默**：新版本会给加载期警告 + doctor 分级，看到警告先查环境，不要急着改代码。
 5. **治理入口唯一**：`python -m autoinfo.gov` 是唯一治理入口；`AGENTS.md` 行数有硬上限（C3，≤200 行），加内容要按"下移进 `docs/dev/`"的方式做。
+6. **Windows 原生 `mypy src/` 会误报 3 条**：`src/autoinfo/mcp/validation.py:650` 的 POSIX-only 属性（`os.killpg/getpgid/SIGKILL`）在 Windows stubs 下不存在（该行有 `os.name == "nt"` 运行时守卫，运行时安全）。本地 Windows 等价命令：`mypy --platform linux src/`——与 ubuntu mypy job 和 `windows-smoke` job 同一类型契约（ci.yml 有注释）。别为消掉它改产品代码。
 
 ## 队列
 

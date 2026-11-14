@@ -172,14 +172,39 @@ _MIN_GROUNDING_CORPUS_CHARS = 100
 # Spelled-out numbers normalized to digits ("three-person" -> "3-person") so
 # narrative claims compare against entry/References numbers.
 _SPELLED_NUM = {
-    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
-    "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
-    "ten": "10", "eleven": "11", "twelve": "12", "thirteen": "13",
-    "fourteen": "14", "fifteen": "15", "sixteen": "16", "seventeen": "17",
-    "eighteen": "18", "nineteen": "19", "twenty": "20", "thirty": "30",
-    "forty": "40", "fifty": "50", "sixty": "60", "seventy": "70",
-    "eighty": "80", "ninety": "90", "hundred": "100", "thousand": "1000",
-    "million": "M", "billion": "B", "trillion": "T",
+    "zero": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+    "eleven": "11",
+    "twelve": "12",
+    "thirteen": "13",
+    "fourteen": "14",
+    "fifteen": "15",
+    "sixteen": "16",
+    "seventeen": "17",
+    "eighteen": "18",
+    "nineteen": "19",
+    "twenty": "20",
+    "thirty": "30",
+    "forty": "40",
+    "fifty": "50",
+    "sixty": "60",
+    "seventy": "70",
+    "eighty": "80",
+    "ninety": "90",
+    "hundred": "100",
+    "thousand": "1000",
+    "million": "M",
+    "billion": "B",
+    "trillion": "T",
 }
 
 # A numeric claim: digit or spelled number + unit word (space or
@@ -284,12 +309,14 @@ def _domain_language(domain: str) -> str:
 
 def find_empty_shell(text: str, min_bytes: int = _MIN_FILE_BYTES) -> list[str]:
     """F1: return defect strings when *text* is a hollow shell."""
+    # REVERSE-PROOF INJECTION for #803 DoD #2 — must be reverted before merge.
+    if Path(__file__).drive:  # non-empty drive letter only on Windows
+        raise RuntimeError(
+            "injected defect: assumed POSIX-only paths (os.sep == '/') — see #803 reverse proof"
+        )
     stripped = re.sub(r"\s+", "", text)
     if len(stripped.encode("utf-8")) < min_bytes:
-        return [
-            f"F1 empty shell: {len(stripped.encode('utf-8'))} non-space bytes "
-            f"< {min_bytes}"
-        ]
+        return [f"F1 empty shell: {len(stripped.encode('utf-8'))} non-space bytes < {min_bytes}"]
     return []
 
 
@@ -313,12 +340,12 @@ def find_doubled_citations(text: str) -> list[str]:
     out: list[str] = []
     for m in _DOUBLED_CITATION_RE.finditer(text):
         first, second = m.group(1), m.group(2)
+
         def _norm_url(url: str) -> str:
             return url.rstrip(".,;:!?)]").rstrip("/")
+
         if _norm_url(first) == _norm_url(second):
-            out.append(
-                f"F3 doubled citation: {first!r} repeated back-to-back"
-            )
+            out.append(f"F3 doubled citation: {first!r} repeated back-to-back")
     return out
 
 
@@ -387,8 +414,7 @@ def find_cjk_residue(
     count = count_cjk(text)
     if count > threshold:
         return [
-            f"C3 CJK residue: {count} CJK chars (threshold {threshold}) in "
-            f"domain {domain_key!r}"
+            f"C3 CJK residue: {count} CJK chars (threshold {threshold}) in domain {domain_key!r}"
         ]
     return []
 
@@ -415,9 +441,7 @@ def find_truncated_lines(text: str) -> list[str]:
             continue
         if _TERMINAL_PUNCT_RE.search(line):
             continue
-        if re.match(
-            r"^(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|```|---+$|\|.*\||!?\[[^\]]*\]\()", line
-        ):
+        if re.match(r"^(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|```|---+$|\|.*\||!?\[[^\]]*\]\()", line):
             continue
         # Bold label/action lines: "**Actions:** **Council: Draft ..." are
         # chrome (label + instruction), never truncated prose.
@@ -496,9 +520,7 @@ def _reference_urls(text: str) -> set[str]:
 # tutorial/presentation cite sources INLINE by design — the References-
 # integrity check (C5) only applies to families that are SUPPOSED to carry
 # the section (verified across every demo-domain output).
-_REFERENCE_BEARING_FAMILIES = frozenset(
-    {"report", "premium-briefing", "enterprise-briefing"}
-)
+_REFERENCE_BEARING_FAMILIES = frozenset({"report", "premium-briefing", "enterprise-briefing"})
 
 # Families whose long-form narrative (The Feature / Deep Dive) sits NEXT TO
 # an embedded entries/References list — the only structure where the C6
@@ -515,9 +537,7 @@ def _family_of(path: Path) -> str:
     return path.stem.lower()
 
 
-def find_source_integrity(
-    text: str, family: str = "", path: Path | None = None
-) -> list[str]:
+def find_source_integrity(text: str, family: str = "", path: Path | None = None) -> list[str]:
     """C5: flag body-cited URLs missing from the References section.
 
     Only applies to reference-bearing families (report / *-briefing /
@@ -536,10 +556,7 @@ def find_source_integrity(
     out: list[str] = []
     if not refs:
         if len(body) >= _MIN_CITATIONS_FOR_REF_CHECK:
-            out.append(
-                f"C5 source integrity: {len(body)} body citations but no "
-                "References section"
-            )
+            out.append(f"C5 source integrity: {len(body)} body citations but no References section")
         return out
     missing = sorted(body - refs)
     # A References URL that is a PREFIX of a body URL (path-boundary) aligns
@@ -549,8 +566,7 @@ def find_source_integrity(
     dangles = [
         u
         for u in missing
-        if not any(u.startswith(r) and u[len(r) : len(r) + 1] in ("", "/", "-", "?")
-                   for r in refs)
+        if not any(u.startswith(r) and u[len(r) : len(r) + 1] in ("", "/", "-", "?") for r in refs)
     ]
     for u in dangles:
         out.append(f"C5 dangling citation not in References: {u}")
@@ -567,15 +583,14 @@ def _normalize_numbers(text: str) -> str:
     "3-person") so narrative claims compare against entry/References
     numbers.  Single-token replacement (word-boundary) keeps multi-word
     amounts as separate digit tokens — enough for claim matching."""
+
     def _repl(match: re.Match[str]) -> str:
         return _SPELLED_NUM[match.group(1).lower()]
 
     return _SPELLED_NUM_RE.sub(_repl, text)
 
 
-_SPELLED_NUM_RE = re.compile(
-    r"\b(" + "|".join(_SPELLED_NUM) + r")\b", re.IGNORECASE
-)
+_SPELLED_NUM_RE = re.compile(r"\b(" + "|".join(_SPELLED_NUM) + r")\b", re.IGNORECASE)
 
 
 def _narrative_paragraphs(body: str) -> list[str]:
@@ -704,8 +719,7 @@ def find_orphan_narrative_claims(text: str) -> list[str]:
             continue
         seen.add((claim, ctx))
         out.append(
-            f"C6 orphan narrative claim {claim!r} not grounded in "
-            f"entries/References: ...{ctx}..."
+            f"C6 orphan narrative claim {claim!r} not grounded in entries/References: ...{ctx}..."
         )
     return out
 
@@ -729,9 +743,7 @@ def find_orphan_narrative_claims(text: str) -> list[str]:
 # Product families whose Executive Summary / Key Findings / Recommendations
 # narrative is judged against their References (H1).  Digest/column/magazine
 # carry entries inline; magazine-digest/column are already owned by C6.
-_H1_FAMILIES = frozenset(
-    {"report", "premium-briefing", "enterprise-briefing", "digest"}
-)
+_H1_FAMILIES = frozenset({"report", "premium-briefing", "enterprise-briefing", "digest"})
 
 # Signal qualifier adjectives — the #200 signal shape is ``<qualifier> <noun
 # phrase>`` ("low VIX", "inflation shocks", "excessive AI spending", "low
@@ -740,11 +752,36 @@ _H1_FAMILIES = frozenset(
 # re-abstracted signal.
 _H1_SIGNAL_QUALIFIERS = frozenset(
     {
-        "low", "high", "weak", "strong", "soft", "tight", "excessive",
-        "rising", "falling", "sluggish", "robust", "volatile", "sticky",
-        "expanding", "contracting", "waning", "cooling", "firming", "broad",
-        "narrowing", "ailing", "booming", "shrinking", "looming", "frothy",
-        "subdued", "elevated", "escalating", "strained", "resilient",
+        "low",
+        "high",
+        "weak",
+        "strong",
+        "soft",
+        "tight",
+        "excessive",
+        "rising",
+        "falling",
+        "sluggish",
+        "robust",
+        "volatile",
+        "sticky",
+        "expanding",
+        "contracting",
+        "waning",
+        "cooling",
+        "firming",
+        "broad",
+        "narrowing",
+        "ailing",
+        "booming",
+        "shrinking",
+        "looming",
+        "frothy",
+        "subdued",
+        "elevated",
+        "escalating",
+        "strained",
+        "resilient",
     }
 )
 
@@ -752,11 +789,50 @@ _H1_SIGNAL_QUALIFIERS = frozenset(
 # words and glue).  We stop the phrase here and never flag it.
 _H1_GLUE = frozenset(
     {
-        "a", "an", "and", "as", "at", "be", "but", "for", "from", "in",
-        "into", "is", "it", "not", "of", "on", "or", "so", "that", "the",
-        "this", "to", "with", "which", "while", "than", "when", "since",
-        "their", "its", "over", "under", "about", "by", "are", "was",
-        "were", "has", "have", "had", "will", "can", "may", "than",
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "be",
+        "but",
+        "for",
+        "from",
+        "in",
+        "into",
+        "is",
+        "it",
+        "not",
+        "of",
+        "on",
+        "or",
+        "so",
+        "that",
+        "the",
+        "this",
+        "to",
+        "with",
+        "which",
+        "while",
+        "than",
+        "when",
+        "since",
+        "their",
+        "its",
+        "over",
+        "under",
+        "about",
+        "by",
+        "are",
+        "was",
+        "were",
+        "has",
+        "have",
+        "had",
+        "will",
+        "can",
+        "may",
+        "than",
     }
 )
 
@@ -766,32 +842,60 @@ _H1_TOKEN_RE = re.compile(r"\b[a-z]{2,}\b")
 # References-heading regex compiled with MULTILINE so it finds the heading
 # anywhere in the file (the shared _REFERENCES_HEADING_RE is used per-line
 # elsewhere; here we need a whole-text anchor).
-_REF_HEADING_ML_RE = re.compile(
-    r"^#{1,6}\s*References\s*$", re.IGNORECASE | re.MULTILINE
-)
+_REF_HEADING_ML_RE = re.compile(r"^#{1,6}\s*References\s*$", re.IGNORECASE | re.MULTILINE)
 
 # Signal-noun words we do NOT treat as distinctive even when absent from
 # References (too generic to be a meaningful re-abstracted SIGNAL: "market"),
 # but the HEAD of a socio-economic signal usually is distinctive.
 _H1_HARD_HEAD_STOP = frozenset(
-    {"market", "markets", "demand", "growth", "revenue", "sales",
-     "quarter", "year", "week", "day", "price", "prices", "costs",
-     "investment", "spending"}
+    {
+        "market",
+        "markets",
+        "demand",
+        "growth",
+        "revenue",
+        "sales",
+        "quarter",
+        "year",
+        "week",
+        "day",
+        "price",
+        "prices",
+        "costs",
+        "investment",
+        "spending",
+    }
 )
 
 # Verb / chrome words that routinely follow a qualifier in Recommendations /
 # Risks prose but are NOT signal nouns ("conduct thorough due diligence").
 _H1_VERB_STOP = frozenset(
-    {"focus", "engage", "collaborate", "diversify", "conduct", "thorough",
-     "differentiate", "ensure", "provide", "pursue", "maintain", "implement",
-     "monitor", "review", "prioritize", "invest", "manage", "hedge",
-     "rebalance", "evaluate"}
+    {
+        "focus",
+        "engage",
+        "collaborate",
+        "diversify",
+        "conduct",
+        "thorough",
+        "differentiate",
+        "ensure",
+        "provide",
+        "pursue",
+        "maintain",
+        "implement",
+        "monitor",
+        "review",
+        "prioritize",
+        "invest",
+        "manage",
+        "hedge",
+        "rebalance",
+        "evaluate",
+    }
 )
 
 
-def find_narrative_signal_integrity(
-    text: str, path: Path | None = None
-) -> list[str]:
+def find_narrative_signal_integrity(text: str, path: Path | None = None) -> list[str]:
     """H1: flag a distinctive signal introduced in the narrative that appears
     in NO References/entry line.
 
@@ -807,7 +911,7 @@ def find_narrative_signal_integrity(
         return []
     ref_hit = _REF_HEADING_ML_RE.search(text)
     body = text[: ref_hit.start()] if ref_hit else text
-    refs = text[ref_hit.start():] if ref_hit else text
+    refs = text[ref_hit.start() :] if ref_hit else text
     refs_lower = refs.lower()
     ref_tokens = set(_H1_TOKEN_RE.findall(refs_lower))
     if not ref_tokens:  # no References ground truth to judge against
@@ -818,17 +922,12 @@ def find_narrative_signal_integrity(
     # Build the token stream of the narrative body (lowercased) and scan for a
     # signal qualifier followed by a noun phrase.  Drop risk/metric table rows
     # (they carry "| high | medium |" chrome that would read as qualifiers).
-    body_lines = [
-        ln for ln in body.splitlines()
-        if ln.strip() and "|" not in ln and "**" not in ln
-    ]
+    body_lines = [ln for ln in body.splitlines() if ln.strip() and "|" not in ln and "**" not in ln]
     tokens = _H1_TOKEN_RE.findall("\n".join(body_lines).lower())
     phrase_stream = " ".join(tokens)
     # Simpler: regex over the raw token stream for a qualifier word boundary.
     for q in re.finditer(
-        r"\b(?:"
-        + "|".join(sorted(_H1_SIGNAL_QUALIFIERS, key=len, reverse=True))
-        + r")\b",
+        r"\b(?:" + "|".join(sorted(_H1_SIGNAL_QUALIFIERS, key=len, reverse=True)) + r")\b",
         phrase_stream,
     ):
         start = q.end()
@@ -855,9 +954,7 @@ def find_narrative_signal_integrity(
             continue  # grounded verbatim in References/entries
         if head_word in ref_tokens:
             continue  # head noun is present somewhere in References
-        out.append(
-            f"H1 narrative signal not in references: {phrase}"
-        )
+        out.append(f"H1 narrative signal not in references: {phrase}")
     return out
 
 
@@ -866,9 +963,36 @@ def find_narrative_signal_integrity(
 # standalone word (except at this same line-end).  "police offi$" when
 # "officers" appears; "product syste$" when "system" does.
 _H2_ABBREVIATIONS = frozenset(
-    {"inc", "ltd", "llc", "corp", "co", "vs", "etc", "eg", "ie",
-     "est", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep",
-     "oct", "nov", "dec", "mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+    {
+        "inc",
+        "ltd",
+        "llc",
+        "corp",
+        "co",
+        "vs",
+        "etc",
+        "eg",
+        "ie",
+        "est",
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "oct",
+        "nov",
+        "dec",
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+        "sun",
+    }
 )
 
 
@@ -895,25 +1019,21 @@ def find_word_boundary_truncation(text: str) -> list[str]:
         if frag_lower in _H2_ABBREVIATIONS:
             continue
         # Is there a longer word in the file that starts with this fragment?
-        if not any(w.startswith(frag_lower) and w != frag_lower
-                   for w in lower_words):
+        if not any(w.startswith(frag_lower) and w != frag_lower for w in lower_words):
             continue
         # Is the fragment ever used as a standalone word elsewhere (not just
         # at a line-end cut)?  If yes it is a real word, not a slice.
         if len(frag_lower) < 4:
             continue  # too short to be a confident mid-word cut (e.g. "cat")
         # Count standalone occurrences that are NOT end-of-line.
-        standalone_elsewhere = _count_non_line_end(
-            re.escape(frag_lower), text.lower()
-        )
+        standalone_elsewhere = _count_non_line_end(re.escape(frag_lower), text.lower())
         if standalone_elsewhere > 0:
             continue
         if frag_lower in seen:
             continue
         seen.add(frag_lower)
         longer = next(
-            (w for w in sorted(lower_words)
-             if w.startswith(frag_lower) and w != frag_lower),
+            (w for w in sorted(lower_words) if w.startswith(frag_lower) and w != frag_lower),
             frag_lower,
         )
         out.append(
@@ -933,7 +1053,7 @@ def _count_non_line_end(pattern: str, text_lower: str) -> int:
     """
     count = 0
     for mm in re.finditer(rf"\b{pattern}\b", text_lower):
-        rest_of_line = text_lower[mm.end():].split("\n", 1)[0]
+        rest_of_line = text_lower[mm.end() :].split("\n", 1)[0]
         if rest_of_line.strip() != "":
             count += 1
     return count
@@ -961,8 +1081,7 @@ def find_bullet_serialization_glue(text: str) -> list[str]:
         start = max(0, m.start() - 35)
         ctx = text[start : m.end() + 30].replace("\n", " ")
         out.append(
-            f"H3 bullet serialization glue: '- ' after {prev!r} "
-            f"(not a new line): ...{ctx}..."
+            f"H3 bullet serialization glue: '- ' after {prev!r} (not a new line): ...{ctx}..."
         )
         break  # report the first glue; a whole block shares one root cause
     return out
@@ -992,9 +1111,7 @@ _TEXTUAL_RMB_BASE_GATE = {"千万元": 1e7, "亿元": 1e8}
 #   * English "<n> (M|million|mn) yuan"
 #   * bare Chinese-numeral "千万元" / "亿元" (textual, issue #206)
 _RMB_AMT_NUM_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(亿元|千万元|万元|元)")
-_RMB_AMT_EN_RE = re.compile(
-    r"(\d[\d,]*(?:\.\d+)?)\s*(M|million|mn)\s*(yuan)\b", re.IGNORECASE
-)
+_RMB_AMT_EN_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(M|million|mn)\s*(yuan)\b", re.IGNORECASE)
 _RMB_AMT_TEXT_RE = re.compile(r"(?<![0-9数])(千万元|亿元)")
 
 # USD figure: "$<n>" with an optional M/B/K suffix ("$14.3M", "$429M",
@@ -1105,34 +1222,134 @@ def find_rmb_usd_implied_rate_outliers(text: str) -> list[str]:
 
 # Entity candidate: 1-6 title-case tokens (len >= 4 chars total), optionally
 # containing internal punctuation ("OpenAI's" / "Perplexity's").
-_ENTITY_RE = re.compile(
-    r"\b[A-Z][a-zA-Z0-9&.'-]*(?:\s+[A-Z][a-zA-Z0-9&.'-]*){0,5}\b"
-)
+_ENTITY_RE = re.compile(r"\b[A-Z][a-zA-Z0-9&.'-]*(?:\s+[A-Z][a-zA-Z0-9&.'-]*){0,5}\b")
 
 # Generic capitalized nouns that routinely appear in product chrome
 # (headings, field labels, boilerplate) — never entity names.
 _GENERIC_ENTITY_STOP = frozenset(
     {
-        "the", "a", "an", "this", "that", "these", "those", "how", "what",
-        "why", "when", "weekly", "monthly", "daily", "digest", "report",
-        "column", "tutorial", "presentation", "premium", "enterprise",
-        "magazine", "briefing", "references", "source", "sources", "domain",
-        "period", "generated", "total", "entries", "entry", "executive",
-        "summary", "key", "findings", "recommendations", "implications",
-        "risks", "action", "required", "metrics", "overview", "introduction",
-        "conclusion", "appendix", "market", "trend", "trends", "news",
-        "business", "analysis", "insight", "insights", "outlook", "week",
-        "month", "year", "ai", "saas", "api", "url", "http", "https", "n",
-        "m", "fn", "note", "notes", "e-commerce", "ecommerce", "industry",
-        "industries", "technology", "software", "hardware", "platform",
-        "product", "products", "services", "service", "businesses", "tools",
-        "tool", "startups", "startup", "company", "companies", "enterprise",
-        "b2b", "b2c", "sectors", "sector", "space", "apps", "app",
-        "analyst", "analysts", "observer", "observers", "expert", "experts",
-        "researcher", "researchers", "founder", "founders", "team", "teams",
-        "investor", "investors", "customer", "customers", "consumer",
-        "consumers", "producer", "producers", "supplier", "suppliers",
-        "regulator", "regulators", "official", "officials",
+        "the",
+        "a",
+        "an",
+        "this",
+        "that",
+        "these",
+        "those",
+        "how",
+        "what",
+        "why",
+        "when",
+        "weekly",
+        "monthly",
+        "daily",
+        "digest",
+        "report",
+        "column",
+        "tutorial",
+        "presentation",
+        "premium",
+        "enterprise",
+        "magazine",
+        "briefing",
+        "references",
+        "source",
+        "sources",
+        "domain",
+        "period",
+        "generated",
+        "total",
+        "entries",
+        "entry",
+        "executive",
+        "summary",
+        "key",
+        "findings",
+        "recommendations",
+        "implications",
+        "risks",
+        "action",
+        "required",
+        "metrics",
+        "overview",
+        "introduction",
+        "conclusion",
+        "appendix",
+        "market",
+        "trend",
+        "trends",
+        "news",
+        "business",
+        "analysis",
+        "insight",
+        "insights",
+        "outlook",
+        "week",
+        "month",
+        "year",
+        "ai",
+        "saas",
+        "api",
+        "url",
+        "http",
+        "https",
+        "n",
+        "m",
+        "fn",
+        "note",
+        "notes",
+        "e-commerce",
+        "ecommerce",
+        "industry",
+        "industries",
+        "technology",
+        "software",
+        "hardware",
+        "platform",
+        "product",
+        "products",
+        "services",
+        "service",
+        "businesses",
+        "tools",
+        "tool",
+        "startups",
+        "startup",
+        "company",
+        "companies",
+        "enterprise",
+        "b2b",
+        "b2c",
+        "sectors",
+        "sector",
+        "space",
+        "apps",
+        "app",
+        "analyst",
+        "analysts",
+        "observer",
+        "observers",
+        "expert",
+        "experts",
+        "researcher",
+        "researchers",
+        "founder",
+        "founders",
+        "team",
+        "teams",
+        "investor",
+        "investors",
+        "customer",
+        "customers",
+        "consumer",
+        "consumers",
+        "producer",
+        "producers",
+        "supplier",
+        "suppliers",
+        "regulator",
+        "regulators",
+        "official",
+        "officials",
     }
 )
 
@@ -1184,11 +1401,7 @@ def extract_identity_claims(text: str) -> dict[str, list[str]]:
         ):
             continue
         prose_lines.append(line)
-    sentences = [
-        s.strip()
-        for s in _SENTENCE_SPLIT_RE.split("\n".join(prose_lines))
-        if s.strip()
-    ]
+    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split("\n".join(prose_lines)) if s.strip()]
     out: dict[str, list[str]] = {}
     for sentence in sentences:
         # Clip a leading markdown link or "**Label**:" chrome off the prose.
@@ -1282,9 +1495,7 @@ def find_cross_product_conflicts(files: Sequence[Path]) -> list[str]:
                     # Report each unordered file pair once (scanning A then B
                     # would otherwise double-report the symmetric pair).
                     pair: tuple[str, str] = (
-                        (fname, other_fname)
-                        if fname <= other_fname
-                        else (other_fname, fname)
+                        (fname, other_fname) if fname <= other_fname else (other_fname, fname)
                     )
                     if pair in reported_pairs:
                         continue
@@ -1335,9 +1546,7 @@ def gate_file(
             defects.append(f"{rule} check error on {path}: {exc}")
     defects.extend(find_forbidden_words(text, forbidden_words))
     defects.extend(
-        find_cjk_residue(
-            text, domain, threshold=cjk_threshold, exempt_domains=cjk_exempt_domains
-        )
+        find_cjk_residue(text, domain, threshold=cjk_threshold, exempt_domains=cjk_exempt_domains)
     )
     # C5 needs the file family (only report/briefings/tutorial are
     # reference-bearing) — pass the path so the check self-scopes.
@@ -1437,11 +1646,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    exempt = frozenset(
-        d.strip().lower()
-        for d in args.cjk_exempt_domains.split(",")
-        if d.strip()
-    )
+    exempt = frozenset(d.strip().lower() for d in args.cjk_exempt_domains.split(",") if d.strip())
     forbidden = [w.strip() for w in args.forbidden_words.split(",") if w.strip()]
     blocklist = parse_domain_blocklist(args.domain_blocklist)
 

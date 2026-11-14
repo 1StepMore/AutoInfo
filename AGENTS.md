@@ -189,7 +189,7 @@ Architecture Rules above + `docs/dev/acceptance-framework.md` (AC1-AC9).
 
 ## References
 
-- `docs/dev/repo-map.md` — repo layout + runtime boundary · `docs/dev/llm-config.md` — full LLM setup
+- `docs/dev/repo-map.md` — repo layout + runtime boundary · `docs/dev/llm-config.md` — full LLM setup · `docs/dev/harness-run-facts.md` — 运行环境/门禁顺序/缺 key 症状/已知坑
 - `docs/dev/workflow-charter.md` — dev process（canonical methodology: `docs/dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md`; ADR-0006）
 - `docs/dev/founder-expectations.md`（D3 index）· `docs/dev/specs/` · `docs/dev/cross-dimensional-catalog.md`（**keystone**）
 - `docs/dev/acceptance-framework.md` — **keystone** acceptance (AC1-AC9) · `docs/adr/` · `docs/glossary.md` · `docs/demo-release-standard.md`
@@ -198,18 +198,3 @@ Architecture Rules above + `docs/dev/acceptance-framework.md` (AC1-AC9).
 ## Community
 
 `CONTRIBUTING.md` · `GOVERNANCE.md` · `CODE_OF_CONDUCT.md` · `SECURITY.md` · `.github/`（templates, CODEOWNERS, release gates）.
-
-## 运行环境与门禁速查（harness 用 · 2026-11-14 核对）
-
-| 项 | 内容 |
-|:--|:--|
-| 解释器 | `.venv/bin/python`（Linux/WSL）· `.venv\Scripts\python.exe`（Windows 原生）；两者都在 `.gitignore` |
-| 安装 | `make install`（运行）/ `make dev-install`（含测试与 lint 依赖） |
-| 必需密钥 | `AUTOINFO_LLM_API_KEY`；写进 `.autoinfo/config.yaml` 时必须写成 `${AUTOINFO_LLM_API_KEY}`，**不要写明文** |
-| 缺 key 症状 | `autoinfo doctor` → `❌ LLM: no API key configured`；另会有 `config reference "${X}" resolved to empty (#792)` 警告 |
-| `.env` | **本仓不读任何 `.env`**（写了无效，只认进程环境变量）。要验"真的没 key"，必须用干净进程环境，不能被仓库根 `.env` 骗过 |
-| DoD 顺序 | `make lint`（ruff + mypy）→ `make test`；**改了 `docs/` 或任何文档 ⇒ 追加 `make doc-check`**（漏跑它会让 PR 的 "Derived doc/surface parity" 红） |
-| 已知坑 | 本仓无 `windows-latest` CI job（#803），Windows 侧回归只能靠人撞 |
-| 队列 | `gh issue list -l agent-ready --state open` |
-
-> 本块是**本仓运行事实的唯一真身**（Owner 侧的通用执行提示词不写具体仓信息）。通用规则（边界 / 权限 / 合并判定）见 Owner 侧提示词，不入库。

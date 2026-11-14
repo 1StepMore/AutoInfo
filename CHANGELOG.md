@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.3](https://github.com/1StepMore/AutoInfo/compare/v1.32.2...v1.32.3) (2026-11-14)
+
+
+### Documentation
+
+* **harness-facts:** align windows pitfall and doc-gate facts with CI reality ([#813](https://github.com/1StepMore/AutoInfo/issues/813)) ([f00a127](https://github.com/1StepMore/AutoInfo/commit/f00a1279c75c1d7c500f1a364ea5870ced527049))
+
 ## [1.32.2](https://github.com/1StepMore/AutoInfo/compare/v1.32.1...v1.32.2) (2026-11-14)
 
 

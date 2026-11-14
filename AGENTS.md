@@ -189,7 +189,7 @@ Architecture Rules above + `docs/dev/acceptance-framework.md` (AC1-AC9).
 
 ## References
 
-- `docs/dev/repo-map.md` — repo layout + runtime boundary · `docs/dev/llm-config.md` — full LLM setup
+- `docs/dev/repo-map.md` — repo layout + runtime boundary · `docs/dev/llm-config.md` — full LLM setup · `docs/dev/harness-run-facts.md` — 运行环境/门禁顺序/缺 key 症状/已知坑
 - `docs/dev/workflow-charter.md` — dev process（canonical methodology: `docs/dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md`; ADR-0006）
 - `docs/dev/founder-expectations.md`（D3 index）· `docs/dev/specs/` · `docs/dev/cross-dimensional-catalog.md`（**keystone**）
 - `docs/dev/acceptance-framework.md` — **keystone** acceptance (AC1-AC9) · `docs/adr/` · `docs/glossary.md` · `docs/demo-release-standard.md`

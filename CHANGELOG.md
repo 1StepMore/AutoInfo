@@ -2,6 +2,23 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.2](https://github.com/1StepMore/AutoInfo/compare/v1.32.1...v1.32.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** declare psutil in dev extras ([#809](https://github.com/1StepMore/AutoInfo/issues/809)) ([#810](https://github.com/1StepMore/AutoInfo/issues/810)) ([747108c](https://github.com/1StepMore/AutoInfo/commit/747108c1676a9649061ba9492580f5e1d10565fd))
+
+
+### Documentation
+
+* **agents:** 补《运行环境与门禁速查》并把仓事实从通用提示词迁回仓内 ([#811](https://github.com/1StepMore/AutoInfo/issues/811)) ([42e40ad](https://github.com/1StepMore/AutoInfo/commit/42e40adaca06fe0d037cdcf6a79c3b7ba435aa64))
+
+
+### Miscellaneous Chores
+
+* **gitignore:** ignore .scratch/ agent scratch dir ([#808](https://github.com/1StepMore/AutoInfo/issues/808)) ([93696da](https://github.com/1StepMore/AutoInfo/commit/93696da4434bedc7cd5e7c512c328c6edeb7a69e))
+
 ## [1.32.1](https://github.com/1StepMore/AutoInfo/compare/v1.32.0...v1.32.1) (2026-11-14)
 
 

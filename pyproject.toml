@@ -92,6 +92,10 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.7",
     "jsonschema>=4.23",
+    # Test-probe hard dependency (#809): the process-group/orphan tests are
+    # fail-loud by design — a missing psutil must fail them with an explicit
+    # ImportError, so it has to be declared, not inherited transitively.
+    "psutil>=5.9",
 ]
 web = [
     "playwright>=1.45",

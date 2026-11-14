@@ -37,11 +37,12 @@ make doc-check   # 只在改了 docs/ 或任何文档时追加
 
 ## 已知坑
 
-1. **本仓无 `windows-latest` CI job**（缺口 #803）：Windows 侧回归只能靠人工撞，别把"CI 绿"读成"Windows 可用"。
+1. **Windows CI ≠ 全量等价**：`windows-smoke` job（#803/#804）只覆盖安装 + ruff + `mypy --platform linux` + E2E baseline + 小型 Windows 敏感子集；Chrome/ffmpeg/外网依赖与全量 ~3000 测试不上该 runner——别把"CI 绿"读成"Windows 全量可用"。
 2. **`make lint` 含 mypy**：`mypy src/` 是硬门，类型标注缺失会直接红，不是警告。
 3. **产物判据不放宽**：`outputs/<domain>/` 为空就是未达标，不许拿 `outputs-archive/` 的旧产物凑数。
 4. **`${ENV}` 未设 ≠ 空串静默**：新版本会给加载期警告 + doctor 分级，看到警告先查环境，不要急着改代码。
 5. **治理入口唯一**：`python -m autoinfo.gov` 是唯一治理入口；`AGENTS.md` 行数有硬上限（C3，≤200 行），加内容要按"下移进 `docs/dev/`"的方式做。
+6. **Windows 原生 `mypy src/` 会误报 3 条**：`src/autoinfo/mcp/validation.py:650` 的 POSIX-only 属性（`os.killpg/getpgid/SIGKILL`）在 Windows stubs 下不存在（该行有 `os.name == "nt"` 运行时守卫，运行时安全）。本地 Windows 等价命令：`mypy --platform linux src/`——与 ubuntu mypy job 和 `windows-smoke` job 同一类型契约（ci.yml 有注释）。别为消掉它改产品代码。
 
 ## 队列
 

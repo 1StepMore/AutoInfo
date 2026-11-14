@@ -1,3 +1,21 @@
+# CI coverage map (issue #803 — read before assuming what a green run proves):
+#
+#   lint                  (ubuntu)  secret scan, DCO identity, ruff gates
+#   mypy-changed-files    (ubuntu)  mypy baseline-aware diff gate + full-src strict mypy
+#   test                  (ubuntu)  fast test subset, `-m "not real_api"`
+#   scenario-portability  (ubuntu)  keyless scenario subset on a clean venv
+#   windows-smoke         (windows) Windows coverage = install dev deps + ruff
+#                                   + mypy (--platform linux, see job comment) +
+#                                   E2E baseline (`pytest tests/e2e/`) + a small
+#                                   Windows-sensitive test subset (paths /
+#                                   encoding / subprocess). NOT full-suite
+#                                   Windows parity — Chrome/ffmpeg/external-
+#                                   network tests and the full 3000-test suite
+#                                   stay off this runner (excluded by the
+#                                   explicit file lists below, not by luck;
+#                                   LLM-gated E2E scenarios honestly report
+#                                   `blocked-unconfigured` via the engine's
+#                                   requires_env mechanism — never a fake key).
 name: CI
 
 on:
@@ -311,3 +329,61 @@ jobs:
       - name: Full scenario library parses
         run: |
           python3 -c "from autoinfo.mcp.validation import load_scenarios; print(len(load_scenarios()))"
+
+  # #803 — Windows coverage. Scope deliberately small (install + lint +
+  # typecheck + E2E baseline + a Windows-sensitive subset): every push proves
+  # "Windows can install, run, and produce the E2E baseline" instead of
+  # relying on someone bumping into a Windows regression by hand (the RC-A…
+  # RC-E batch was exactly that). Not full-suite Windows parity — see the
+  # coverage map at the top of this file for what stays off this runner.
+  windows-smoke:
+    name: Windows smoke (install/lint/typecheck/E2E baseline/subset)
+    runs-on: windows-latest
+    env:
+      # Same ANSI-render guard as the test/scenario jobs: rich/typer split
+      # double-dash flags when they detect a CI terminal, breaking --help
+      # substring assertions.
+      TERM: dumb
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # Same extras as the ubuntu test job. [ebook] is NOT optional here: the
+      # kb-import-export scenario carries an export_kb epub step that (unlike
+      # output-ebook) is not gated by requires_env, so without ebooklib it
+      # fails with ModuleNotFoundError instead of reporting unconfigured
+      # (verified on a clean venv — 17 passed 1 failed; with the extra,
+      # 18 passed + 5 blocked-unconfigured, the #729 calibration baseline).
+      - name: Install dev dependencies
+        run: pip install -e ".[dev,ebook]"
+      - name: Ruff check
+        run: ruff check src/ tests/
+      # --platform linux: typeshed's `os` module is pruned per run platform,
+      # so on a Windows mypy the POSIX-only process-group kill in
+      # src/autoinfo/mcp/validation.py:650 reports os.killpg/getpgid/SIGKILL
+      # as missing (3 errors, verified on a clean venv) even though the call
+      # sits behind an os.name == "nt" runtime guard. `--platform linux`
+      # keeps this step on the exact same typing contract as the ubuntu mypy
+      # job without touching product code; actual Windows *runtime* behavior
+      # is covered for real by the two pytest steps below.
+      - name: Mypy (linux contract, see comment)
+        run: mypy --platform linux src/
+      # The #729 E2E baseline (18 passed + 5 blocked-unconfigured without an
+      # LLM key on the calibration machine). LLM/video-gated scenarios report
+      # `blocked-unconfigured` skips through the engine's requires_env
+      # mechanism — no fake keys, per the honesty contract.
+      - name: E2E baseline
+        run: pytest tests/e2e/test_e2e_features.py -q
+      # Windows-sensitive subset (~25s locally): paths (quality_gate, gov
+      # scan), subprocess (git sign-off identity, gov CLI entry, MCP callback
+      # shutdown), file persistence (MCP output persistence), encoding/CJK
+      # assertions inside those files. Explicit file list — future additions
+      # must stay free of Chrome/ffmpeg/external-network dependencies.
+      # test_mcp_dispatch.py is NOT in the subset yet: on a cp1252-locale
+      # runner its init_project tests hit the missing-encoding bug in
+      # src/autoinfo/cli/init.py (UnicodeDecodeError, #805) — a real
+      # Windows-only bug caught by this job, tracked separately; re-add the
+      # file when #805 lands.
+      - name: Windows-sensitive test subset
+        run: pytest tests/scripts/test_quality_gate.py tests/scripts/test_check_signoff_identity.py tests/gov/test_entry.py tests/gov/test_scan.py tests/mcp/test_output_persistence.py tests/mcp/test_agent_callback_shutdown.py -q

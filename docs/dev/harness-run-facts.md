@@ -33,7 +33,7 @@ make test        # 全量；单文件测试用 <py> -m pytest -q <path>
 make doc-check   # 只在改了 docs/ 或任何文档时追加
 ```
 
-**`make doc-check` 漏跑的代价**：PR 的 `Derived doc/surface parity` 会红（它跑 `autoinfo.gov check` + coverage-matrix + demo-domains 三段）。改文档必须带上它，这是本仓最常见的假绿。
+**`make doc-check` ≠ CI doc 门**：PR 的 `Derived doc/surface parity`（guard.yml `derived-facts` job）跑**四段**——`doc_inventory --check`、`surface_parity --check`、`coverage_matrix --check-enduser-doc`、`autoinfo.gov check`；`make doc-check` 只含 gov check + coverage-matrix + demo-domains，**不含 doc_inventory**。改任何 docs/ 文件必须：`make doc-check` + `python3 scripts/doc_inventory.py`（再生成 `docs/dev/doc-inventory.md` 与 `.agents/audit/INVENTORY.md`）+ `python3 scripts/surface_parity.py --check`。这是本仓最常见的假绿——实测踩过：只跑 make doc-check 三段本地全绿，CI 仍红在 doc_inventory stale。
 
 ## 已知坑
 

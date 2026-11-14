@@ -138,7 +138,7 @@ def _generate_config(
         # skipping wholesale. This makes `init --demo <new-domain>` on an
         # existing project add the domain (fixes #118 — previously the second
         # init silently skipped and the new domain was never registered).
-        with open(dst, "r") as f:
+        with open(dst, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
 
         existing = {d.get("name") for d in config.get("domains", [])}
@@ -151,7 +151,7 @@ def _generate_config(
                 # whose config predates the field (additive only — never
                 # overwrite a present value).
                 if demo_sources_path.is_file():
-                    with open(demo_sources_path) as f:
+                    with open(demo_sources_path, encoding="utf-8") as f:
                         domain_data = yaml.safe_load(f)
                     seed_kw = domain_data.get("exclude_keywords")
                     if seed_kw:
@@ -167,7 +167,7 @@ def _generate_config(
                                 backfilled.append(domain_name)
                 continue
             if demo_sources_path.is_file():
-                with open(demo_sources_path) as f:
+                with open(demo_sources_path, encoding="utf-8") as f:
                     domain_data = yaml.safe_load(f)
                 config.setdefault("domains", []).append(
                     {
@@ -212,7 +212,7 @@ def _generate_config(
             config.setdefault("llm", {})["model"] = model
 
         dst.parent.mkdir(parents=True, exist_ok=True)
-        with open(dst, "w") as f:
+        with open(dst, "w", encoding="utf-8") as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
         if added:
@@ -229,14 +229,14 @@ def _generate_config(
         typer.echo(f"  ERROR  default config template missing: {_DEFAULT_CONFIG}", err=True)
         raise typer.Exit(code=1)
 
-    with open(_DEFAULT_CONFIG, "r") as f:
+    with open(_DEFAULT_CONFIG, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     config["domains"] = []
     for domain_name in domain_names:
         demo_sources_path = _DEMO_DOMAINS_DIR / domain_name / "sources.yaml"
         if demo_sources_path.is_file():
-            with open(demo_sources_path) as f:
+            with open(demo_sources_path, encoding="utf-8") as f:
                 domain_data = yaml.safe_load(f)
             config["domains"].append(
                 {
@@ -280,7 +280,7 @@ def _generate_config(
         config.setdefault("llm", {})["model"] = model
 
     dst.parent.mkdir(parents=True, exist_ok=True)
-    with open(dst, "w") as f:
+    with open(dst, "w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
     typer.echo(f"  CREATE  {dst}")
@@ -308,7 +308,7 @@ def _run_init(
     first_domain = domains[0] if domains else ""
     demo_sources = _DEMO_DOMAINS_DIR / first_domain / "sources.yaml"
     if demo_sources.is_file():
-        with open(demo_sources) as f:
+        with open(demo_sources, encoding="utf-8") as f:
             domain_data = yaml.safe_load(f)
         topics = domain_data.get("topics", [])
         if topics:

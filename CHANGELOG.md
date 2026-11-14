@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.4](https://github.com/1StepMore/AutoInfo/compare/v1.32.3...v1.32.4) (2026-11-14)
+
+
+### Documentation
+
+* **harness-facts:** record three Windows local-run pitfalls hit live today ([#815](https://github.com/1StepMore/AutoInfo/issues/815)) ([83f819f](https://github.com/1StepMore/AutoInfo/commit/83f819f228e4ef517979fdf74f647948ab45c6b5))
+
 ## [1.32.3](https://github.com/1StepMore/AutoInfo/compare/v1.32.2...v1.32.3) (2026-11-14)
 
 

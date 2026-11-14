@@ -43,6 +43,9 @@ make doc-check   # 只在改了 docs/ 或任何文档时追加
 4. **`${ENV}` 未设 ≠ 空串静默**：新版本会给加载期警告 + doctor 分级，看到警告先查环境，不要急着改代码。
 5. **治理入口唯一**：`python -m autoinfo.gov` 是唯一治理入口；`AGENTS.md` 行数有硬上限（C3，≤200 行），加内容要按"下移进 `docs/dev/`"的方式做。
 6. **Windows 原生 `mypy src/` 会误报 3 条**：`src/autoinfo/mcp/validation.py:650` 的 POSIX-only 属性（`os.killpg/getpgid/SIGKILL`）在 Windows stubs 下不存在（该行有 `os.name == "nt"` 运行时守卫，运行时安全）。本地 Windows 等价命令：`mypy --platform linux src/`——与 ubuntu mypy job 和 `windows-smoke` job 同一类型契约（ci.yml 有注释）。别为消掉它改产品代码。
+7. **Windows 原生用 make 必须覆盖 `PY`**：`PY ?= python3`（Makefile:6）在 Windows 解析到系统解释器（无 autoinfo 包，报 ModuleNotFoundError），且 venv 激活也补不出 `python3.exe`（Scripts 里只有 `python.exe`）——用 `make PY=.venv/Scripts/python.exe <target>` 或直接调 venv 解释器。
+8. **pull 了 release bump ⇒ 刷新 editable 安装**：`pip install -e .` 的 dist-info 元数据停在安装时刻，源码 bump（如 1.32.1→1.32.2）而 venv 未重装时，`test_version_matches_installed_metadata` 与两个 `test_build_release_check` 会红。修复：`pip install -e ".[dev,ebook]"` 后重跑即绿（实测 2026-11-14，3 红全消）。
+9. **场景测试必须让 `.venv/Scripts` 上 PATH**：e2e cli-kind 场景（`cli-core` 等）的子进程裸调 `autoinfo` CLI——显式路径调 `python.exe -m pytest` 而 PATH 无 venv Scripts 时，`autoinfo` 解析不到（CMD 报「不是内部或外部命令」），journey-system-health 报 3/3 failed。修复：激活 venv 或 `PATH="$PWD/.venv/Scripts:$PATH"` 前置（CI 两侧 setup-python 自动带上，故只在本机裸跑时红）。实测：PATH 修正后 journey-system-health `1 passed`。
 
 ## 队列
 

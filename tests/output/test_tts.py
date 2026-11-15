@@ -50,9 +50,7 @@ class TestRenderAudioOpenAI:
     def mock_env_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "sk-test-key")
 
-    def test_openai_returns_mp3_bytes(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_openai_returns_mp3_bytes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "sk-test-key")
 
         mock_response = MagicMock()
@@ -109,9 +107,7 @@ class TestRenderAudioOpenAI:
         assert call_args[1]["json"]["voice"] == "nova"
         assert result == b"nova-mp3"
 
-    def test_openai_http_error_raises_runtimeerror(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_openai_http_error_raises_runtimeerror(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "sk-test-key")
 
         import httpx
@@ -126,20 +122,20 @@ class TestRenderAudioOpenAI:
             "Unauthorized", request=mock_request, response=mock_response
         )
 
-        with patch(
-            "httpx.post", side_effect=http_error
-        ), pytest.raises(RuntimeError, match="OpenAI TTS API error"):
+        with (
+            patch("httpx.post", side_effect=http_error),
+            pytest.raises(RuntimeError, match="OpenAI TTS API error"),
+        ):
             _render_audio("test", engine="openai")
 
-    def test_openai_no_api_key_raises_runtimeerror(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_openai_no_api_key_raises_runtimeerror(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("AUTOINFO_LLM_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-        with patch(
-            "autoinfo.output.get_config_path", return_value=None
-        ), pytest.raises(RuntimeError, match="AUTOINFO_LLM_API_KEY"):
+        with (
+            patch("autoinfo.output.get_config_path", return_value=None),
+            pytest.raises(RuntimeError, match="AUTOINFO_LLM_API_KEY"),
+        ):
             _render_audio_openai("test")
 
     def test_openai_empty_response_raises(self) -> None:
@@ -147,8 +143,9 @@ class TestRenderAudioOpenAI:
         mock_response.content = b""
         mock_response.raise_for_status = MagicMock()
 
-        with patch("httpx.post", return_value=mock_response), pytest.raises(
-            RuntimeError, match="empty audio data"
+        with (
+            patch("httpx.post", return_value=mock_response),
+            pytest.raises(RuntimeError, match="empty audio data"),
         ):
             _render_audio_openai("test")
 
@@ -164,6 +161,7 @@ class TestRenderAudioEdgeTTS:
     def test_local_returns_mp3_bytes(self) -> None:
         fake_comm = _register_fake_edge_tts()
         try:
+
             async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
                 yield {"type": "audio", "data": b"chunk1"}
                 yield {"type": "audio", "data": b"chunk2"}
@@ -182,6 +180,7 @@ class TestRenderAudioEdgeTTS:
     def test_local_custom_voice(self) -> None:
         fake_comm = _register_fake_edge_tts()
         try:
+
             async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
                 yield {"type": "audio", "data": b"voice-data"}
 
@@ -189,9 +188,7 @@ class TestRenderAudioEdgeTTS:
             instance.stream = MagicMock(return_value=mock_stream())
             fake_comm.return_value = instance
 
-            result = _render_audio(
-                "Hello", engine="local", local_voice="en-GB-SoniaNeural"
-            )
+            result = _render_audio("Hello", engine="local", local_voice="en-GB-SoniaNeural")
         finally:
             _cleanup_fake_edge_tts()
 
@@ -201,6 +198,7 @@ class TestRenderAudioEdgeTTS:
     def test_local_empty_audio_raises(self) -> None:
         fake_comm = _register_fake_edge_tts()
         try:
+
             async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
                 yield {"type": "WordBoundary", "data": b""}
 
@@ -210,6 +208,35 @@ class TestRenderAudioEdgeTTS:
 
             with pytest.raises(RuntimeError, match="empty audio data"):
                 _render_audio_edge_tts("test")
+        finally:
+            _cleanup_fake_edge_tts()
+
+    def test_local_upstream_handshake_403_wraps_with_vendor_and_version(self) -> None:
+        # #817: edge-tts 7.2.8 vs Microsoft's endpoint contract surfaced as a
+        # bare ``WSServerHandshakeError: 403`` — matrix detail showed nothing
+        # but a URL. The wrap must name the vendor, installed version and an
+        # actionable next step, while preserving the original error text.
+        fake_comm = _register_fake_edge_tts()
+        try:
+
+            class FakeHandshakeError(Exception):
+                status = 403
+
+            async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
+                raise FakeHandshakeError("403, message='Invalid response status'")
+                yield  # unreachable; makes this an async generator
+
+            instance = MagicMock()
+            instance.stream = MagicMock(return_value=mock_stream())
+            fake_comm.return_value = instance
+
+            with pytest.raises(RuntimeError) as exc_info:
+                _render_audio_edge_tts("test")
+            message = str(exc_info.value)
+            assert "edge-tts" in message  # vendor + installed version prefix
+            assert "403" in message
+            assert "Invalid response status" in message  # original error preserved
+            assert "upgrade" in message  # actionable next step
         finally:
             _cleanup_fake_edge_tts()
 
@@ -233,9 +260,7 @@ class TestFallback:
             mock_response.content = b"fallback-mp3"
             mock_response.raise_for_status = MagicMock()
 
-            with patch(
-                "httpx.post", return_value=mock_response
-            ) as mock_post:
+            with patch("httpx.post", return_value=mock_response) as mock_post:
                 result = _render_audio("Hello", engine="local")
 
             assert mock_post.called
@@ -251,6 +276,7 @@ class TestFallback:
 
         fake_comm = _register_fake_edge_tts()
         try:
+
             async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
                 raise RuntimeError("TTS service unavailable")
                 yield  # unreachable; makes this an async generator (edge-tts stream() yields)
@@ -276,9 +302,7 @@ class TestFallback:
 class TestEngineResolution:
     """Tests for engine parameter resolution."""
 
-    def test_defaults_to_local_when_engine_is_none(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_defaults_to_local_when_engine_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Issue #159: engine=None resolves to the local (edge-tts) default.
 
         The OpenAI TTS endpoint is unreachable from the deployment
@@ -295,9 +319,7 @@ class TestEngineResolution:
         with patch("autoinfo.output.get_config_path", return_value=None):
             assert _get_tts_engine_from_config() == "local"
 
-    def test_unknown_engine_falls_back_to_openai(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unknown_engine_falls_back_to_openai(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "sk-unknown")
 
         mock_response = MagicMock()
@@ -341,15 +363,11 @@ class TestTTSConfig:
         assert tts.local_voice == "en-GB-SoniaNeural"
 
     def test_get_tts_engine_from_config_returns_default(self) -> None:
-        with patch(
-            "autoinfo.output.get_config_path", return_value=None
-        ):
+        with patch("autoinfo.output.get_config_path", return_value=None):
             result = _get_tts_engine_from_config()
         assert result == "local"
 
-    def test_get_tts_engine_from_config_reads_tts_section(
-        self, tmp_path: Path
-    ) -> None:
+    def test_get_tts_engine_from_config_reads_tts_section(self, tmp_path: Path) -> None:
         import yaml
 
         config_dir = tmp_path / ".autoinfo"
@@ -360,9 +378,7 @@ class TestTTSConfig:
             encoding="utf-8",
         )
 
-        with patch(
-            "autoinfo.output.get_config_path", return_value=config_file
-        ):
+        with patch("autoinfo.output.get_config_path", return_value=config_file):
             result = _get_tts_engine_from_config()
         assert result == "local"
 
@@ -373,6 +389,7 @@ class TestRenderAudioEdgeTTSDirect:
     def test_edge_tts_helper_returns_bytes(self) -> None:
         fake_comm = _register_fake_edge_tts()
         try:
+
             async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
                 yield {"type": "audio", "data": b"edge-data"}
 
@@ -390,6 +407,7 @@ class TestRenderAudioEdgeTTSDirect:
     def test_edge_tts_helper_respects_voice(self) -> None:
         fake_comm = _register_fake_edge_tts()
         try:
+
             async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
                 yield {"type": "audio", "data": b"x"}
 
@@ -414,6 +432,7 @@ class TestRenderAudioEdgeTTSDirect:
 
         fake_comm = _register_fake_edge_tts()
         try:
+
             async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
                 await asyncio.sleep(99)
                 yield {"type": "audio", "data": b"x"}
@@ -439,6 +458,7 @@ class TestRenderAudioWithEngineLocal:
     def test_render_audio_engine_local_works(self) -> None:
         fake_comm = _register_fake_edge_tts()
         try:
+
             async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
                 yield {"type": "audio", "data": b"local-mp3"}
 
@@ -459,6 +479,7 @@ class TestRenderAudioWithEngineLocal:
     def test_render_audio_engine_local_strips_markdown(self) -> None:
         fake_comm = _register_fake_edge_tts()
         try:
+
             async def mock_stream() -> AsyncIterator[dict[str, str | bytes]]:
                 yield {"type": "audio", "data": b"stripped"}
 

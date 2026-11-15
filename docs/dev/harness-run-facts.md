@@ -14,17 +14,22 @@
 | 安装（开发） | `make dev-install`（含测试与 lint 依赖） |
 | 已装包校验 | `<py> -c "import autoinfo; print(autoinfo.__version__)"` |
 
-## 能力判定（依赖探针）
+## 依赖探针与能力需求
 
-探测命令：`python scripts/check_deps.py`（纯标准库；`--json` 供机器读；不联网、不改状态、绝不安装任何东西）。
-探针回答"这台机器能做什么活"，产出 TEXT / AUDIO / VIDEO / BROWSER 四线判定；**判为缺失的能力线上的活一律标
-ENV-MISSING 交回**（不安装外部二进制、不找替代实现、不绕路、不改测试凑绿）。判过之后机器装/卸了东西 ⇒ 重跑并更新下面这行。
+探针入口：`python scripts/check_deps.py`（纯标准库；`--json` 供机器读；不联网、不安装、不改状态）。
+它回答"这台机器能做什么活"；**判为缺失的能力线上的活一律标 ENV-MISSING 交回**（不安装外部二进制、
+不找替代实现、不绕路、不改测试凑绿）。
 
-- **能力（2026-11-15 · Windows 原生 · `.venv\Scripts\python.exe` · scripts/check_deps.py）：TEXT ✓ / AUDIO ✗ / VIDEO ✗ / BROWSER ✓**
-  - 缺（外部二进制，不装，装不装由 Owner 定）：`ffmpeg`、`ffprobe`（AUDIO/VIDEO 线阻塞）、`node`、`bun`（hyperframes 渲染链阻塞）
-  - 缺（extra Python 依赖，可装）：venv 未装 `playwright`/`PyMuPDF`/`weasyprint`/`edge-tts`（`pip install -e ".[web,pdf,tts]"`）
-  - 缺（环境变量）：`AUTOINFO_LLM_API_KEY` unset ⇒ 生成线（report/digest 全链）在本机不可实测
-  - 对照：系统 Python313 装了全量依赖（含 edge-tts），但仓规解释器是 `.venv`，以 venv 判定为准
+本仓需要哪些能力（需求侧 · 由代码决定，与机器无关）：
+- 文本产出/校验 ← 仓库 venv + LLM 凭据（缺 key ⇒ 生成线记 blocked-no-llm-key，不算 bug）
+- 语音产出 ← 任一可用 TTS 通道（`tts` extra 或云端语音 key）；语音校验 ← 音视频探测类工具（时长/码率/可解码）
+- 视频产出 ← 语音产出 + 渲染器链路（hyperframes + node/bun 运行时）；视频校验 ← 探测类工具 + 浏览器
+- 浏览器/视觉链路 ← chrome / playwright；PDF 通道 ← weasyprint + GTK 系统库（缺 ⇒ 该线记 blocked，不算 bug）
+- 可选 extra（`[web,pdf,tts,ebook]`）：缺则对应格式记 blocked，不算 bug
+
+本机判定结果**不入库**：它逐机器不同、会过期，别的机器读到会误判能/不能做。
+写到仓外或已被 gitignore 的 `.scratch/`（如 `.scratch/env-capabilities.md`），每轮报告「环境」段带出；
+换了机器或装/卸了东西 ⇒ 重跑探针覆盖本机文件，**不要提交**。
 
 ## 必需环境变量
 
@@ -64,3 +69,16 @@ make doc-check   # 只在改了 docs/ 或任何文档时追加
 ```
 gh issue list -l agent-ready --state open
 ```
+
+**交接状态机（双机协作）**：issue 状态只由标签表达，两侧共用一套；改标签 = 交棒。
+
+| 标签 | 含义 | 谁迁出 |
+|:--|:--|:--|
+| `agent-ready` | 契约完整，可开工 | 接活方 ⇒ 换 `status:claimed` |
+| `status:claimed` | 已认领、在做 | 在做方 ⇒ 做完换 `needs-real-verification`；缺能力换 `blocked:env` |
+| `blocked:env` | 缺能力/依赖，等另一台机器 | 具备该能力的一方；**判阻塞方不得自关** |
+| `needs-real-verification` | 产物已出，等内容级读数 | 复验方给读数后关门 |
+
+硬规矩：① 改标签必须同时留一行「可复跑命令 / 期望读数 / sha」；② 每条 issue 要有 `needs:` 行
+（能力项名见上一节「依赖探针与能力需求」），**派活按能力匹配，不按人**；③ 只有三种情况需要 Owner 出场：
+两侧都不具备该能力 / 判据与治理类改动 / 合并与发版；④ 产物验收只认内容级读数，状态枚举不算通过。

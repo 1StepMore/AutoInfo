@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.6](https://github.com/1StepMore/AutoInfo/compare/v1.32.5...v1.32.6) (2026-11-15)
+
+
+### Documentation
+
+* **dev:** 能力判定段改为能力需求段——本机判定结果不入库 ([#822](https://github.com/1StepMore/AutoInfo/issues/822)) ([fd4a940](https://github.com/1StepMore/AutoInfo/commit/fd4a940a281eabffad47ab32f1443e4253298f29))
+
 ## [1.32.5](https://github.com/1StepMore/AutoInfo/compare/v1.32.4...v1.32.5) (2026-11-15)
 
 

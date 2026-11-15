@@ -14,6 +14,18 @@
 | 安装（开发） | `make dev-install`（含测试与 lint 依赖） |
 | 已装包校验 | `<py> -c "import autoinfo; print(autoinfo.__version__)"` |
 
+## 能力判定（依赖探针）
+
+探测命令：`python scripts/check_deps.py`（纯标准库；`--json` 供机器读；不联网、不改状态、绝不安装任何东西）。
+探针回答"这台机器能做什么活"，产出 TEXT / AUDIO / VIDEO / BROWSER 四线判定；**判为缺失的能力线上的活一律标
+ENV-MISSING 交回**（不安装外部二进制、不找替代实现、不绕路、不改测试凑绿）。判过之后机器装/卸了东西 ⇒ 重跑并更新下面这行。
+
+- **能力（2026-11-15 · Windows 原生 · `.venv\Scripts\python.exe` · scripts/check_deps.py）：TEXT ✓ / AUDIO ✗ / VIDEO ✗ / BROWSER ✓**
+  - 缺（外部二进制，不装，装不装由 Owner 定）：`ffmpeg`、`ffprobe`（AUDIO/VIDEO 线阻塞）、`node`、`bun`（hyperframes 渲染链阻塞）
+  - 缺（extra Python 依赖，可装）：venv 未装 `playwright`/`PyMuPDF`/`weasyprint`/`edge-tts`（`pip install -e ".[web,pdf,tts]"`）
+  - 缺（环境变量）：`AUTOINFO_LLM_API_KEY` unset ⇒ 生成线（report/digest 全链）在本机不可实测
+  - 对照：系统 Python313 装了全量依赖（含 edge-tts），但仓规解释器是 `.venv`，以 venv 判定为准
+
 ## 必需环境变量
 
 | 变量 | 用途 | 缺了会怎样 |

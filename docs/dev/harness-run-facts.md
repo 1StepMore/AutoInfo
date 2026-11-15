@@ -14,17 +14,22 @@
 | 安装（开发） | `make dev-install`（含测试与 lint 依赖） |
 | 已装包校验 | `<py> -c "import autoinfo; print(autoinfo.__version__)"` |
 
-## 能力判定（依赖探针）
+## 依赖探针与能力需求
 
-探测命令：`python scripts/check_deps.py`（纯标准库；`--json` 供机器读；不联网、不改状态、绝不安装任何东西）。
-探针回答"这台机器能做什么活"，产出 TEXT / AUDIO / VIDEO / BROWSER 四线判定；**判为缺失的能力线上的活一律标
-ENV-MISSING 交回**（不安装外部二进制、不找替代实现、不绕路、不改测试凑绿）。判过之后机器装/卸了东西 ⇒ 重跑并更新下面这行。
+探针入口：`python scripts/check_deps.py`（纯标准库；`--json` 供机器读；不联网、不安装、不改状态）。
+它回答"这台机器能做什么活"；**判为缺失的能力线上的活一律标 ENV-MISSING 交回**（不安装外部二进制、
+不找替代实现、不绕路、不改测试凑绿）。
 
-- **能力（2026-11-15 · Windows 原生 · `.venv\Scripts\python.exe` · scripts/check_deps.py）：TEXT ✓ / AUDIO ✗ / VIDEO ✗ / BROWSER ✓**
-  - 缺（外部二进制，不装，装不装由 Owner 定）：`ffmpeg`、`ffprobe`（AUDIO/VIDEO 线阻塞）、`node`、`bun`（hyperframes 渲染链阻塞）
-  - 缺（extra Python 依赖，可装）：venv 未装 `playwright`/`PyMuPDF`/`weasyprint`/`edge-tts`（`pip install -e ".[web,pdf,tts]"`）
-  - 缺（环境变量）：`AUTOINFO_LLM_API_KEY` unset ⇒ 生成线（report/digest 全链）在本机不可实测
-  - 对照：系统 Python313 装了全量依赖（含 edge-tts），但仓规解释器是 `.venv`，以 venv 判定为准
+本仓需要哪些能力（需求侧 · 由代码决定，与机器无关）：
+- 文本产出/校验 ← 仓库 venv + LLM 凭据（缺 key ⇒ 生成线记 blocked-no-llm-key，不算 bug）
+- 语音产出 ← 任一可用 TTS 通道（`tts` extra 或云端语音 key）；语音校验 ← 音视频探测类工具（时长/码率/可解码）
+- 视频产出 ← 语音产出 + 渲染器链路（hyperframes + node/bun 运行时）；视频校验 ← 探测类工具 + 浏览器
+- 浏览器/视觉链路 ← chrome / playwright；PDF 通道 ← weasyprint + GTK 系统库（缺 ⇒ 该线记 blocked，不算 bug）
+- 可选 extra（`[web,pdf,tts,ebook]`）：缺则对应格式记 blocked，不算 bug
+
+本机判定结果**不入库**：它逐机器不同、会过期，别的机器读到会误判能/不能做。
+写到仓外或已被 gitignore 的 `.scratch/`（如 `.scratch/env-capabilities.md`），每轮报告「环境」段带出；
+换了机器或装/卸了东西 ⇒ 重跑探针覆盖本机文件，**不要提交**。
 
 ## 必需环境变量
 

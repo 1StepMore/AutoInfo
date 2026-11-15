@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.7](https://github.com/1StepMore/AutoInfo/compare/v1.32.6...v1.32.7) (2026-11-15)
+
+
+### Tests
+
+* **integration:** raise per-test timeout budget for the nested v0.1 suite ([#825](https://github.com/1StepMore/AutoInfo/issues/825)) ([#826](https://github.com/1StepMore/AutoInfo/issues/826)) ([58c055b](https://github.com/1StepMore/AutoInfo/commit/58c055be36ef5c93a40be4c4cae94805184c90b2))
+
 ## [1.32.6](https://github.com/1StepMore/AutoInfo/compare/v1.32.5...v1.32.6) (2026-11-15)
 
 

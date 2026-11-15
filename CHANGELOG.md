@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.5](https://github.com/1StepMore/AutoInfo/compare/v1.32.4...v1.32.5) (2026-11-15)
+
+
+### Miscellaneous Chores
+
+* **scripts:** add scripts/check_deps.py dependency & capability probe ([#818](https://github.com/1StepMore/AutoInfo/issues/818)) ([e27fef1](https://github.com/1StepMore/AutoInfo/commit/e27fef1f015ec5eea81b0106a3632386cbf38e53))
+
 ## [1.32.4](https://github.com/1StepMore/AutoInfo/compare/v1.32.3...v1.32.4) (2026-11-14)
 
 

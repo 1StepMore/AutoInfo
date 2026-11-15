@@ -69,3 +69,16 @@ make doc-check   # 只在改了 docs/ 或任何文档时追加
 ```
 gh issue list -l agent-ready --state open
 ```
+
+**交接状态机（双机协作）**：issue 状态只由标签表达，两侧共用一套；改标签 = 交棒。
+
+| 标签 | 含义 | 谁迁出 |
+|:--|:--|:--|
+| `agent-ready` | 契约完整，可开工 | 接活方 ⇒ 换 `status:claimed` |
+| `status:claimed` | 已认领、在做 | 在做方 ⇒ 做完换 `needs-real-verification`；缺能力换 `blocked:env` |
+| `blocked:env` | 缺能力/依赖，等另一台机器 | 具备该能力的一方；**判阻塞方不得自关** |
+| `needs-real-verification` | 产物已出，等内容级读数 | 复验方给读数后关门 |
+
+硬规矩：① 改标签必须同时留一行「可复跑命令 / 期望读数 / sha」；② 每条 issue 要有 `needs:` 行
+（能力项名见上一节「依赖探针与能力需求」），**派活按能力匹配，不按人**；③ 只有三种情况需要 Owner 出场：
+两侧都不具备该能力 / 判据与治理类改动 / 合并与发版；④ 产物验收只认内容级读数，状态枚举不算通过。

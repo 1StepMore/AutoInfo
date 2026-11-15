@@ -245,6 +245,10 @@ class TestAllV01TestsPass:
     ]
 
     @pytest.mark.slow
+    # Nested 10-file v0.1 suite runs ~177s idle on Windows; the global 180s per-test
+    # budget leaves <3s headroom, so any concurrent I/O trips pytest-timeout's thread
+    # kill (which ends the run with no summary) — raise the budget for this test only (#825).
+    @pytest.mark.timeout(600)
     def test_all_v01_tests_pass(self) -> None:
         """Run all v0.1 test files as a subprocess and verify exit code 0."""
         project_root = Path(__file__).resolve().parents[2]

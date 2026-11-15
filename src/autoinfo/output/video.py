@@ -22,7 +22,7 @@ import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 logger = logging.getLogger("autoinfo.output")
 
@@ -399,16 +399,25 @@ def _split_narration_into_scenes(
     return scenes
 
 
-def _render_jinja(template_name: str, **ctx: Any) -> str:
-    """Render a template from the ported assets dir."""
+def _jinja_env() -> Any:
+    """Build the Jinja environment shared by file and inline rendering."""
     from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-    env = Environment(
+    return Environment(
         loader=FileSystemLoader(os.path.join(_ASSETS_DIR, "templates")),
         undefined=StrictUndefined,
         autoescape=False,
     )
-    return env.get_template(template_name).render(**ctx)
+
+
+def _render_jinja(template_name: str, **ctx: Any) -> str:
+    """Render a template from the ported assets dir."""
+    return cast(str, _jinja_env().get_template(template_name).render(**ctx))
+
+
+def _render_inline(template_str: str, **ctx: Any) -> str:
+    """Render a Jinja template string in-memory (no file loader)."""
+    return cast(str, _jinja_env().from_string(template_str).render(**ctx))
 
 
 def _write_scene_composition(
@@ -420,23 +429,29 @@ def _write_scene_composition(
 ) -> None:
     """Write one scene composition HTML (layout + GSAP timeline)."""
     layout = LAYOUTS[layout_name]
+    ctx: dict[str, Any] = {
+        "theme": theme,
+        "loop": {"index": index},
+        "duration": scene["duration"],
+        "heading": scene["heading"],
+        "body": scene["body"],
+        "body_left": scene.get("heading"),
+        "body_right": scene.get("body"),
+        "cards": scene.get("cards", []),
+        "stats": scene.get("stats", []),
+        "steps": scene.get("steps", []),
+    }
+    # The layout html is itself a Jinja template; render it before passing it
+    # to scene.html.j2 (Jinja does not re-render data inserted via ``| safe``).
+    layout_html = _render_inline(layout["html"], **ctx)
     html = _render_jinja(
         "scene.html.j2",
-        theme=theme,
-        loop={"index": index},
-        duration=scene["duration"],
+        **ctx,
         layout={
             "name": layout["label"],
-            "html": layout["html"],
+            "html": layout_html,
             "animations": layout["animations"],
         },
-        heading=scene["heading"],
-        body=scene["body"],
-        body_left=scene.get("heading"),
-        body_right=scene.get("body"),
-        cards=scene.get("cards", []),
-        stats=scene.get("stats", []),
-        steps=scene.get("steps", []),
     )
     path = os.path.join(compositions_dir, f"{index:02d}-scene.html")
     with open(path, "w", encoding="utf-8") as f:

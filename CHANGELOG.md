@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.8](https://github.com/1StepMore/AutoInfo/compare/v1.32.7...v1.32.8) (2026-11-16)
+
+
+### Miscellaneous Chores
+
+* **governance:** add CODEOWNERS for sensitive paths ([#831](https://github.com/1StepMore/AutoInfo/issues/831)) ([0ed63c0](https://github.com/1StepMore/AutoInfo/commit/0ed63c0e11d11ded4e164285d2c849f57014d7ba))
+
 ## [1.32.7](https://github.com/1StepMore/AutoInfo/compare/v1.32.6...v1.32.7) (2026-11-15)
 
 

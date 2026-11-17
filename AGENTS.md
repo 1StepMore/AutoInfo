@@ -2,7 +2,7 @@
 
 > Root instruction **index** — rules + pointers, not a corpus (#671; adherence ceiling ~200 lines,
 > `docs/dev/agent-era-doc-architecture.md` §1). Detail loads on demand: repo layout → `docs/dev/repo-map.md` ·
-> LLM setup → `docs/dev/llm-config.md` · gates/pipeline → `docs/dev/specs/` · examples → `docs/dev/mcp-usage-examples.md` · **自驱（任一 agent/harness 落地即读）→ `docs/dev/autonomy.md`**.
+> LLM setup → `docs/dev/llm-config.md` · gates/pipeline → `docs/dev/specs/` · examples → `docs/dev/mcp-usage-examples.md` · **自驱（任一 agent/harness 落地即读）→ `docs/dev/autonomy.md`（目标与判据 → `docs/dev/goals.md`）`**.
 
 ## What Is AutoInfo
 

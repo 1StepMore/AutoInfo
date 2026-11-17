@@ -6,7 +6,9 @@
   3. 取活口径：有 owner 标签 / 已认领 / 已被 open PR 认领的，一律不进名单。
 """
 
+import argparse
 import importlib.util
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -124,3 +126,44 @@ def test_goal_verdict_only_zero_is_achieved():
     assert au.goal_verdict(1) == "ACTIVE"
     # 2 = 判据跑不起来（环境问题）⇒ ERROR，不能伪装成"未达标"让 agent 继续硬推
     assert au.goal_verdict(2) == "ERROR"
+
+
+def test_goal_gate_blocks_work_when_achieved(monkeypatch):
+    monkeypatch.setattr(au, "goal_check", lambda *a, **k: ("ACHIEVED", 0))
+    assert au.goal_gate() == 5  # 达标 ⇒ 不许领活
+
+
+def test_goal_gate_flags_env_break_as_6(monkeypatch):
+    monkeypatch.setattr(au, "goal_check", lambda *a, **k: ("ERROR", 2))
+    assert au.goal_gate() == 6  # 环境坏 ⇒ 报错退出，不伪装成"未达标"
+
+
+def test_goal_gate_passes_when_active_or_absent(monkeypatch):
+    monkeypatch.setattr(au, "goal_check", lambda *a, **k: ("ACTIVE", 4))
+    assert au.goal_gate() is None
+    monkeypatch.setattr(au, "goal_check", lambda *a, **k: ("NONE", 0))
+    assert au.goal_gate() is None
+
+
+def test_gate_runs_goal_gate_by_default(monkeypatch):
+    called = {}
+    monkeypatch.setattr(au, "goal_gate", lambda: called.setdefault("hit", 5))
+    a = argparse.Namespace(lane=au.MINE, need_minutes=0, now=None, skip_goal=False)
+    assert au.cmd_gate(a) == 5
+    assert called["hit"] == 5
+
+
+def test_gate_skip_goal_bypasses(monkeypatch):
+    monkeypatch.setattr(
+        au, "goal_gate", lambda: (_ for _ in ()).throw(AssertionError("不该被调用"))
+    )
+    a = argparse.Namespace(lane=au.MINE, need_minutes=0, now=None, skip_goal=True)
+    monkeypatch.setattr(au, "effective_lane", lambda now, path=None: (au.MINE, "测试", {}))
+    assert au.cmd_gate(a) == 0
+
+
+def test_goal_cmd_uses_current_interpreter():
+    cmd = au.goal_cmd()
+    assert cmd is not None
+    # goals.md 写的 python3 ⇒ 实际执行换成当前解释器（同一 env，否则模块找不到误报 ERROR）
+    assert cmd[0] == sys.executable

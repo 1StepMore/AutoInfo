@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.0](https://github.com/1StepMore/AutoInfo/compare/v1.32.12...v1.33.0) (2026-11-17)
+
+
+### Features
+
+* **config:** user-level dotenv loading (~/.autoinfo/.env) decouples key rotation from IDE restarts ([#848](https://github.com/1StepMore/AutoInfo/issues/848)) ([258712a](https://github.com/1StepMore/AutoInfo/commit/258712a8542dff048bb52c96f9783acd61b25f92)), closes [#847](https://github.com/1StepMore/AutoInfo/issues/847)
+
 ## [1.32.12](https://github.com/1StepMore/AutoInfo/compare/v1.32.11...v1.32.12) (2026-11-17)
 
 

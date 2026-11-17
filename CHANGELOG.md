@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.9](https://github.com/1StepMore/AutoInfo/compare/v1.32.8...v1.32.9) (2026-11-17)
+
+
+### Miscellaneous Chores
+
+* **agent:** repo-local autonomy kit — lease gate, selection, claim, selfcheck ([#834](https://github.com/1StepMore/AutoInfo/issues/834)) ([4b1bb10](https://github.com/1StepMore/AutoInfo/commit/4b1bb103ee3a5803bf751bd80593a86002e39c1a))
+
 ## [1.32.8](https://github.com/1StepMore/AutoInfo/compare/v1.32.7...v1.32.8) (2026-11-16)
 
 

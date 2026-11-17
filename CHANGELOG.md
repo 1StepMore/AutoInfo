@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.11](https://github.com/1StepMore/AutoInfo/compare/v1.32.10...v1.32.11) (2026-11-17)
+
+
+### Tests
+
+* **mcp:** isolate host AUTOINFO_LLM_API_KEY in list_available_models pool tests ([#833](https://github.com/1StepMore/AutoInfo/issues/833)) ([9f35430](https://github.com/1StepMore/AutoInfo/commit/9f3543087da954c658d8cb2b0e7b8e48edf5b8bb))
+
+
+### Miscellaneous Chores
+
+* **agent:** goal gate inside gate/next — nobody has to remember the goal check ([#839](https://github.com/1StepMore/AutoInfo/issues/839)) ([6ad0780](https://github.com/1StepMore/AutoInfo/commit/6ad07805edd2a06553fd3df8897cb51b4c727c1b))
+
 ## [1.32.10](https://github.com/1StepMore/AutoInfo/compare/v1.32.9...v1.32.10) (2026-11-17)
 
 

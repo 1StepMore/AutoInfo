@@ -38,7 +38,7 @@
 | `AUTOINFO_LLM_API_KEY` | 主模型 key；写进 `.autoinfo/config.yaml` 时必须是 `api_key: ${AUTOINFO_LLM_API_KEY}`，**不要写明文** | `autoinfo doctor` 报 `❌ LLM: no API key configured` |
 | （可选）fallback 各端点 key | 跨端点 fallback 必须携带**自己的** `${ENV}` 引用，绝不继承 primary key | 该端点降级为不可用，doctor 的 `fallback chain` 计数变少 |
 
-**`.env` 约定**：本仓**不读任何 `.env` 文件**（写了无效），只认进程环境变量。要证明"真的没 key"，必须用干净进程环境跑，否则会被别处的 `.env` 骗过。
+**`.env` 约定**：CLI / MCP server 启动时会加载**用户级** `~/.autoinfo/.env`（KEY=VALUE，纯 stdlib 解析，`autoinfo/dotenv.py`），语义是 **setdefault——进程环境变量永远优先**，文件值只补缺；坏行跳过、值永不落日志。仓库本地 `.env` 仍然**不读**（`.gitignore` 已防误提交）。要证明"真的没 key"，必须同时满足：干净进程环境 **且** `~/.autoinfo/.env` 不存在/为空（或临时改名）。文件保存为 UTF-8（记事本 Win10+ 默认即 UTF-8；别用 PS 5.1 的 `>>` 追加——会写成 UTF-16）。（#847，动机：Windows harness 的进程环境在应用启动时冻结，key 轮换与 IDE 重启解耦）
 
 `${VAR}` 引用未设置时，加载期会给出 `config reference "${VAR}" resolved to empty (#792)` 警告 —— 这是**警告不是失败**，doctor 会按红/黄/绿给判定。
 

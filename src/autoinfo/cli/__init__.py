@@ -9,6 +9,7 @@ from typing import Any
 import typer
 from typer.core import TyperGroup
 
+from autoinfo.dotenv import load_user_env
 from autoinfo.mcp.errors import ErrorCode
 
 from . import (
@@ -134,6 +135,7 @@ def main(
     json: bool = typer.Option(False, "--json", help="Enable JSON output"),
 ) -> None:
     """AutoInfo CLI — collect, process, and manage your information."""
+    load_user_env()
     ctx.obj = {"json": json}
     set_global_json(json)
 

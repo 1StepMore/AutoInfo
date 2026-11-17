@@ -2,7 +2,7 @@
 
 > Root instruction **index** — rules + pointers, not a corpus (#671; adherence ceiling ~200 lines,
 > `docs/dev/agent-era-doc-architecture.md` §1). Detail loads on demand: repo layout → `docs/dev/repo-map.md` ·
-> LLM setup → `docs/dev/llm-config.md` · gates/pipeline → `docs/dev/specs/` · examples → `docs/dev/mcp-usage-examples.md`.
+> LLM setup → `docs/dev/llm-config.md` · gates/pipeline → `docs/dev/specs/` · examples → `docs/dev/mcp-usage-examples.md` · **自驱（任一 agent/harness 落地即读）→ `docs/dev/autonomy.md`**.
 
 ## What Is AutoInfo
 
@@ -13,7 +13,7 @@ queryable knowledge base. **Domain-agnostic** — demo domains are configuration
 ## Agent Operating Model
 
 **Agent-first**: the human director communicates intent in natural language → you translate
-to MCP tool calls (stdio server). All capabilities are MCP tools (counts: `README.md` →
+to MCP tool calls (stdio server). **Before any work** run `python3 scripts/agent/autonomy.py status` (lease > clock; exit 3 = stop) — `docs/dev/autonomy.md`. All capabilities are MCP tools (counts: `README.md` →
 Status table). CLI mirrors MCP — `--domain X --topic Y` maps 1:1 to tool parameters.
 
 ## §0 安全条款（不可覆盖 · overrides every layer below）

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.10](https://github.com/1StepMore/AutoInfo/compare/v1.32.9...v1.32.10) (2026-11-17)
+
+
+### Miscellaneous Chores
+
+* **agent:** goal ladder — executable DoD criteria + E7 (goal achieved) handling ([#836](https://github.com/1StepMore/AutoInfo/issues/836)) ([a99213b](https://github.com/1StepMore/AutoInfo/commit/a99213b1415c5ef35ebf06b3538ff9c2fcf3abc6))
+
 ## [1.32.9](https://github.com/1StepMore/AutoInfo/compare/v1.32.8...v1.32.9) (2026-11-17)
 
 

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.32.12](https://github.com/1StepMore/AutoInfo/compare/v1.32.11...v1.32.12) (2026-11-17)
+
+
+### Miscellaneous Chores
+
+* **dev:** mark P1 achieved — gap matrix exit 0 (evidence [#842](https://github.com/1StepMore/AutoInfo/issues/842)), P2 asked-owner ([#843](https://github.com/1StepMore/AutoInfo/issues/843)) ([2b1b58d](https://github.com/1StepMore/AutoInfo/commit/2b1b58d87ac24db962f7d5c47749716deddc29c7))
+
 ## [1.32.11](https://github.com/1StepMore/AutoInfo/compare/v1.32.10...v1.32.11) (2026-11-17)
 
 

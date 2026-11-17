@@ -22,7 +22,7 @@
     python3 scripts/agent/autonomy.py status
     python3 scripts/agent/autonomy.py start --goal "OL --help 契约全绿" --until 22:00 \
         --evidence "chat 2026-11-17"
-    python3 scripts/agent/autonomy.py gate --need-minutes 60
+    python3 scripts/agent/autonomy.py gate --need-minutes 60   # 自带目标闸（E7）
     python3 scripts/agent/autonomy.py next -n 3
     python3 scripts/agent/autonomy.py claim 350 --branch fix/350-x
     python3 scripts/agent/autonomy.py release 350 --reason done
@@ -42,6 +42,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -273,10 +274,18 @@ def cmd_gate(a: argparse.Namespace) -> int:
             )
             return 3
     print(f"OK: {a.lane} 在班（{why}）")
+    if not a.skip_goal:
+        blocked = goal_gate()
+        if blocked is not None:
+            return blocked
     return 0
 
 
 def cmd_next(a: argparse.Namespace) -> int:
+    if not a.skip_goal:
+        blocked = goal_gate()
+        if blocked is not None:
+            return blocked
     repo = repo_slug()
     issues = _gh_json(
         [
@@ -378,7 +387,12 @@ def goal_cmd() -> list[str] | None:
     m = GOAL_CMD_RE.search(GOALS.read_text(encoding="utf-8"))
     if not m:
         return None
-    return shlex.split(m.group(1))
+    cmd = shlex.split(m.group(1))
+    # `python3` 换成"当前正在跑 autonomy.py 的"解释器：goals.md 里写 python3 只是约定，
+    # 真正执行必须用同一个 env，否则模块/依赖找不到就会误报 ERROR。
+    if cmd and cmd[0] in ("python", "python3"):
+        cmd = [sys.executable, *cmd[1:]]
+    return cmd
 
 
 def goal_verdict(rc: int) -> str:
@@ -433,14 +447,76 @@ def cmd_goal(a: argparse.Namespace) -> int:
             print("  4) 停止从 next 领活")
         elif verdict == "ERROR":
             print(
-                "\nERROR：判据命令跑不起来（环境/用法问题，E4 类）"
-                "——不要硬推，先修环境或报 owner。"
+                "\nERROR：判据命令跑不起来（环境/用法问题，E4 类）——不要硬推，先修环境或报 owner。"
             )
         else:
             print("\nACTIVE：未达标，继续推进当前目标。")
     if verdict == "ACHIEVED":
         return 0
     return 2 if verdict == "ERROR" else 4
+
+
+GOAL_CACHE = ROOT / ".agents" / "autonomy" / "goal.json"
+
+
+def goal_check(max_age_s: int = 600) -> tuple[str, int]:
+    """跑（或复用缓存里的）目标判据，返回 (verdict, rc)。
+
+    缓存默认 10 分钟：`gate` / `next` 每个班次都会调用，没必要每次都跑一遍矩阵。
+    """
+    if GOAL_CACHE.exists():
+        with contextlib.suppress(Exception):
+            d = json.loads(GOAL_CACHE.read_text(encoding="utf-8"))
+            if time.time() - float(d.get("at", 0)) < max_age_s:
+                return str(d["verdict"]), int(d["rc"])
+    cmd = goal_cmd()
+    if not cmd:
+        return "NONE", 0
+    try:
+        r = subprocess.run(  # noqa: S603 - 判据命令来自仓内 goals.md
+            cmd, cwd=ROOT, capture_output=True, text=True, timeout=1800
+        )
+        rc = r.returncode
+        tail = (r.stdout or r.stderr or "")[-400:]
+    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        rc, tail = 2, f"{type(exc).__name__}: {exc}"
+    verdict = goal_verdict(rc)
+    with contextlib.suppress(OSError):
+        GOAL_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        GOAL_CACHE.write_text(
+            json.dumps(
+                {"at": time.time(), "verdict": verdict, "rc": rc, "tail": tail},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    return verdict, rc
+
+
+def goal_gate() -> int | None:
+    """目标闸：不需要任何人记得跑 goal —— gate / next 自动判。
+
+    ACHIEVED ⇒ 5（别领活，去走 goals.md 的四步）
+    ERROR    ⇒ 6（判据跑不起来 = 环境问题，先修环境，别当成"没达标"硬推）
+    ACTIVE / NONE ⇒ None（照常干活）
+    """
+    verdict, _rc = goal_check()
+    if verdict == "ACHIEVED":
+        print(
+            "E7 目标已达成（`docs/dev/goals.md` 的判据 exit 0）：\n"
+            "  1) autonomy.py stop --reason done\n"
+            "  2) 开 [goal-achieved] issue 贴原始输出\n"
+            "  3) 下一阶段交回 owner（P2 标 asked-owner）\n"
+            "  4) 停手——别自己找活干"
+        )
+        return 5
+    if verdict == "ERROR":
+        print(
+            "⚠️ 目标判据跑不起来（E4 环境问题，不是「没达标」）：先修环境或报 owner，别硬推。",
+            file=sys.stderr,
+        )
+        return 6
+    return None
 
 
 def cmd_selfcheck(a: argparse.Namespace) -> int:
@@ -525,11 +601,13 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--lane", default=default_lane())
     s.add_argument("--need-minutes", type=int, default=0)
     s.add_argument("--now")
+    s.add_argument("--skip-goal", action="store_true", help="跳过目标闸（调试用）")
     s.set_defaults(fn=cmd_gate)
 
     s = sub.add_parser("next")
     s.add_argument("-n", type=int, default=3)
     s.add_argument("--json", action="store_true")
+    s.add_argument("--skip-goal", action="store_true", help="跳过目标闸（调试用）")
     s.set_defaults(fn=cmd_next)
 
     s = sub.add_parser("claim")

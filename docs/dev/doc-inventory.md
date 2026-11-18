@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 161 |
-| Total lines | 41547 |
+| Total lines | 41548 |
 | Active files | 129 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
 | Category — validation-reports | 40 files / 6980 lines |
-| Category — docs/dev | 45 files / 11689 lines |
+| Category — docs/dev | 45 files / 11690 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -90,7 +90,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/autoinfo-business-validation-20260902.md` | 293 | docs/dev | active | — |
 | `dev/autoinfo-corrections-20260904.md` | 439 | docs/dev | active | — |
 | `dev/autoinfo-dev-roadmap-20260902.md` | 135 | docs/dev | active | — |
-| `dev/autonomy.md` | 131 | docs/dev | active | — |
+| `dev/autonomy.md` | 132 | docs/dev | active | — |
 | `dev/best-practice-review.md` | 388 | docs/dev | active | best-practice-review |
 | `dev/cli-mcp-rest-parity.md` | 539 | docs/dev | active | — |
 | `dev/coverage-baseline.md` | 67 | docs/dev | active | — |

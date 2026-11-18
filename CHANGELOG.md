@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.4](https://github.com/1StepMore/AutoInfo/compare/v1.33.3...v1.33.4) (2026-11-18)
+
+
+### Bug Fixes
+
+* **matrix:** align detect_llm_available with the call-path key resolution ([#860](https://github.com/1StepMore/AutoInfo/issues/860)) ([9f0b72c](https://github.com/1StepMore/AutoInfo/commit/9f0b72cfed94dc1cdcfda6fd36ceb06277bd5ca5))
+
 ## [1.33.3](https://github.com/1StepMore/AutoInfo/compare/v1.33.2...v1.33.3) (2026-11-18)
 
 

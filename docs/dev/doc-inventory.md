@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 141 |
-| Total lines | 40145 |
+| Total lines | 40133 |
 | Active files | 109 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
@@ -22,7 +22,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
-| Category — validation-reports | 26 files / 5764 lines |
+| Category — validation-reports | 26 files / 5752 lines |
 | Category — docs/dev | 39 files / 11503 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
@@ -138,8 +138,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-reports/capability-27x3/logs/blockers-2026-10-27.md` | 39 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/collect-delta-2026-10-27.md` | 46 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/kb-purge-2026-10-27.md` | 58 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/matrix.json` | 1160 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/matrix.md` | 96 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/matrix.json` | 1149 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/matrix.md` | 95 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/runs/README.md` | 24 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/source-diagnosis.md` | 101 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |

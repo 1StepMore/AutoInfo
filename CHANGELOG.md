@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.1](https://github.com/1StepMore/AutoInfo/compare/v1.33.0...v1.33.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **mcp:** expose fetch_depth on add_source/add_sources ([#845](https://github.com/1StepMore/AutoInfo/issues/845)) ([#852](https://github.com/1StepMore/AutoInfo/issues/852)) ([a607ef2](https://github.com/1StepMore/AutoInfo/commit/a607ef2d684397cf39fac688a6caaa4273009ae2))
+* **qc:** exempt in-word hyphens and source slugs from L0 H2/H3 false positives ([#844](https://github.com/1StepMore/AutoInfo/issues/844)) ([#854](https://github.com/1StepMore/AutoInfo/issues/854)) ([f0e5d21](https://github.com/1StepMore/AutoInfo/commit/f0e5d2191623623a711a8e94574ba541bc59238e))
+
 ## [1.33.0](https://github.com/1StepMore/AutoInfo/compare/v1.32.12...v1.33.0) (2026-11-17)
 
 

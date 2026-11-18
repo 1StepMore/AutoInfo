@@ -135,6 +135,7 @@ def test_per_tool_row_shape(result: Any) -> None:
     tools = {t["name"]: t for t in result["tools"]}
     row = tools["add_source"]
     assert row["verb_first"] is True
-    assert row["param_count"] == 12
+    # add_source gained fetch_depth (#845): 12 -> 13 params.
+    assert row["param_count"] == 13
     assert row["desc_words"] > 10
     assert row["enum_params"] >= 0

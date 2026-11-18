@@ -332,23 +332,28 @@ def _resolve_unusable_loader_key(value: str) -> str:
 
 
 def detect_llm_available(config_path: str | Path | None = None) -> bool:
-    """Detect LLM availability from the project config.
+    """Detect LLM availability with the same rule the call path uses.
 
-    The project config stores ``api_key: ${AUTOINFO_LLM_API_KEY}``, so a
-    non-empty raw string proves nothing: with the env var unset the
-    placeholder resolves to ``''``. Resolve through ``load_config`` — the
-    same path every LLM call uses — so this detector cannot drift from the
-    real availability rule. Falls back to resolving a ``${VAR}`` reference
-    directly only when the package loader is unavailable (e.g. a bare
-    ``python3 scripts/...`` run without the package installed).
+    The project config stores ``api_key: ${AUTOINFO_LLM_API_KEY}`` (or
+    leaves it empty with the key in the environment), so a non-empty raw
+    string proves nothing. Resolve through
+    :func:`autoinfo.config.resolve_primary_api_key` — the single source of
+    truth shared with :func:`autoinfo.llm.call_with_fallback` (config key
+    → ``${ENV}`` expansion → ``AUTOINFO_LLM_API_KEY`` env fallback) — so
+    this detector cannot drift from the real availability rule: a config
+    with an empty ``api_key`` and a set env var is keyed, and gating cells
+    on it misreports every LLM-gated product as ``blocked-no-llm-key``.
+    Falls back to resolving a ``${VAR}`` reference directly only when the
+    package loader is unavailable (e.g. a bare ``python3 scripts/...`` run
+    without the package installed).
     """
     path = Path(config_path) if config_path else Path(".autoinfo/config.yaml")
     if not path.is_file():
         return False
     try:
-        from autoinfo.config import load_config
+        from autoinfo.config import load_config, resolve_primary_api_key
 
-        return bool(str(load_config(path).llm.api_key or "").strip())
+        return bool(str(resolve_primary_api_key("", load_config(path))).strip())
     except Exception:
         pass
     try:
@@ -356,7 +361,8 @@ def detect_llm_available(config_path: str | Path | None = None) -> bool:
     except (OSError, yaml.YAMLError):
         return False
     llm = data.get("llm") or {}
-    return bool(str(_resolve_unusable_loader_key(str(llm.get("api_key", "") or ""))).strip())
+    resolved = _resolve_unusable_loader_key(str(llm.get("api_key", "") or ""))
+    return bool(str(resolved).strip() or os.environ.get("AUTOINFO_LLM_API_KEY", "").strip())
 
 
 def classify_grid(

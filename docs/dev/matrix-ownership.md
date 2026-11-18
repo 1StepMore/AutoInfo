@@ -26,11 +26,15 @@
 报告落点：`docs/dev/validation-reports/capability-27x3/`（`matrix.json` + `matrix.md`）。
 覆盖矩阵（`scripts/coverage_matrix.py`）与全矩阵执行器（`src/autoinfo/validation_matrix.py`）同样按此分工念：**音视频格＝code，文本格＝owner 侧**。
 
-## 现状（2026-11-14 本机跑，未提交）
+## 现状（文本侧 2026-11-19 本机重验；音视频 2026-11-14 本机跑，未提交）
 
-- L3 达标 **35/81**：音视频 10/15、文本 25/66。
-- 文本 36 格 `blocked-no-llm-key`、5 格源过期；音视频 3 格生成报错、2 格源过期。
-- ⇒ 文本侧最大一块绿不是代码问题，是 **key 缺失**；补 key 即可转绿。
+- 文本 **L3 达标 33/66**（language-learning 22/22 全绿；红格 33 = quality 18 + deterministic 15，
+  全部是 ai-commercial / medical-research **语料过期或过薄**，非代码问题）。判定与证据：
+  `docs/dev/validation-reports/capability-27x3/text-66-verdict-2026-11-19.md`。
+- 文本轮曾 36 格 `blocked-no-llm-key` —— 根因是 `detect_llm_available` 与调用路径的 key 解析漂移
+  （config 空串 + 环境变量 key 时误判），**不是 key 缺失**；已修（`scripts/coverage_matrix.py`，对齐
+  `resolve_primary_api_key`），修复后 0 格 no-llm-key。
+- 音视频（11-14 旧值，未重跑）：L3 10/15，3 格生成报错、2 格源过期——仍待 code 侧重跑。
 
 ## 硬规矩
 

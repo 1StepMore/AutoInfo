@@ -169,3 +169,65 @@ def test_goal_cmd_uses_current_interpreter():
     assert cmd is not None
     # goals.md 写的 python3 ⇒ 实际执行换成当前解释器（同一 env，否则模块找不到误报 ERROR）
     assert cmd[0] == sys.executable
+
+
+# ---------------------------------------------------------------- owner 授意即放行
+def test_gate_authorized_offshift_passes_and_writes_lease(tmp_path, monkeypatch):
+    lease = tmp_path / "lease.json"
+    monkeypatch.setattr(au, "LEASE", lease)
+    monkeypatch.delenv("AUTONOMY_AUTHORIZED", raising=False)
+    # 2026-11-18 周三 15:00 = 本机侧时段，owner:human-agent 属非班次
+    a = argparse.Namespace(
+        lane=au.HUMAN,
+        need_minutes=0,
+        now="2026-11-18T15:00:00",
+        skip_goal=True,
+        authorized="接这个活",
+    )
+    assert au.cmd_gate(a) == 0
+    d = au.read_lease(lease)
+    assert d["status"] == "active"
+    assert d["evidence"] == "接这个活"
+    assert d["lane"] == au.HUMAN
+    assert d["until"] == "2026-11-18T19:00:00+08:00"
+    assert d["source"] == "gate--authorized"
+
+
+def test_gate_without_authorized_still_refuses_offshift(tmp_path, monkeypatch):
+    monkeypatch.setattr(au, "LEASE", tmp_path / "lease.json")
+    monkeypatch.delenv("AUTONOMY_AUTHORIZED", raising=False)
+    a = argparse.Namespace(
+        lane=au.HUMAN,
+        need_minutes=0,
+        now="2026-11-18T15:00:00",
+        skip_goal=True,
+        authorized=None,
+    )
+    assert au.cmd_gate(a) == 3
+    assert au.read_lease() == {}
+
+
+def test_gate_authorized_does_not_clobber_active_lease(tmp_path, monkeypatch):
+    lease = tmp_path / "lease.json"
+    monkeypatch.setattr(au, "LEASE", lease)
+    monkeypatch.delenv("AUTONOMY_AUTHORIZED", raising=False)
+    au.write_lease(
+        {
+            "lane": au.HUMAN,
+            "goal": "原目标",
+            "status": "active",
+            "until": "2026-11-18T18:00:00+08:00",
+        },
+        lease,
+    )
+    a = argparse.Namespace(
+        lane=au.HUMAN,
+        need_minutes=0,
+        now="2026-11-18T15:00:00",
+        skip_goal=True,
+        authorized="接这个活",
+    )
+    assert au.cmd_gate(a) == 0
+    d = au.read_lease(lease)
+    assert d["goal"] == "原目标"
+    assert d["until"] == "2026-11-18T18:00:00+08:00"

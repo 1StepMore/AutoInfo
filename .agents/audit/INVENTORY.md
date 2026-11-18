@@ -13,17 +13,17 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 143 |
-| Total lines | 40200 |
-| Active files | 111 |
+| Total files | 144 |
+| Total lines | 40254 |
+| Active files | 112 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
-| Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 41 files / 11570 lines |
+| Category — validation-reports | 26 files / 5764 lines |
+| Category — docs/dev | 42 files / 11612 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -128,6 +128,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/pipeline.md` | 694 | specs | active | — |
 | `dev/specs/quality-gates.md` | 210 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
+| `dev/task-routing.md` | 42 | docs/dev | active | — |
 | `dev/testing-layers.md` | 259 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
@@ -140,8 +141,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-reports/capability-27x3/logs/blockers-2026-10-27.md` | 39 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/collect-delta-2026-10-27.md` | 46 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/kb-purge-2026-10-27.md` | 58 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/matrix.json` | 1149 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/matrix.md` | 95 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/matrix.json` | 1160 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/matrix.md` | 96 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/runs/README.md` | 24 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/source-diagnosis.md` | 101 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |

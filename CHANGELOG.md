@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.2](https://github.com/1StepMore/AutoInfo/compare/v1.33.1...v1.33.2) (2026-11-18)
+
+
+### Documentation
+
+* **matrix:** 矩阵归属（音视频/图片=code 侧，文本=owner 侧）+ 跨仓判定口径 ([#856](https://github.com/1StepMore/AutoInfo/issues/856)) ([cbe6fd7](https://github.com/1StepMore/AutoInfo/commit/cbe6fd7f502e956559163a5843de1b529990ab8c))
+
 ## [1.33.1](https://github.com/1StepMore/AutoInfo/compare/v1.33.0...v1.33.1) (2026-11-18)
 
 

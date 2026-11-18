@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 141 |
-| Total lines | 40132 |
-| Active files | 109 |
+| Total files | 143 |
+| Total lines | 40200 |
+| Active files | 111 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
 | Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 39 files / 11502 lines |
+| Category — docs/dev | 41 files / 11570 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -101,6 +101,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/goals.md` | 36 | docs/dev | active | — |
 | `dev/harness-run-facts.md` | 84 | docs/dev | active | — |
 | `dev/llm-config.md` | 82 | docs/dev | active | — |
+| `dev/matrix-ownership.md` | 38 | docs/dev | active | — |
+| `dev/matrix-verdict-policy.md` | 30 | docs/dev | active | — |
 | `dev/mcp-usage-examples.md` | 324 | docs/dev | active | — |
 | `dev/new-domain-guide.md` | 942 | docs/dev | active | — |
 | `dev/plans/2026-08-30-AutoInfo-GraphEngineering落地实施方案-修正版.md` | 153 | docs/dev | active | — |

@@ -28,13 +28,12 @@
 
 ## 现状（文本侧 2026-11-19 本机重验；音视频 2026-11-14 本机跑，未提交）
 
-- 文本 **L3 达标 33/66**（language-learning 22/22 全绿；红格 33 = quality 18 + deterministic 15，
-  全部是 ai-commercial / medical-research **语料过期或过薄**，非代码问题）。判定与证据：
-  `docs/dev/validation-reports/capability-27x3/text-66-verdict-2026-11-19.md`。
-- 文本轮曾 36 格 `blocked-no-llm-key` —— 根因是 `detect_llm_available` 与调用路径的 key 解析漂移
-  （config 空串 + 环境变量 key 时误判），**不是 key 缺失**；已修（`scripts/coverage_matrix.py`，对齐
-  `resolve_primary_api_key`），修复后 0 格 no-llm-key。
+- 文本 **L3 达标 66/66 全绿**（三域各 22/22，全部 keyed 真生成）。路径：修 `detect_llm_available`
+  key 解析漂移 → 两域重采（ai-commercial +104、medical-research +40 条 KB entries）→ 按口径只重跑红格。
+  判定与四轮证据：`docs/dev/validation-reports/capability-27x3/text-66-verdict-2026-11-19.md`。
+  flaky 1/66（1.5% < 10% 停刷线）。
 - 音视频（11-14 旧值，未重跑）：L3 10/15，3 格生成报错、2 格源过期——仍待 code 侧重跑。
+  `matrix.json` 里对应 15 行是 10-27 assert 旧行，不代表本次判定。
 
 ## 硬规矩
 

@@ -2,7 +2,17 @@
 
 > Root instruction **index** — rules + pointers, not a corpus (#671; adherence ceiling ~200 lines,
 > `docs/dev/agent-era-doc-architecture.md` §1). Detail loads on demand: repo layout → `docs/dev/repo-map.md` ·
-> LLM setup → `docs/dev/llm-config.md` · gates/pipeline → `docs/dev/specs/` · examples → `docs/dev/mcp-usage-examples.md` · **自驱（任一 agent/harness 落地即读）→ `docs/dev/autonomy.md` · 目标与判据 → `docs/dev/goals.md` · **矩阵归属/判定口径 → `docs/dev/matrix-ownership.md`（口径真身 = `docs/dev/matrix-verdict-policy.md`；视频/语音/图片=code 侧，文本=owner 侧）**.
+> LLM setup → `docs/dev/llm-config.md` · gates/pipeline → `docs/dev/specs/` · examples → `docs/dev/mcp-usage-examples.md` · **自驱（任一 agent/harness 落地即读）→ `docs/dev/autonomy.md` · 目标与判据 → `docs/dev/goals.md`** · 矩阵归属/判定口径 → `docs/dev/matrix-ownership.md`（口径真身 = `docs/dev/matrix-verdict-policy.md`；视频/语音/图片=code 侧，文本=owner 侧）.
+
+## 判活按标签，不问编号（owner 2026-11-19 定）
+
+**派活不许靠「把 issue/PR 编号写进提示词」**——编号是数据，规矩是逻辑。agent 自己按标签判：
+
+- 可做名单 = `agent-ready` ∧ 无任何 `owner:*` ∧ 无 `status:claimed` ∧ 未被任何 open PR 认领（`docs/dev/autonomy.md`）。
+- **不标 `owner:*` = 任一侧可做（默认，是最大自主，不是遗漏）**；只有「换一侧根本做不了」才标：
+  - `owner:code-auto` —— 重依赖模态（视频 / 音频 / 图片渲染）或需要本机独有运行时；
+  - `owner:human-agent` —— Windows 原生问题、需要 owner 的账号额度/凭据/外部动作。
+- `status:claimed` 防重复领；`blocked:env` 是状态不是归属；`needs-real-verification` 表示产物已出、等内容级读数（判阻塞方不得自关）。
 
 ## What Is AutoInfo
 

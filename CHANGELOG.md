@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.3](https://github.com/1StepMore/AutoInfo/compare/v1.33.2...v1.33.3) (2026-11-18)
+
+
+### Documentation
+
+* **agents:** 判活按标签不问编号 + issue 模板归属下拉（owner 默认不标注=最大自主） ([#858](https://github.com/1StepMore/AutoInfo/issues/858)) ([3d54598](https://github.com/1StepMore/AutoInfo/commit/3d545982f0e005a1c1b53ac399de7819b1d612e6))
+
 ## [1.33.2](https://github.com/1StepMore/AutoInfo/compare/v1.33.1...v1.33.2) (2026-11-18)
 
 

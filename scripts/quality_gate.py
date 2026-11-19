@@ -1012,6 +1012,14 @@ def find_word_boundary_truncation(text: str) -> list[str]:
         # prose truncation — skip them (same rationale as bare-link lines).
         if re.match(r"^\*\*Source\*\*\s*:", line):
             continue
+        # `**Target Audience**: <enum>` (tutorial front matter) is likewise a
+        # configuration fact: the value is validated against the audience
+        # enum *before* rendering (generate_tutorial raises on anything off
+        # the vocabulary), so it is structurally incapable of being prose
+        # truncation. A singular enum like `student` false-flagged against
+        # prose `students` (2026-11-20 capability-matrix L0 run).
+        if re.match(r"^\*\*Target Audience\*\*\s*:", line):
+            continue
         if re.search(r"[.!?。！？…]$|\.\.\.$", line):
             continue  # terminated normally
         m = re.search(r"([A-Za-z]{2,})\s*$", line)

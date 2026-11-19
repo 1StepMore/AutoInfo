@@ -1,6 +1,6 @@
 # 目标阶梯（当前目标 / 达标判据 / 下一阶段）
 
-<!-- goal-cmd: python3 scripts/nightly_gap.py -->
+<!-- goal-cmd: python3 scripts/goal_matrix_quality.py -->
 <!-- 约定：goal-cmd 退出码 0 = 当前目标达标；非 0 = 未达标；2 = 环境/用法错误（不算达标） -->
 
 > 给任何 agent / harness：**每班开工先跑** `python3 scripts/agent/autonomy.py goal`。
@@ -12,7 +12,7 @@
 | 阶段 | 目标 | 达标判据 | 状态 |
 |:--|:--|:--|:--|
 | **P1** | 生产矩阵 100% —— 21 个域 × 4 个条件（真语料 / 真产物 / 可溯源 / 无占位）全部达标 | `python3 scripts/nightly_gap.py` ⇒ **exit 0**（任一域任一条件不满足即 exit 1；真语料要求 ≥10 条且 7 天内有新采集，且 sources_ran > 0（空跑不算）） | `达标 ✅（exit 0 @ 2026-11-18，证据 #842；总裁决保留 owner）` |
-| P2 | 待定（owner 定方向；候选 + 推荐 + 代价见 #842 评论） | — | `asked-owner` |
+| **P2** | 矩阵覆盖率 100%，且每个格子产出的东西质量合格；质量结论必须来自真模型（fake 仅限链路/契约/覆盖，记 confidence=mock）。Owner 2026-11-20 直接指令 | `python3 scripts/goal_matrix_quality.py` ⇒ **exit 0**（满格 0 missing/pending + 全 L3 + keyed 纪律 + L0 三域 exit 0 + L1 battery 全 PASS 真模型 + 证据 git 跟踪；比驱动器退出码更严，诚实 block 不算达标） | `ACTIVE` |
 
 ## 达标之后做什么（顺序固定，别省步骤）
 

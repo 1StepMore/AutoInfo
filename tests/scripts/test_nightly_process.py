@@ -61,6 +61,10 @@ def _args(tmp_path: Path, *extra: str) -> list[str]:
         str(tmp_path / "autoinfo.db"),
         "--repo",
         str(tmp_path),
+        # Existing tests pin the pre-#722 threshold semantics; dynamic-mode
+        # behaviour is covered explicitly by the #722 tests below.
+        "--min-backlog-mode",
+        "fixed",
         *extra,
     ]
 
@@ -151,9 +155,10 @@ def test_at_threshold_runs_and_writes_reports(tmp_path: Path) -> None:
         "stalled": 0,
         "budget_exhausted": False,
     }
-    assert "| alpha | 10 | 0 | 10 | run | 30.0 | 10 | 0 | 1.5 |" in (
-        tmp_path / "report.md"
-    ).read_text(encoding="utf-8")
+    assert (
+        "| alpha | 10 | 0 | 10 | 10 | run | fixed | 30.0 | 10 | 0 | 1.5 |"
+        in (tmp_path / "report.md").read_text(encoding="utf-8")
+    )
 
 
 def test_progress_reduces_backlog(tmp_path: Path) -> None:
@@ -928,3 +933,171 @@ def test_unprocessed_missing_db_returns_none_and_falls_back(tmp_path: Path) -> N
     row = _read_report(tmp_path)["domains"][0]
     # Legacy fallback: cached (12) - processed (0).
     assert (row["cached_items"], row["processed_count"], row["backlog"]) == (12, 0, 12)
+
+
+# ===================================================================
+# AutoInfo#722 / BACKLOG B15 — dynamic threshold + low-volume floor
+# ===================================================================
+
+
+def _seed_entries_recent(
+    db_path: Path, domain: str = "alpha", count: int = 0, days_ago: int = 0
+) -> None:
+    """Seed ``entries`` rows with a recent ``created_at`` timestamp."""
+    from datetime import datetime, timedelta, timezone
+
+    stamp = (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS entries ("
+            "entry_id TEXT PRIMARY KEY, domain TEXT, created_at TEXT)"
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO entries (entry_id, domain, created_at) "
+            "VALUES (?, ?, ?)",
+            [(f"entry-{days_ago}-{i}", domain, stamp) for i in range(count)],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _seed_last_processed(
+    db_path: Path, domain: str = "alpha", days_ago: int = 0, item_id: str = "ledger-only"
+) -> None:
+    """Seed one completed ledger row whose ``processed_at`` is *days_ago* old."""
+    from datetime import datetime, timedelta, timezone
+
+    stamp = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS processing_items ("
+            "domain TEXT NOT NULL, item_id TEXT NOT NULL, processed_at TEXT NOT NULL, "
+            "PRIMARY KEY (domain, item_id))"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO processing_items (domain, item_id, processed_at) "
+            "VALUES (?, ?, ?)",
+            (domain, item_id, stamp),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _dry_run_row(tmp_path: Path, *extra: str) -> dict:
+    rc = np.main(
+        _args(
+            tmp_path,
+            "--dry-run",
+            "--json-out",
+            str(tmp_path / "report.json"),
+            *extra,
+        ),
+        runner=lambda request: (_ for _ in ()).throw(AssertionError("dry run")),
+        clock=_FakeClock(),
+    )
+    assert rc == 0
+    return _read_report(tmp_path)["domains"][0]
+
+
+def test_dynamic_mode_scales_threshold_to_daily_average(tmp_path: Path) -> None:
+    """8 backlog runs because the 7-day average is 2, below the fixed 20."""
+    _seed_domain(tmp_path, count=8)
+    _seed_entries_recent(tmp_path / "autoinfo.db", count=14, days_ago=1)
+
+    row = _dry_run_row(
+        tmp_path,
+        "--min-backlog",
+        "20",
+        "--min-backlog-mode",
+        "dynamic",
+    )
+
+    assert (row["backlog"], row["min_backlog_effective"]) == (8, 2)
+    assert (row["action"], row["action_reason"]) == ("would_run", "backlog_ok")
+
+
+def test_dynamic_floor_forces_stale_low_volume_domain(tmp_path: Path) -> None:
+    """3 backlog runs despite a threshold of 10 because last run was 3 days ago."""
+    _seed_domain(tmp_path, count=3)
+    _seed_entries_recent(tmp_path / "autoinfo.db", count=70, days_ago=1)
+    _seed_last_processed(tmp_path / "autoinfo.db", days_ago=3)
+
+    row = _dry_run_row(
+        tmp_path,
+        "--min-backlog",
+        "20",
+        "--min-backlog-mode",
+        "dynamic",
+    )
+
+    assert (row["backlog"], row["min_backlog_effective"]) == (3, 10)
+    assert (row["action"], row["action_reason"]) == ("would_run", "floor_forced")
+
+
+def test_dynamic_below_threshold_stays_skipped(tmp_path: Path) -> None:
+    """1 backlog with a fresh last run stays below the dynamic threshold."""
+    _seed_domain(tmp_path, count=1)
+    _seed_entries_recent(tmp_path / "autoinfo.db", count=70, days_ago=1)
+    _seed_last_processed(tmp_path / "autoinfo.db", days_ago=1)
+
+    row = _dry_run_row(
+        tmp_path,
+        "--min-backlog",
+        "20",
+        "--min-backlog-mode",
+        "dynamic",
+    )
+
+    assert (row["backlog"], row["min_backlog_effective"]) == (1, 10)
+    assert (row["action"], row["action_reason"]) == ("skip", "dynamic_below")
+
+
+def test_fixed_mode_preserves_old_threshold(tmp_path: Path) -> None:
+    """Same seeds as the floor test, but fixed mode must still skip."""
+    _seed_domain(tmp_path, count=3)
+    _seed_entries_recent(tmp_path / "autoinfo.db", count=70, days_ago=1)
+    _seed_last_processed(tmp_path / "autoinfo.db", days_ago=3)
+
+    row = _dry_run_row(
+        tmp_path,
+        "--min-backlog",
+        "10",
+        "--min-backlog-mode",
+        "fixed",
+    )
+
+    assert (row["backlog"], row["min_backlog_effective"]) == (3, 10)
+    assert (row["action"], row["action_reason"]) == ("skip", "fixed")
+
+
+def test_daily_rate_prefers_processing_items_created_at(tmp_path: Path) -> None:
+    """The ledger column wins over ``entries.created_at`` when present."""
+    from datetime import datetime, timedelta, timezone
+
+    db_path = tmp_path / "autoinfo.db"
+    stamp = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE processing_items ("
+            "domain TEXT NOT NULL, item_id TEXT NOT NULL, processed_at TEXT, "
+            "created_at TEXT, PRIMARY KEY (domain, item_id))"
+        )
+        conn.executemany(
+            "INSERT INTO processing_items (domain, item_id, processed_at, created_at) "
+            "VALUES ('alpha', ?, ?, ?)",
+            [(f"i{n}", stamp, stamp) for n in range(7)],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    _seed_entries_recent(db_path, count=70, days_ago=1)
+
+    # 7 ledger rows / 7 days == 1.0, not the 10.0 entries fallback.
+    assert np.read_daily_new_rate(db_path, "alpha") == 1.0

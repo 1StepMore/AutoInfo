@@ -317,6 +317,54 @@ def test_missing_browser_is_an_honest_block_not_a_failure() -> None:
     assert cm._is_missing_browser_error(RuntimeError("template render exploded")) is False
 
 
+def test_401_substring_in_render_error_is_not_an_auth_error() -> None:
+    """A bare "401" inside render text must not look like an auth failure (#870)."""
+
+    exc = RuntimeError(
+        "Render failed: ERR_CONNECTION_RESET at token 0x401abc; "
+        "cannot read properties of null"
+    )
+
+    assert cm._is_auth_error(exc) is False
+
+
+def test_real_401_unauthorized_is_still_an_auth_error() -> None:
+    """Tightening the heuristic must keep genuine 401 responses detectable."""
+
+    assert cm._is_auth_error(RuntimeError("litellm request failed: HTTP 401 Unauthorized"))
+
+
+def test_render_error_is_classified_as_generation_error_not_no_llm_key(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Render failures win over the auth heuristic even when "401" appears (#870)."""
+
+    def factory(ctx: Any) -> Any:
+        def _boom(**kwargs: Any) -> Any:
+            raise RuntimeError(
+                "Render failed: sub_timeline_script_failure 401; "
+                "Cannot read properties of null"
+            )
+
+        return cm.GenerationCall(_boom, {}, False)
+
+    monkeypatch.setitem(cm.ROUTES, "report", cm.Route(factory, needs_template=False))
+    combo = cm.Combination(product="report", format="video", gated=False)
+
+    row = cm.generate_cell(
+        combo,
+        domain="language-learning",
+        topic="",
+        artifact_root=tmp_path,
+        force=False,
+        keyed="keyed",
+        llm_available=True,
+    )
+
+    assert row["reached"] == "blocked-generation-error"
+    assert row["reached"] != "blocked-no-llm-key"
+
+
 def test_stale_sources_is_an_honest_block_not_a_failure() -> None:
     """The digest freshness gate refusing stale entries is correct behaviour."""
 

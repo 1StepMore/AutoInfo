@@ -34,6 +34,7 @@ import base64
 import importlib.util
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -384,7 +385,28 @@ def _is_auth_error(exc: BaseException) -> bool:
     except ImportError:
         pass
     text = str(exc).lower()
-    return "401" in text or "unauthorized" in text or "authentication" in text
+    # A bare substring match on "401" misclassifies render failures whose stack
+    # traces / hashes merely contain the digits (issue #870). Require a real
+    # status token instead.
+    return bool(re.search(r"\b401\b", text)) or "unauthorized" in text or "authentication" in text
+
+
+_RENDER_ERROR_MARKERS = (
+    "render failed",
+    "sub_timeline_script_failure",
+    "gsap",
+    "cannot read properties of null",
+)
+
+
+def _is_render_error(exc: BaseException) -> bool:
+    """True when the failure came from the rendering pipeline, not auth.
+
+    Checked before the auth heuristic so an incidental "401" inside a render
+    trace cannot masquerade as a missing LLM key (#870).
+    """
+    text = str(exc).lower()
+    return any(marker in text for marker in _RENDER_ERROR_MARKERS)
 
 
 def _is_missing_browser_error(exc: BaseException) -> bool:
@@ -718,6 +740,8 @@ def generate_cell(
             reason = "blocked-no-browser"
         elif _is_stale_source_error(exc):
             reason = "blocked-stale-sources"
+        elif _is_render_error(exc):
+            reason = "blocked-generation-error"
         elif _is_auth_error(exc):
             reason = "blocked-no-llm-key"
         else:

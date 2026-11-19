@@ -173,6 +173,27 @@ behavior. `collections/`, `knowledge/`, `outputs/`, `mvp/`, `autoinfo.db`, `logs
 `.autoinfo/`, `.omo/` are gitignored **runtime state**. Never hand-edit runtime artifacts
 to fix behavior — fix the source. Full per-path table: `docs/dev/repo-map.md`.
 
+## 交叉审计的产物中转（MUST · 2026-11-19）
+
+质量通过（quality pass）不能靠口头，必须**产物入库 + git 中转**：两侧机器不共享磁盘，唯一通道是 GitHub 仓库。
+协议真身：workspace 根 `99-Tools/methodology/cross-audit-evidence-protocol.md`（勿在此复制正文）。
+本仓落点与规则：`docs/dev/cross-audit-evidence.md`
+
+一句话：一次性中间件进 `.scratch/`（不入库）；**要交叉审的产物进 `docs/dev/validation-evidence/`（必须 commit）**；
+`outputs/` 是本机临时区，不是交付通道；`quality.verdict=pass` 必须带存在的 `quality.evidence`，否则按 fail 计；
+自检 `python3 99-Tools/check_evidence_committed.py <repo>` exit 0 才可宣称质量通过。
+
+## 用假模型还是真模型（MUST 分清）
+
+| 用途 | 允许 fake | 说明 |
+|:--|:--|:--|
+| 链路 / 契约 / 门覆盖（代码路径能否跑通、schema 对不对、gate 有没有执行） | ✅ 允许 | 必须记 `confidence=mock`，且**不得**对外称为"内容合格/质量通过" |
+| 质量验收（内容值不值得给客户看、评分、文案/摘要/翻译的可用性） | ❌ 禁止 | **必须真模型**；fake 跑出来的质量结论一律无效 |
+| 任何交付包 / 对客产物的验收 | ❌ 禁止 | 同上 |
+
+没有 key 时：先查环境与配置（`AUTOMEDIA_LLM_API_KEY` 一类）⇒ 没有就**向 owner 要一个（优先免费额度）**，
+标 `blocked:no-llm-key` 等人给；**不许用 fake 冒充真跑**，也不许因此跳过质量验收。
+
 ## Backlog Priority Triggers
 
 某些 P1 项的等级由「该工作量是否继续发生」决定——触发条件命中时**等级自动回升，不需要重新评审**：

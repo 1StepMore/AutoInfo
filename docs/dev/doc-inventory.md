@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 151 |
-| Total lines | 41053 |
-| Active files | 119 |
+| Total files | 154 |
+| Total lines | 41126 |
+| Active files | 122 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
 | Category — validation-reports | 33 files / 6559 lines |
-| Category — docs/dev | 42 files / 11616 lines |
+| Category — docs/dev | 45 files / 11689 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -94,6 +94,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/best-practice-review.md` | 388 | docs/dev | active | best-practice-review |
 | `dev/cli-mcp-rest-parity.md` | 539 | docs/dev | active | — |
 | `dev/coverage-baseline.md` | 67 | docs/dev | active | — |
+| `dev/cross-audit-evidence.md` | 32 | docs/dev | active | — |
 | `dev/cross-dimensional-catalog.md` | 1067 | docs/dev | active | — |
 | `dev/director-user-guide.md` | 756 | docs/dev | active | — |
 | `dev/enduser-coverage-matrix.md` | 220 | docs/dev | active | — |
@@ -130,6 +131,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
 | `dev/task-routing.md` | 42 | docs/dev | active | — |
 | `dev/testing-layers.md` | 259 | docs/dev | active | — |
+| `dev/validation-evidence/README.md` | 37 | docs/dev | active | — |
+| `dev/validation-evidence/manifest.json` | 4 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 96 | validation-reports | active | — |

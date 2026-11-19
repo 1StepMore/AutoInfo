@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 151 |
-| Total lines | 41052 |
+| Total lines | 41053 |
 | Active files | 119 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
 | Category — validation-reports | 33 files / 6559 lines |
-| Category — docs/dev | 42 files / 11615 lines |
+| Category — docs/dev | 42 files / 11616 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -98,7 +98,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/director-user-guide.md` | 756 | docs/dev | active | — |
 | `dev/enduser-coverage-matrix.md` | 220 | docs/dev | active | — |
 | `dev/founder-expectations.md` | 461 | docs/dev | active | — |
-| `dev/goals.md` | 36 | docs/dev | active | — |
+| `dev/goals.md` | 37 | docs/dev | active | — |
 | `dev/harness-run-facts.md` | 84 | docs/dev | active | — |
 | `dev/llm-config.md` | 82 | docs/dev | active | — |
 | `dev/matrix-ownership.md` | 41 | docs/dev | active | — |

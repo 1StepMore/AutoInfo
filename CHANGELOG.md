@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.11](https://github.com/1StepMore/AutoInfo/compare/v1.33.10...v1.33.11) (2026-11-19)
+
+
+### Documentation
+
+* **matrix:** graft the 2026-11-20 quality-gate evidence into the matrix pack ([#890](https://github.com/1StepMore/AutoInfo/issues/890)) ([4a15221](https://github.com/1StepMore/AutoInfo/commit/4a15221250adda1af8474098806f906c8b154abf))
+
+
+### Miscellaneous Chores
+
+* **agent:** register P2 goal with mechanical matrix-quality checker ([#889](https://github.com/1StepMore/AutoInfo/issues/889)) ([c3a9d2b](https://github.com/1StepMore/AutoInfo/commit/c3a9d2bf0c637cb707a8711d8d74d3f0d6935c5c))
+
 ## [1.33.10](https://github.com/1StepMore/AutoInfo/compare/v1.33.9...v1.33.10) (2026-11-19)
 
 

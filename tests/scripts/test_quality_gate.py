@@ -751,6 +751,28 @@ def test_h2_source_field_slug_not_truncation() -> None:
     assert qg.find_word_boundary_truncation(text) == []
 
 
+def test_h2_target_audience_enum_not_truncation() -> None:
+    """Tutorial front matter renders the validated audience enum verbatim
+    (`**Target Audience**: student`); a singular enum false-flags against
+    prose `students`. The value is enum-validated before rendering, so it is
+    structurally incapable of prose truncation — same rationale as #844's
+    Source-slug exemption (2026-11-20 capability-matrix L0 run)."""
+    text = (
+        "**Target Audience**: student\n\n"
+        "Students learn to evaluate model outputs by studying both the "
+        "applications and the underlying technologies across the units."
+    )
+    assert qg.find_word_boundary_truncation(text) == []
+
+
+def test_h2_narrative_line_ending_in_enum_word_still_flagged() -> None:
+    """Guard: the exemption is field-scoped. A narrative line ending in the
+    same bare-word prefix is a REAL cut and must still be flagged."""
+    text = "**Target Audience**: student\n\nThe onboarding guide for the new studen"
+    defects = qg.find_word_boundary_truncation(text)
+    assert any("studen" in d for d in defects), defects
+
+
 def test_h3_hyphenated_number_compound_not_glue() -> None:
     """#844: a title's `5- to 7-Week` (digit before '- ') is a compound, not
     a glued bullet."""

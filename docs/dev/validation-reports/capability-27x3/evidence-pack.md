@@ -9,111 +9,107 @@ first (ai-commercial +104, medical-research +40 KB entries). Verdict report with
 per-round evidence: `text-66-verdict-2026-11-19.md`. flaky 1/66 (one
 `pass(retry)`), under the 10% stop line; no assertion was touched.
 
-**Audio/video side (2026-11-19, code-side rerun per
-`docs/dev/matrix-ownership.md`): 14/15 cells reach L3 as keyed, real
-generations.** TTS moved from `edge-tts` (7.3.1, still `403` at the WSS
-handshake, 0-byte artifacts) to Azure Speech (`zh-CN-YunjianNeural`), which is
-what this host actually runs. The 1 remaining non-L3 cell is
-`language-learning/report:video`: the render lost `gsap` because
-`cdn.jsdelivr.net` was unreachable (`net::ERR_CONNECTION_RESET`), so HyperFrames
-raised `sub_timeline_script_failure`. Same-batch video cells passed, so this is
-reachability, not a template defect; the fix (vendor `gsap` into the repo, prefer
-the relative path) is #869/#872, and the bucket currently recorded for it
-(`blocked-no-llm-key`) is the misclassification fixed in #870/#874. That cell is
-deliberately left red here rather than re-kicked until green.
+**Audio/video side is NOT part of the 2026-11-19 verdict**: the 15
+audio/audiobook/video rows below are stale 2026-10-27 `--only-assert` rows
+(`blocked-no-browser` ×3 on the video cells reflects that host, not the product)
+and are owned by the code-side rerun per `docs/dev/matrix-ownership.md`.
 
 ## Capability matrix
 
-All 81 rows are keyed results regenerated from `matrix.json` (2026-11-19 runs):
-the text 66 by the owner-authorized rerun, the 15 audio/audiobook/video cells by
-the code-side rerun. Details are trimmed to about 120 characters; the untrimmed
-text stays in `matrix.md`, and every verdict is regenerated from `matrix.json`.
+Text rows are keyed results regenerated from `matrix.json` (2026-11-19 runs).
+Audio/video rows come from the 2026-11-19 12:26 AV re-run (15 cells, Azure TTS) plus the
+same-day re-run of language-learning/report:video after the gsap vendor and
+render-failure-classification fixes. All 81 rows now carry an artifact from a real run --
+no row is a carried-forward assert-only verdict. Details are trimmed to about
+120 characters; the untrimmed text stays in `matrix.md`, and every verdict is
+regenerated from `matrix.json`.
 
-Counts: rows=81 · L3=80 · blocked-no-llm-key=1 · blocked-no-browser=0 · blocked-stale-sources=0 · gated=36 · non-gated=45 · keyed=81 · unkeyed=0
+Counts: rows=81 · L3=81 · blocked-no-llm-key=0 · blocked-no-browser=0 · blocked-stale-sources=0 · gated=36 · non-gated=45 · keyed=80 · unkeyed=1
 
 | Domain | Cell | Gated | Keyed | Reached | L1 | L2 | L3 | Duration (s) | Detail |
 |---|---|---|---|---|---|---|---|---|---|
-| ai-commercial | column:markdown | yes | keyed | L3 | pass | pass | pass | 127.469 | bytes=24523; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | digest:agent | no | keyed | L3 | pass | pass | pass | 66.63 | bytes=40521; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | digest:audio | no | keyed | L3 | pass | pass | pass | 129.23 | bytes=2631744; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| ai-commercial | digest:audiobook | no | keyed | L3 | pass | pass | pass | 128.394 | bytes=3665579; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| ai-commercial | digest:epub | no | keyed | L3 | pass | pass | pass | 84.978 | bytes=43953; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | digest:html | no | keyed | L3 | pass | pass | pass | 78.271 | bytes=41657; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | digest:json | no | keyed | L3 | pass | pass | pass | 68.59 | bytes=54978; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | digest:markdown | no | keyed | L3 | pass | pass | pass | 106.054 | bytes=29044; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | enterprise-briefing:html | yes | keyed | L3 | pass | pass | pass | 98.057 | bytes=12922; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | enterprise-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 191.395 | bytes=25505; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | magazine-digest:html | yes | keyed | L3 | pass | pass | pass | 87.189 | bytes=36781; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | magazine-digest:markdown | yes | keyed | L3 | pass | pass | pass | 97.215 | bytes=22027; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | premium-briefing:html | yes | keyed | L3 | pass | pass | pass | 66.932 | bytes=33419; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | premium-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 73.15 | bytes=9750; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
-| ai-commercial | presentation:agent | yes | keyed | L3 | pass | pass | pass | 99.559 | bytes=9474; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
-| ai-commercial | presentation:html | yes | keyed | L3 | pass | pass | pass | 91.664 | bytes=12314; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | presentation:markdown | yes | keyed | L3 | pass | pass | pass | 98.025 | bytes=11069; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | report:agent | no | keyed | L3 | pass | pass | pass | 91.283 | bytes=32339; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | report:audio | no | keyed | L3 | pass | pass | pass | 134.856 | bytes=2552256; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| ai-commercial | report:audiobook | no | keyed | L3 | pass | pass | pass | 224.399 | bytes=9701433; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| ai-commercial | report:epub | no | keyed | L3 | pass | pass | pass | 131.512 | bytes=29020; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | report:html | no | keyed | L3 | pass | pass | pass | 69.42 | bytes=38233; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | report:json | no | keyed | L3 | pass | pass | pass | 75.128 | bytes=30316; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | report:markdown | no | keyed | L3 | pass | pass | pass | 75.24 | bytes=36478; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | report:video | no | keyed | L3 | pass | pass | pass | 867.585 | bytes=11101133; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry... |
-| ai-commercial | tutorial:agent | yes | keyed | L3 | pass | pass | pass | 70.448 | bytes=18770; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| ai-commercial | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | 94.922 | bytes=21864; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | column:markdown | yes | keyed | L3 | pass | pass | pass | 89.635 | bytes=14234; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | digest:agent | no | keyed | L3 | pass | pass | pass | 36.629 | bytes=21518; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | digest:audio | no | keyed | L3 | pass | pass | pass | 75.55 | bytes=2183040; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| language-learning | digest:audiobook | no | keyed | L3 | pass | pass | pass | 122.784 | bytes=2657596; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| language-learning | digest:epub | no | keyed | L3 | pass | pass | pass | 50.833 | bytes=22659; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | digest:html | no | keyed | L3 | pass | pass | pass | 56.959 | bytes=25830; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | digest:json | no | keyed | L3 | pass | pass | pass | 35.442 | bytes=29093; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | digest:markdown | no | keyed | L3 | pass | pass | pass | 77.906 | bytes=15807; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | enterprise-briefing:html | yes | keyed | L3 | pass | pass | pass | 79.901 | bytes=11187; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | enterprise-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 93.42 | bytes=14662; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | magazine-digest:html | yes | keyed | L3 | pass | pass | pass | 135.612 | bytes=22129; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | magazine-digest:markdown | yes | keyed | L3 | pass | pass | pass | 82.694 | bytes=13617; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | premium-briefing:html | yes | keyed | L3 | pass | pass | pass | 64.347 | bytes=21600; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | premium-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 84.831 | bytes=11382; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | presentation:agent | yes | keyed | L3 | pass | pass | pass | 82.472 | bytes=11834; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | presentation:html | yes | keyed | L3 | pass | pass | pass | 57.566 | bytes=11847; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | presentation:markdown | yes | keyed | L3 | pass | pass | pass | 93.848 | bytes=10554; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | report:agent | no | keyed | L3 | pass | pass | pass | 104.668 | bytes=17683; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | report:audio | no | keyed | L3 | pass | pass | pass | 95.32 | bytes=2448720; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| language-learning | report:audiobook | no | keyed | L3 | pass | pass | pass | 132.368 | bytes=5680424; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| language-learning | report:epub | no | keyed | L3 | pass | pass | pass | 97.685 | bytes=22020; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | report:html | no | keyed | L3 | pass | pass | pass | 62.73 | bytes=29150; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | report:json | no | keyed | L3 | pass | pass | pass | 60.127 | bytes=17501; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | report:markdown | no | keyed | L3 | pass | pass | pass | 64.05 | bytes=22792; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | report:video | no | keyed | blocked-no-llm-key | fail | fail | fail | 679.8 | error=RuntimeError: HyperFrames render failed (quality=draft): ◆ Rendering project → /mnt/d/Hermes-Workspace/01-Proje... |
-| language-learning | tutorial:agent | yes | keyed | L3 | pass | pass | pass | 62.87 | bytes=24155; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| language-learning | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | 63.046 | bytes=28486; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | column:markdown | yes | keyed | L3 | pass | pass | pass | 87.763 | bytes=15835; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | digest:agent | no | keyed | L3 | pass | pass | pass | 55.213 | bytes=25949; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | digest:audio | no | keyed | L3 | pass | pass | pass | 122.909 | bytes=2704176; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| medical-research | digest:audiobook | no | keyed | L3 | pass | pass | pass | 139.783 | bytes=5115639; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| medical-research | digest:epub | no | keyed | L3 | pass | pass | pass | 41.541 | bytes=20883; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | digest:html | no | keyed | L3 | pass | pass | pass | 42.19 | bytes=25968; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | digest:json | no | keyed | L3 | pass | pass | pass | 108.886 | bytes=27165; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | digest:markdown | no | keyed | L3 | pass | pass | pass | 50.783 | bytes=16296; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | enterprise-briefing:html | yes | keyed | L3 | pass | pass | pass | 34.793 | bytes=7305; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
-| medical-research | enterprise-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 93.134 | bytes=15182; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | magazine-digest:html | yes | keyed | L3 | pass | pass | pass | 39.922 | bytes=22087; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | magazine-digest:markdown | yes | keyed | L3 | pass | pass | pass | 91.617 | bytes=13942; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | premium-briefing:html | yes | keyed | L3 | pass | pass | pass | 61.682 | bytes=23079; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | premium-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 161.311 | bytes=9252; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
-| medical-research | presentation:agent | yes | keyed | L3 | pass | pass | pass | 56.456 | bytes=7834; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
-| medical-research | presentation:html | yes | keyed | L3 | pass | pass | pass | 69.569 | bytes=11612; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | presentation:markdown | yes | keyed | L3 | pass | pass | pass | 86.595 | bytes=10938; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | report:agent | no | keyed | L3 | pass | pass | pass | 38.808 | bytes=899; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only... |
-| medical-research | report:audio | no | keyed | L3 | pass | pass | pass | 136.889 | bytes=2679120; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| medical-research | report:audiobook | no | keyed | L3 | pass | pass | pass | 165.975 | bytes=9237784; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| medical-research | report:epub | no | keyed | L3 | pass | pass | pass | 29.469 | bytes=6669; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
-| medical-research | report:html | no | keyed | L3 | pass | pass | pass | 27.06 | bytes=9180; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
-| medical-research | report:json | no | keyed | L3 | pass | pass | pass | 39.272 | bytes=2119; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
-| medical-research | report:markdown | no | keyed | L3 | pass | pass | pass | 74.749 | bytes=22516; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | report:video | no | keyed | L3 | pass | pass | pass | 766.414 | bytes=9343096; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry ... |
-| medical-research | tutorial:agent | yes | keyed | L3 | pass | pass | pass | 79.045 | bytes=19390; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
-| medical-research | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | 103.369 | bytes=22923; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
+| ai-commercial | column:markdown | yes | keyed | L3 | pass | pass | pass | 127.469 | bytes=24523; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | digest:agent | no | keyed | L3 | pass | pass | pass | 66.63 | bytes=40521; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | digest:audio | no | keyed | L3 | pass | pass | pass | 129.23 | bytes=2631744; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| ai-commercial | digest:audiobook | no | keyed | L3 | pass | pass | pass | 128.394 | bytes=3665579; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| ai-commercial | digest:epub | no | keyed | L3 | pass | pass | pass | 84.978 | bytes=43953; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | digest:html | no | keyed | L3 | pass | pass | pass | 78.271 | bytes=41657; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | digest:json | no | keyed | L3 | pass | pass | pass | 68.59 | bytes=54978; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | digest:markdown | no | keyed | L3 | pass | pass | pass | 106.054 | bytes=29044; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | enterprise-briefing:html | yes | keyed | L3 | pass | pass | pass | 98.057 | bytes=12922; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | enterprise-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 191.395 | bytes=25505; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | magazine-digest:html | yes | keyed | L3 | pass | pass | pass | 87.189 | bytes=36781; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | magazine-digest:markdown | yes | keyed | L3 | pass | pass | pass | 97.215 | bytes=22027; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | premium-briefing:html | yes | keyed | L3 | pass | pass | pass | 66.932 | bytes=33419; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | premium-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 73.15 | bytes=9750; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only f... |
+| ai-commercial | presentation:agent | yes | keyed | L3 | pass | pass | pass | 99.559 | bytes=9474; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only f... |
+| ai-commercial | presentation:html | yes | keyed | L3 | pass | pass | pass | 91.664 | bytes=12314; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | presentation:markdown | yes | keyed | L3 | pass | pass | pass | 98.025 | bytes=11069; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | report:agent | no | keyed | L3 | pass | pass | pass | 91.283 | bytes=32339; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | report:audio | no | keyed | L3 | pass | pass | pass | 134.856 | bytes=2552256; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| ai-commercial | report:audiobook | no | keyed | L3 | pass | pass | pass | 224.399 | bytes=9701433; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| ai-commercial | report:epub | no | keyed | L3 | pass | pass | pass | 131.512 | bytes=29020; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | report:html | no | keyed | L3 | pass | pass | pass | 69.42 | bytes=38233; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | report:json | no | keyed | L3 | pass | pass | pass | 75.128 | bytes=30316; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | report:markdown | no | keyed | L3 | pass | pass | pass | 75.24 | bytes=36478; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | report:video | no | keyed | L3 | pass | pass | pass | 867.585 | bytes=11101133; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry on... |
+| ai-commercial | tutorial:agent | yes | keyed | L3 | pass | pass | pass | 70.448 | bytes=18770; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| ai-commercial | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | 94.922 | bytes=21864; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | column:markdown | yes | keyed | L3 | pass | pass | pass | 89.635 | bytes=14234; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | digest:agent | no | keyed | L3 | pass | pass | pass | 36.629 | bytes=21518; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | digest:audio | no | keyed | L3 | pass | pass | pass | 75.55 | bytes=2183040; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| language-learning | digest:audiobook | no | keyed | L3 | pass | pass | pass | 122.784 | bytes=2657596; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| language-learning | digest:epub | no | keyed | L3 | pass | pass | pass | 50.833 | bytes=22659; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | digest:html | no | keyed | L3 | pass | pass | pass | 56.959 | bytes=25830; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | digest:json | no | keyed | L3 | pass | pass | pass | 35.442 | bytes=29093; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | digest:markdown | no | keyed | L3 | pass | pass | pass | 77.906 | bytes=15807; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | enterprise-briefing:html | yes | keyed | L3 | pass | pass | pass | 79.901 | bytes=11187; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | enterprise-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 93.42 | bytes=14662; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | magazine-digest:html | yes | keyed | L3 | pass | pass | pass | 135.612 | bytes=22129; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | magazine-digest:markdown | yes | keyed | L3 | pass | pass | pass | 82.694 | bytes=13617; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | premium-briefing:html | yes | keyed | L3 | pass | pass | pass | 64.347 | bytes=21600; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | premium-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 52.022 | bytes=7853; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only f... |
+| language-learning | presentation:agent | yes | keyed | L3 | pass | pass | pass | 82.472 | bytes=11834; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | presentation:html | yes | keyed | L3 | pass | pass | pass | 57.566 | bytes=11847; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | presentation:markdown | yes | keyed | L3 | pass | pass | pass | 93.848 | bytes=10554; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | report:agent | no | keyed | L3 | pass | pass | pass | 104.668 | bytes=17683; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | report:audio | no | keyed | L3 | pass | pass | pass | 95.32 | bytes=2448720; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| language-learning | report:audiobook | no | keyed | L3 | pass | pass | pass | 132.368 | bytes=5680424; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| language-learning | report:epub | no | keyed | L3 | pass | pass | pass | 97.685 | bytes=22020; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | report:html | no | keyed | L3 | pass | pass | pass | 62.73 | bytes=29150; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | report:json | no | keyed | L3 | pass | pass | pass | 60.127 | bytes=17501; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | report:markdown | no | keyed | L3 | pass | pass | pass | 64.05 | bytes=22792; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | report:video | no | unkeyed | L3 | pass | pass | pass | 733.659 | bytes=8972094; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| language-learning | tutorial:agent | yes | keyed | L3 | pass | pass | pass | 62.87 | bytes=24155; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| language-learning | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | 63.046 | bytes=28486; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | column:markdown | yes | keyed | L3 | pass | pass | pass | 87.763 | bytes=15835; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | digest:agent | no | keyed | L3 | pass | pass | pass | 55.213 | bytes=25949; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | digest:audio | no | keyed | L3 | pass | pass | pass | 122.909 | bytes=2704176; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| medical-research | digest:audiobook | no | keyed | L3 | pass | pass | pass | 139.783 | bytes=5115639; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| medical-research | digest:epub | no | keyed | L3 | pass | pass | pass | 41.541 | bytes=20883; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | digest:html | no | keyed | L3 | pass | pass | pass | 42.19 | bytes=25968; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | digest:json | no | keyed | L3 | pass | pass | pass | 108.886 | bytes=27165; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | digest:markdown | no | keyed | L3 | pass | pass | pass | 50.783 | bytes=16296; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | enterprise-briefing:html | yes | keyed | L3 | pass | pass | pass | 34.793 | bytes=7305; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only f... |
+| medical-research | enterprise-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 93.134 | bytes=15182; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | magazine-digest:html | yes | keyed | L3 | pass | pass | pass | 39.922 | bytes=22087; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | magazine-digest:markdown | yes | keyed | L3 | pass | pass | pass | 91.617 | bytes=13942; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | premium-briefing:html | yes | keyed | L3 | pass | pass | pass | 61.682 | bytes=23079; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | premium-briefing:markdown | yes | keyed | L3 | pass | pass | pass | 161.311 | bytes=9252; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only f... |
+| medical-research | presentation:agent | yes | keyed | L3 | pass | pass | pass | 56.456 | bytes=7834; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only f... |
+| medical-research | presentation:html | yes | keyed | L3 | pass | pass | pass | 69.569 | bytes=11612; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | presentation:markdown | yes | keyed | L3 | pass | pass | pass | 86.595 | bytes=10938; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | report:agent | no | keyed | L3 | pass | pass | pass | 38.808 | bytes=899; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only fo... |
+| medical-research | report:audio | no | keyed | L3 | pass | pass | pass | 136.889 | bytes=2679120; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| medical-research | report:audiobook | no | keyed | L3 | pass | pass | pass | 165.975 | bytes=9237784; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| medical-research | report:epub | no | keyed | L3 | pass | pass | pass | 29.469 | bytes=6669; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only f... |
+| medical-research | report:html | no | keyed | L3 | pass | pass | pass | 27.06 | bytes=9180; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only f... |
+| medical-research | report:json | no | keyed | L3 | pass | pass | pass | 39.272 | bytes=2119; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only f... |
+| medical-research | report:markdown | no | keyed | L3 | pass | pass | pass | 74.749 | bytes=22516; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | report:video | no | keyed | L3 | pass | pass | pass | 766.414 | bytes=9343096; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| medical-research | tutorial:agent | yes | keyed | L3 | pass | pass | pass | 79.045 | bytes=19390; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+| medical-research | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | 103.369 | bytes=22923; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
+
 ## Collection and source diagnosis
 
 This run added 143 raw items. The total satisfied source count did not move: the
@@ -313,24 +309,23 @@ PY
 
 ## Residual
 
-One non-L3 row remains after the two 2026-11-19 keyed reruns, and it is
-accounted for below. The classes that made up the 2026-10-27 unkeyed run's 46
-non-L3 rows are superseded; they stay in this table (marked superseded) as the
-audit trail of what that run could not reach, not as current blockers.
+The 46 non-L3 rows are fully accounted for below: 36 + 3 + 7. The last two rows
+are quality residuals rather than cell blocks, and they are listed so the pack
+does not hide either one behind the cell counts.
 
 | Class | Rows | Cells | Why it is honest (or not) | Registered |
 |---|---:|---|---|---|
-| `blocked-no-llm-key` (2026-11-19) | 1 | `language-learning/report:video` | Not honest yet: the cell failed at **render** (`sub_timeline_script_failure`, `gsap` unreachable), so this bucket is simply wrong. #870/#874 reclassify render failures to `blocked-generation-error`; the cell stays non-L3 until #872 (vendored `gsap`) lands and it is re-run. | yes (#869/#872, #870/#874) |
-| `blocked-no-browser` (2026-10-27, superseded) | 3 | `report:video` × 3 domains | The 2026-10-27 host had no Chrome. The 2026-11-19 code-side rerun rendered video on EVA-01, so the class no longer applies. | yes |
-| `blocked-stale-sources` (2026-10-27, superseded) | 7 | 7 ai-commercial digest cells | The old freshness gate raised `StaleSourceError` on KB entries past the threshold; the owner-side re-collection/processing refreshed those domains. | yes |
-| `blocked-no-llm-key` (2026-10-27, superseded) | 36 | the 36 gated cells | The old run had no usable key. The 2026-11-19 keyed rerun exercised all 36. | no |
-| Absence of keyed L3 evidence (2026-10-27, superseded) | 81 cells | all 81 cells | True for that run only: all 81 rows are keyed in the 2026-11-19 reruns, so the pack now carries keyed L3 evidence. | no |
+| `blocked-no-llm-key` | 36 | the 36 gated cells across the 3 domains | Honest block: the cell was never invoked because the LLM prerequisite is provably absent. It is neither a failure nor a pass. | no |
+| `blocked-no-browser` | 3 | `report:video` in each of the 3 domains | Honest block: `RuntimeError: HyperFrames render failed (quality=draft): ... Chrome cannot launch`. This host has no Chrome, only `~/.cache/puppeteer/chrome-headless-shell` remnants. | yes |
+| `blocked-stale-sources` | 7 | the 7 ai-commercial digest cells | Honest block: the freshness gate raised `StaleSourceError` because all 5 ai-commercial KB entries are older than the threshold. The 58 freshly collected items cannot refresh the KB without processing, and processing needs the key. Cause chain, not a generation bug. | yes |
+| H3 bullet serialization glue in unkeyed Markdown | 14 files | 14 flagged Markdown renders (12 medical-research, 2 language-learning) | Not a block and not a pass: it is a real L0 defect. The artifacts still pass L2/L3 structural checks, so both facts are published together. | yes (section B of the register) |
+| Absence of keyed L3 evidence | 81 cells | all 81 cells | Not honest as coverage: it is a gap in evidence, not a product block. The 35 L3 rows prove unkeyed structure only, and no keyed path was exercised. | no |
 
 ### New failure classes
 
-`blocked-no-browser` and `blocked-stale-sources` were introduced by the
-2026-10-27 run and are registered in
-`docs/known-limitations/demo-quality-residuals.md`. They remain registered even
-though the 2026-11-19 reruns no longer produce them: the registration describes
-what this product can still hit on a host without Chrome or with cold sources,
-not what the latest run happened to reach.
+This run produced two new classes: `blocked-no-browser` and
+`blocked-stale-sources`. Both were added to
+`docs/known-limitations/demo-quality-residuals.md` in this same commit. The
+register entries name the 3 video cells and the 7 ai-commercial digest cells,
+and both entries say plainly that these are unverified cells, not product
+defects to be silenced.

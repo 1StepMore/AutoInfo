@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.12](https://github.com/1StepMore/AutoInfo/compare/v1.33.11...v1.33.12) (2026-11-19)
+
+
+### Miscellaneous Chores
+
+* **goals:** mark P2 achieved with goal-cmd evidence ([#893](https://github.com/1StepMore/AutoInfo/issues/893)) ([39442ec](https://github.com/1StepMore/AutoInfo/commit/39442ecc6c54b3cdd0557386a51a8bce7cb3c2cf))
+
 ## [1.33.11](https://github.com/1StepMore/AutoInfo/compare/v1.33.10...v1.33.11) (2026-11-19)
 
 

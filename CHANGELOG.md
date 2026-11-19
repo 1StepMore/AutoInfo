@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.7](https://github.com/1StepMore/AutoInfo/compare/v1.33.6...v1.33.7) (2026-11-19)
+
+
+### Bug Fixes
+
+* A/V matrix refresh + gsap vendor + dynamic backlog + render-failure classification ([#877](https://github.com/1StepMore/AutoInfo/issues/877)) ([c24911e](https://github.com/1StepMore/AutoInfo/commit/c24911e45f306ac3d9a47a8564122dba8ec8c045))
+
 ## [1.33.6](https://github.com/1StepMore/AutoInfo/compare/v1.33.5...v1.33.6) (2026-11-19)
 
 

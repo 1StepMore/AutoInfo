@@ -22,7 +22,7 @@ import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger("autoinfo.output")
 
@@ -466,6 +466,20 @@ def generate_hyperframes_project(
         if os.path.isfile(src):
             shutil.copy(src, os.path.join(output_dir, name))
 
+    # --- Vendored GSAP (relative-path first; CDN is only a fallback) ---
+    vendor_src = os.path.join(_ASSETS_DIR, "vendor")
+    if os.path.isdir(vendor_src):
+        shutil.copytree(
+            vendor_src,
+            os.path.join(output_dir, "vendor"),
+            dirs_exist_ok=True,
+        )
+    else:
+        logger.warning(
+            "Vendored GSAP assets missing at %s — rendering will need the CDN fallback",
+            vendor_src,
+        )
+
     # --- Audio ---
     has_audio = bool(audio_path and os.path.isfile(audio_path))
     if has_audio:
@@ -529,6 +543,58 @@ def generate_hyperframes_project(
 # ---------------------------------------------------------------------------
 
 
+GSAP_CDN_URL = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
+
+
+class GsapUnavailableError(RuntimeError):
+    """Neither the vendored GSAP copy nor the CDN fallback is available.
+
+    Rendering such a project would surface a generic
+    ``sub_timeline_script_failure`` (the template timelines call
+    ``gsap.timeline`` on a null global).  Failing here with an explicit
+    ``gsap_unavailable`` keeps that correctness signal reserved for genuine
+    template defects.
+    """
+
+
+def _gsap_cdn_reachable(timeout: float = 10.0) -> bool:
+    """True when the GSAP CDN fallback can be reached."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(GSAP_CDN_URL, timeout=timeout) as resp:
+            return bool(200 <= resp.status < 300)
+    except OSError:
+        return False
+
+
+def ensure_gsap_available(
+    project_dir: str,
+    cdn_probe: Callable[[], bool] | None = None,
+) -> str:
+    """Return the GSAP source the project can use, or raise ``gsap_unavailable``.
+
+    The vendored file is preferred (offline-safe).  Only when it is absent do
+    we probe the CDN fallback baked into the templates.  If neither is
+    available the render is rejected before HyperFrames runs, so the failure
+    is ``gsap_unavailable`` rather than a misleading
+    ``sub_timeline_script_failure``.
+    """
+    vendor = os.path.join(project_dir, "vendor", "gsap.min.js")
+    if os.path.isfile(vendor) and os.path.getsize(vendor) > 0:
+        return vendor
+
+    probe = cdn_probe or _gsap_cdn_reachable
+    if probe():
+        return GSAP_CDN_URL
+
+    raise GsapUnavailableError(
+        "gsap_unavailable: neither the vendored GSAP copy (vendor/gsap.min.js) "
+        f"nor the CDN fallback ({GSAP_CDN_URL}) is available; refusing to render "
+        "a video whose scene timelines would fail to load"
+    )
+
+
 def _find_binary(name: str) -> str:
     """Locate an executable on PATH (bun, ffmpeg, ffprobe)."""
     path = shutil.which(name)
@@ -554,6 +620,7 @@ def render_hyperframes(
     or missing output.
     """
     bun = _find_binary("bun")
+    ensure_gsap_available(project_dir)
 
     # --- lint gate (G3 equivalent) ---
     lint = subprocess.run(

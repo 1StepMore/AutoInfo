@@ -8,6 +8,7 @@
 
 import argparse
 import importlib.util
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -116,9 +117,12 @@ def test_new_manifest_is_committed_state_not_local_state():
 
 
 def test_goal_cmd_declared_in_goals_md():
-    # 目标必须用可执行判据表达，不接受「我觉得差不多了」
+    # 目标必须用可执行判据表达，不接受「我觉得差不多了」——判据必须指向仓内脚本
+    # （P1 时为 nightly_gap.py；目标演进到 P2 后判据命令可更换，断言其结构而非具体文件名）
     cmd = au.goal_cmd()
-    assert cmd and "nightly_gap.py" in " ".join(cmd)
+    joined = " ".join(cmd)
+    assert cmd and re.search(r"scripts/[\w-]+\.py", joined), joined
+    assert (Path(__file__).resolve().parents[1] / "scripts").is_dir()
 
 
 def test_goal_verdict_only_zero_is_achieved():

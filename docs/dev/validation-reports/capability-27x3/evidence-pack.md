@@ -1,18 +1,23 @@
 # Capability verification 27x3: evidence pack
 
-**Text side (2026-11-19, owner-authorized code-side revalidation): 66/66 cells
-reach L3 as keyed, real generations** — every domain 22/22. The detector drift
-that had pre-blocked all 36 gated cells as `blocked-no-llm-key` was fixed
-(config key → `${ENV}` expansion → `AUTOINFO_LLM_API_KEY` env fallback, aligned
-with `resolve_primary_api_key`); both stale domains were re-collected/re-processed
-first (ai-commercial +104, medical-research +40 KB entries). Verdict report with
-per-round evidence: `text-66-verdict-2026-11-19.md`. flaky 1/66 (one
-`pass(retry)`), under the 10% stop line; no assertion was touched.
+**2026-11-20 status: 81/81 cells reach L3 (0 missing, 0 pending, 0 honest-block);
+product quality gates green across all three domains.** The matrix report
+(`matrix.json`/`matrix.md`) carries: 66 text rows from the 2026-11-18/19 keyed
+real generations (verdict: `text-66-verdict-2026-11-19.md`), 15 A/V rows from the
+code side's 2026-11-19 12:26 AV re-run (grafted by #881), and the
+ai-commercial/tutorial:markdown row regenerated on 2026-11-20
+(tutorial-markdown-20261119-180800-192971.md, L3). Quality evidence:
+`quality-verdict-2026-11-20.md` (L0 gate + L1 real-model battery + the full
+FLAG→review→rollback→rule-clarification arc), battery reports under `logs/`,
+residue/purge logs under `logs/`. The P2 goal verdict command
+(`scripts/goal_matrix_quality.py`, registered in `docs/dev/goals.md`) machine-checks
+this pack's claims (full grid, L3/keyed discipline, L0, L1, git-tracked evidence).
 
-**Audio/video side is NOT part of the 2026-11-19 verdict**: the 15
-audio/audiobook/video rows below are stale 2026-10-27 `--only-assert` rows
-(`blocked-no-browser` ×3 on the video cells reflects that host, not the product)
-and are owned by the code-side rerun per `docs/dev/matrix-ownership.md`.
+**Historical note (2026-11-19)**: the text side (66/66 keyed real generations,
+detector-drift fix, corpus refresh +104/+40 KB entries, flaky 1/66) is recorded in
+`text-66-verdict-2026-11-19.md`; the A/V side was grafted from the code side's
+12:26 AV re-run by #881. The 2026-10-27-era "Audio/video side is NOT part of the
+verdict" caveat above is obsolete as of #881.
 
 ## Capability matrix
 

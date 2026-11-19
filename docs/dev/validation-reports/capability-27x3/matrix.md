@@ -1,11 +1,11 @@
 # Capability matrix (product x format x domain)
 
-- Generated: 2026-11-19T10:53:05+00:00
-- Domains: language-learning
+- Generated: 2026-11-19T18:08:00+00:00
+- Domains: ai-commercial
 - Spec: docs/dev/specs/end-user-matrix.yaml
-- Keyed/unkeyed split: keyed=80, unkeyed=1 (run key state: unkeyed)
+- Keyed/unkeyed split: keyed=80, unkeyed=1 (run key state: keyed)
 - Gated/non-gated split: gated=36, non-gated=45
-- Command: `.venv/bin/python scripts/capability_matrix.py --domains language-learning --only report:video --force --out docs/dev/validation-reports/capability-27x3`
+- Command: `'D:\贯维\AutoInfo\.venv\Scripts\python.exe' 'D:\贯维\AutoInfo\scripts\capability_matrix.py' --domains ai-commercial --only tutorial:markdown --force --out docs/dev/validation-reports/capability-27x3`
 
 Layers are cumulative and monotone: L2 implies L1, L3 implies L2.
 A cell never reports L3 when L1 or L2 failed.
@@ -39,7 +39,7 @@ L3 means the model actually generated the artifact: a KB-derived fallback (LLM f
 | ai-commercial | report:markdown | no | keyed | L3 | pass | pass | pass | llm | 75.24 | outputs/capability-matrix/ai-commercial/report-markdown-20261118-192637-351896.md | bytes=36478; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | ai-commercial | report:video | no | keyed | L3 | pass | pass | pass | llm | 867.585 | outputs/capability-matrix/ai-commercial/report-video-20261119-034602-395485.mp4 | bytes=11101133; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | ai-commercial | tutorial:agent | yes | keyed | L3 | pass | pass | pass | llm | 70.448 | outputs/capability-matrix/ai-commercial/tutorial-agent-20261118-192747-804446.json | bytes=18770; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
-| ai-commercial | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | llm | 94.922 | outputs/capability-matrix/ai-commercial/tutorial-markdown-20261118-192922-722903.md | bytes=21864; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
+| ai-commercial | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | llm | 62.074 | outputs/capability-matrix/ai-commercial/tutorial-markdown-20261119-180800-192971.md | bytes=20918; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | language-learning | column:markdown | yes | keyed | L3 | pass | pass | pass | llm | 89.635 | outputs/capability-matrix/language-learning/column-markdown-20261118-180843-294775.md | bytes=14234; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | language-learning | digest:agent | no | keyed | L3 | pass | pass | pass | llm | 36.629 | outputs/capability-matrix/language-learning/digest-agent-20261118-174423-737140.json | bytes=21518; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | language-learning | digest:audio | no | keyed | L3 | pass | pass | pass | llm | 75.55 | outputs/capability-matrix/language-learning/digest-audio-20261119-034718-211176.mp3 | bytes=2183040; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |

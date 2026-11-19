@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.5](https://github.com/1StepMore/AutoInfo/compare/v1.33.4...v1.33.5) (2026-11-19)
+
+
+### Miscellaneous Chores
+
+* **matrix:** refresh premium-briefing cell after constrained regeneration ([#866](https://github.com/1StepMore/AutoInfo/issues/866)) ([255b25e](https://github.com/1StepMore/AutoInfo/commit/255b25e0ce7afb1a64bb4fe62290215aadb2bbc3))
+
 ## [1.33.4](https://github.com/1StepMore/AutoInfo/compare/v1.33.3...v1.33.4) (2026-11-18)
 
 

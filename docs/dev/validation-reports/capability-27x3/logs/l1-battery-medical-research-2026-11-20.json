@@ -1,0 +1,66 @@
+{
+  "directory": "outputs\\capability-matrix\\medical-research",
+  "l0_defects": [],
+  "worklist": [
+    {
+      "family": "all",
+      "files": [
+        "outputs\\capability-matrix\\medical-research\\column-markdown-20261118-182427-010509.md",
+        "outputs\\capability-matrix\\medical-research\\column-markdown-20261118-183745-774896.md",
+        "outputs\\capability-matrix\\medical-research\\column-markdown-20261118-193050-486024.md",
+        "outputs\\capability-matrix\\medical-research\\digest-markdown-20261027-080505-361643.md",
+        "outputs\\capability-matrix\\medical-research\\digest-markdown-20261027-092527-876593.md",
+        "outputs\\capability-matrix\\medical-research\\digest-markdown-20261027-093345-232197.md",
+        "outputs\\capability-matrix\\medical-research\\digest-markdown-20261118-193549-101905.md",
+        "outputs\\capability-matrix\\medical-research\\enterprise-briefing-markdown-20261118-182558-348296.md",
+        "outputs\\capability-matrix\\medical-research\\enterprise-briefing-markdown-20261118-183851-823781.md",
+        "outputs\\capability-matrix\\medical-research\\enterprise-briefing-markdown-20261118-193722-232742.md",
+        "outputs\\capability-matrix\\medical-research\\magazine-digest-markdown-20261118-193933-774070.md",
+        "outputs\\capability-matrix\\medical-research\\premium-briefing-markdown-20261118-194316-769087.md",
+        "outputs\\capability-matrix\\medical-research\\presentation-markdown-20261118-182948-161433.md",
+        "outputs\\capability-matrix\\medical-research\\presentation-markdown-20261118-184013-179349.md",
+        "outputs\\capability-matrix\\medical-research\\presentation-markdown-20261118-194443-364008.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261027-082538-016408.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261027-084552-289026.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261027-084804-221951.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261027-085357-265878.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261027-090044-531224.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261027-091227-779907.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261027-091930-425292.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261027-092619-473606.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261027-093455-094290.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261118-175740-990293.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261118-184056-987919.md",
+        "outputs\\capability-matrix\\medical-research\\report-markdown-20261118-194558-111742.md",
+        "outputs\\capability-matrix\\medical-research\\tutorial-markdown-20261118-183250-570663.md"
+      ],
+      "blind_spot": "cross-product-entity-consistency",
+      "name": "Cross-product entity consistency",
+      "check_desc": "The same company/product described with CONFLICTING type claims across products (one says 'legal-industry AI-native OS', another says 'model-evaluation platform') is a defect.  This is the semantic layer above quality_gate X1's deterministic copular scan.",
+      "evidence_required": "the two conflicting descriptions + product files"
+    }
+  ],
+  "verdicts": [
+    {
+      "verdict": "PASS",
+      "evidence": "outputs\\capability-matrix\\medical-research\\column-markdown-20261118-182427-010509.md:1-32; outputs\\capability-matrix\\medical-research\\enterprise-briefing-markdown-20261118-182558-348296.md:1-30; outputs\\capability-matrix\\medical-research\\report-markdown-20261118-175740-990293.md:1-32; outputs\\capability-matrix\\medical-research\\tutorial-markdown-20261118-183250-570663.md:1-40",
+      "note": "No company or product entity is type-claimed across the reviewed products, so there are no conflicting entity type descriptions to trigger the blind spot. The repeated entity, \"T9 Backdoor Draft,\" is consistently described only as a draft/placeholder entry with no substantive content, and the reproductive research entries are consistently treated as peer-reviewed studies.",
+      "blind_spot": "cross-product-entity-consistency",
+      "family": "all",
+      "file": "outputs\\capability-matrix\\medical-research\\column-markdown-20261118-182427-010509.md"
+    }
+  ],
+  "honesty": {
+    "reviewed": [
+      "cross-product-entity-consistency (all)"
+    ],
+    "not_reviewed": [],
+    "channel": "config.llm markdown"
+  },
+  "summary": {
+    "l0_failed": false,
+    "flagged": 0,
+    "escalated": 0,
+    "passed": 1
+  }
+}

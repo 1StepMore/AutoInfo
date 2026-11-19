@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.6](https://github.com/1StepMore/AutoInfo/compare/v1.33.5...v1.33.6) (2026-11-19)
+
+
+### Bug Fixes
+
+* **agent:** autonomy gate tolerates missing IANA tzdata on Windows ([#875](https://github.com/1StepMore/AutoInfo/issues/875)) ([5018850](https://github.com/1StepMore/AutoInfo/commit/501885007e105b3caa9b80c0ab2e1e1bcd584ff1))
+
 ## [1.33.5](https://github.com/1StepMore/AutoInfo/compare/v1.33.4...v1.33.5) (2026-11-19)
 
 

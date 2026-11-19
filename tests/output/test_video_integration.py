@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -37,7 +38,7 @@ FFMPEG = shutil.which("ffmpeg")
 
 
 @pytest.fixture
-def temp_dir() -> str:
+def temp_dir() -> Iterator[str]:
     d = tempfile.mkdtemp(prefix="test_video_")
     yield d
     import shutil
@@ -45,10 +46,14 @@ def temp_dir() -> str:
     shutil.rmtree(d, ignore_errors=True)
 
 
-def _fake_project(temp_dir: str) -> str:
+def _fake_project(temp_dir: str, with_vendor: bool = True) -> str:
     """Create a minimal valid HyperFrames project directory."""
     project = os.path.join(temp_dir, "project")
     os.makedirs(os.path.join(project, "compositions"), exist_ok=True)
+    if with_vendor:
+        os.makedirs(os.path.join(project, "vendor"), exist_ok=True)
+        with open(os.path.join(project, "vendor", "gsap.min.js"), "w") as f:
+            f.write("/* gsap stub */\n")
     with open(os.path.join(project, "package.json"), "w") as f:
         f.write('{"name":"t","dependencies":{"hyperframes":"^0.6.95"}}')
     with open(os.path.join(project, "hyperframes.json"), "w") as f:
@@ -116,6 +121,64 @@ class TestRenderHyperframes:
         render_call = mock_run.call_args_list[1]
         assert "--quality" in render_call.args[0]
         assert "draft" in render_call.args[0]
+
+
+# ---------------------------------------------------------------------------
+# Vendored GSAP — offline-first templates (#869)
+# ---------------------------------------------------------------------------
+
+
+class TestGsapVendor:
+    def test_generated_project_contains_vendor_and_relative_template_refs(
+        self, temp_dir: str
+    ) -> None:
+        """The render dir gets vendor/gsap.min.js and templates use it relatively."""
+        from autoinfo.output.video import generate_hyperframes_project
+
+        project = generate_hyperframes_project(
+            title="Vendor",
+            sections=[{"heading": "A", "body": "x" * 50}],
+            output_dir=os.path.join(temp_dir, "proj"),
+            audio_path=None,
+            config=VideoConfig(quality="draft"),
+        )
+        vendor = os.path.join(project, "vendor", "gsap.min.js")
+        assert os.path.isfile(vendor)
+        assert os.path.getsize(vendor) > 10_000
+
+        with open(os.path.join(project, "index.html"), encoding="utf-8") as f:
+            index_html = f.read()
+        with open(
+            os.path.join(project, "compositions", "01-scene.html"), encoding="utf-8"
+        ) as f:
+            scene_html = f.read()
+
+        for html in (index_html, scene_html):
+            assert 'src="./vendor/gsap.min.js"' in html
+            # The CDN must remain only as the offline fallback, not the primary.
+            assert "cdn.jsdelivr.net/npm/gsap@3.14.2" in html
+
+    def test_missing_vendor_and_unreachable_cdn_raises_gsap_unavailable(
+        self, temp_dir: str
+    ) -> None:
+        """No vendor + no CDN ⇒ explicit gsap_unavailable, never a render."""
+        project = _fake_project(temp_dir, with_vendor=False)
+        with (
+            patch("autoinfo.output.video._find_binary", return_value="/usr/bin/bun"),
+            patch("autoinfo.output.video._gsap_cdn_reachable", return_value=False),
+            patch("subprocess.run") as mock_run,
+        ):
+            with pytest.raises(RuntimeError, match="gsap_unavailable"):
+                render_hyperframes(project, os.path.join(temp_dir, "v.mp4"))
+        mock_run.assert_not_called()
+
+    def test_missing_vendor_but_reachable_cdn_is_allowed(self, temp_dir: str) -> None:
+        """The CDN fallback still covers a project that lacks the vendored file."""
+        from autoinfo.output.video import ensure_gsap_available
+
+        project = _fake_project(temp_dir, with_vendor=False)
+        source = ensure_gsap_available(project, cdn_probe=lambda: True)
+        assert source == "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +298,7 @@ def _gsap_cdn_reachable() -> bool:
 
     try:
         with urllib.request.urlopen(GSAP_CDN_URL, timeout=10) as resp:
-            return 200 <= resp.status < 300
+            return bool(200 <= resp.status < 300)
     except OSError:
         return False
 
@@ -262,12 +325,10 @@ class TestRealRender:
     def test_real_render_smoke(self, temp_dir: str) -> None:
         """End-to-end render of a generated project produces an MP4.
 
-        Unreachable GSAP CDN is an environment block, not a defect (#780):
-        the render is skipped with a ``blocked-no-cdn`` reason.  When the CDN
-        is up the render runs for real, and any genuine render defect still
+        GSAP is vendored into the project (#869), so the real render no longer
+        needs the CDN and runs offline too.  A genuine render defect still
         raises — pinned by ``TestCdnBlockVsRealDefect`` below.
         """
-        _require_gsap_cdn()
         from autoinfo.output.video import generate_hyperframes_project
 
         project = generate_hyperframes_project(

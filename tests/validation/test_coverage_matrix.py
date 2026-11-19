@@ -532,7 +532,8 @@ def test_scan_source_evidence_flat_items_still_count(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_detect_llm_available(tmp_path):
+def test_detect_llm_available(tmp_path, monkeypatch):
+    monkeypatch.delenv("AUTOINFO_LLM_API_KEY", raising=False)
     cfg = tmp_path / "config.yaml"
     cfg.write_text("llm:\n  provider: openai\n  api_key: sk-test\n", encoding="utf-8")
     assert cm.detect_llm_available(cfg) is True
@@ -542,6 +543,18 @@ def test_detect_llm_available(tmp_path):
 
     cfg.unlink()
     assert cm.detect_llm_available(cfg) is False
+
+
+def test_detect_llm_available_env_fallback(tmp_path, monkeypatch):
+    # Empty config key + set env var is keyed — same rule as the call path
+    # (resolve_primary_api_key), which the detector must not drift from.
+    monkeypatch.delenv("AUTOINFO_LLM_API_KEY", raising=False)
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("llm:\n  provider: openai\n  api_key: ''\n", encoding="utf-8")
+    assert cm.detect_llm_available(cfg) is False
+
+    monkeypatch.setenv("AUTOINFO_LLM_API_KEY", "sk-test")
+    assert cm.detect_llm_available(cfg) is True
 
 
 def test_detect_llm_available_resolves_env_placeholder(tmp_path, monkeypatch):

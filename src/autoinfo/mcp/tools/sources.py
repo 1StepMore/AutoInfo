@@ -82,6 +82,18 @@ def build_tools() -> list[Tool]:
                             "reuters_mcp, unpaywall, youtube)."
                         ),
                     },
+                    "fetch_depth": {
+                        "type": "string",
+                        "description": (
+                            "Content depth for RSS feeds. 'abstract' (default) uses "
+                            "the feed summary; 'fulltext' fetches the article body — "
+                            "required for short-summary feeds whose description is "
+                            "below the KB minimum length (#845). Persisted to the "
+                            "source's top-level config field."
+                        ),
+                        "enum": ["abstract", "fulltext"],
+                        "default": "abstract",
+                    },
                     "imap_server": {
                         "type": "string",
                         "description": "Email type only: IMAP server hostname (e.g. imap.gmail.com)",
@@ -161,6 +173,15 @@ def build_tools() -> list[Tool]:
                                         "known key-requiring types, e.g. nyt, ap_api, "
                                         "reuters_mcp, unpaywall, youtube)."
                                     ),
+                                },
+                                "fetch_depth": {
+                                    "type": "string",
+                                    "description": (
+                                        "Content depth for RSS feeds. 'abstract' (default) or "
+                                        "'fulltext' (fetch article body for short-summary feeds, #845)."
+                                    ),
+                                    "enum": ["abstract", "fulltext"],
+                                    "default": "abstract",
                                 },
                                 "imap_server": {
                                     "type": "string",
@@ -682,6 +703,7 @@ def _handle_add_source(
     domain: str = "",
     settings: dict[str, Any] | None = None,
     requires_key: bool | None = None,
+    fetch_depth: str = "abstract",
     imap_server: str | None = None,
     imap_port: int | None = None,
     imap_username: str | None = None,
@@ -699,6 +721,10 @@ def _handle_add_source(
     - *requires_key*: whether the source needs a credential.  Defaults to
       derived from the source type via ``SOURCE_KEY_ENV_VARS`` (a type with
       canonical env vars is key-requiring).
+    - *fetch_depth*: ``"abstract"`` (default) or ``"fulltext"``.  Persisted
+      to the top-level ``SourceConfig.fetch_depth`` field so RSS handlers can
+      fetch article bodies for short-summary feeds (#845).  A value inside
+      ``settings`` cannot do this — config loading only reads the top-level key.
     """
     # --- Validation -----------------------------------------------------------
     type_error = mcp_context._validate_source_type(type)
@@ -714,6 +740,13 @@ def _handle_add_source(
         return error_response(
             code=ErrorCode.VALIDATION_ERROR,
             message=url_error,
+            actionable=True,
+        )
+
+    if fetch_depth not in ("abstract", "fulltext"):
+        return error_response(
+            code=ErrorCode.VALIDATION_ERROR,
+            message=f"fetch_depth must be 'abstract' or 'fulltext', got {fetch_depth!r}",
             actionable=True,
         )
 
@@ -787,6 +820,7 @@ def _handle_add_source(
         quality_tier=quality_tier,
         tos_classification=tos_classification,
         requires_key=requires_key,
+        fetch_depth=fetch_depth,
         settings=merged_settings,
     )
     domain_cfg.sources.append(new_source)
@@ -801,6 +835,7 @@ def _handle_add_source(
             "quality_tier": quality_tier,
             "tos_classification": tos_classification,
             "requires_key": requires_key,
+            "fetch_depth": fetch_depth,
         },
         "created": True,
         "source_id": f"{domain}:{name}",
@@ -831,6 +866,7 @@ def _handle_add_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
                 domain=src.get("domain", ""),
                 settings=src.get("settings"),
                 requires_key=src.get("requires_key"),
+                fetch_depth=src.get("fetch_depth", "abstract"),
             )
             if isinstance(result, dict) and result.get("success") is False:
                 errored += 1

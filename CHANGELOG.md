@@ -2,6 +2,68 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.5](https://github.com/1StepMore/AutoInfo/compare/v1.33.4...v1.33.5) (2026-11-19)
+
+
+### Miscellaneous Chores
+
+* **matrix:** refresh premium-briefing cell after constrained regeneration ([#866](https://github.com/1StepMore/AutoInfo/issues/866)) ([255b25e](https://github.com/1StepMore/AutoInfo/commit/255b25e0ce7afb1a64bb4fe62290215aadb2bbc3))
+
+## [1.33.4](https://github.com/1StepMore/AutoInfo/compare/v1.33.3...v1.33.4) (2026-11-18)
+
+
+### Bug Fixes
+
+* **matrix:** align detect_llm_available with the call-path key resolution ([#860](https://github.com/1StepMore/AutoInfo/issues/860)) ([9f0b72c](https://github.com/1StepMore/AutoInfo/commit/9f0b72cfed94dc1cdcfda6fd36ceb06277bd5ca5))
+
+## [1.33.3](https://github.com/1StepMore/AutoInfo/compare/v1.33.2...v1.33.3) (2026-11-18)
+
+
+### Documentation
+
+* **agents:** 判活按标签不问编号 + issue 模板归属下拉（owner 默认不标注=最大自主） ([#858](https://github.com/1StepMore/AutoInfo/issues/858)) ([3d54598](https://github.com/1StepMore/AutoInfo/commit/3d545982f0e005a1c1b53ac399de7819b1d612e6))
+
+## [1.33.2](https://github.com/1StepMore/AutoInfo/compare/v1.33.1...v1.33.2) (2026-11-18)
+
+
+### Documentation
+
+* **matrix:** 矩阵归属（音视频/图片=code 侧，文本=owner 侧）+ 跨仓判定口径 ([#856](https://github.com/1StepMore/AutoInfo/issues/856)) ([cbe6fd7](https://github.com/1StepMore/AutoInfo/commit/cbe6fd7f502e956559163a5843de1b529990ab8c))
+
+## [1.33.1](https://github.com/1StepMore/AutoInfo/compare/v1.33.0...v1.33.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **mcp:** expose fetch_depth on add_source/add_sources ([#845](https://github.com/1StepMore/AutoInfo/issues/845)) ([#852](https://github.com/1StepMore/AutoInfo/issues/852)) ([a607ef2](https://github.com/1StepMore/AutoInfo/commit/a607ef2d684397cf39fac688a6caaa4273009ae2))
+* **qc:** exempt in-word hyphens and source slugs from L0 H2/H3 false positives ([#844](https://github.com/1StepMore/AutoInfo/issues/844)) ([#854](https://github.com/1StepMore/AutoInfo/issues/854)) ([f0e5d21](https://github.com/1StepMore/AutoInfo/commit/f0e5d2191623623a711a8e94574ba541bc59238e))
+
+## [1.33.0](https://github.com/1StepMore/AutoInfo/compare/v1.32.12...v1.33.0) (2026-11-17)
+
+
+### Features
+
+* **config:** user-level dotenv loading (~/.autoinfo/.env) decouples key rotation from IDE restarts ([#848](https://github.com/1StepMore/AutoInfo/issues/848)) ([258712a](https://github.com/1StepMore/AutoInfo/commit/258712a8542dff048bb52c96f9783acd61b25f92)), closes [#847](https://github.com/1StepMore/AutoInfo/issues/847)
+
+## [1.32.12](https://github.com/1StepMore/AutoInfo/compare/v1.32.11...v1.32.12) (2026-11-17)
+
+
+### Miscellaneous Chores
+
+* **dev:** mark P1 achieved — gap matrix exit 0 (evidence [#842](https://github.com/1StepMore/AutoInfo/issues/842)), P2 asked-owner ([#843](https://github.com/1StepMore/AutoInfo/issues/843)) ([2b1b58d](https://github.com/1StepMore/AutoInfo/commit/2b1b58d87ac24db962f7d5c47749716deddc29c7))
+
+## [1.32.11](https://github.com/1StepMore/AutoInfo/compare/v1.32.10...v1.32.11) (2026-11-17)
+
+
+### Tests
+
+* **mcp:** isolate host AUTOINFO_LLM_API_KEY in list_available_models pool tests ([#833](https://github.com/1StepMore/AutoInfo/issues/833)) ([9f35430](https://github.com/1StepMore/AutoInfo/commit/9f3543087da954c658d8cb2b0e7b8e48edf5b8bb))
+
+
+### Miscellaneous Chores
+
+* **agent:** goal gate inside gate/next — nobody has to remember the goal check ([#839](https://github.com/1StepMore/AutoInfo/issues/839)) ([6ad0780](https://github.com/1StepMore/AutoInfo/commit/6ad07805edd2a06553fd3df8897cb51b4c727c1b))
+
 ## [1.32.10](https://github.com/1StepMore/AutoInfo/compare/v1.32.9...v1.32.10) (2026-11-17)
 
 

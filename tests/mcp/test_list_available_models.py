@@ -50,6 +50,16 @@ def _mock_load_config(config_dict: dict[str, Any]) -> Any:
 
 
 class TestListAvailableModelsFullPool:
+    @pytest.fixture(autouse=True)
+    def _isolate_host_key_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """api_key_configured must reflect the mocked config alone, not the host env.
+
+        Without this, a machine that exports ``AUTOINFO_LLM_API_KEY`` (any
+        dev box running the real pipeline) turns the three keyless-shape
+        assertions below red even though the mocked config has no key.
+        """
+        monkeypatch.delenv("AUTOINFO_LLM_API_KEY", raising=False)
+
     def test_primary_fallback_and_task_entries(self) -> None:
         """1 fallback + 1 task → count == 3 with the expected entry shapes."""
         with _mock_load_config(

@@ -1135,6 +1135,9 @@ from autoinfo.mcp.tools.system import _handle_list_domains as _handle_list_domai
 from autoinfo.mcp.tools.system import _handle_remove_domain as _handle_remove_domain
 
 if __name__ == "__main__":
+    from autoinfo.dotenv import load_user_env
+
+    load_user_env()  # user-level credentials before the server starts (#847)
     import argparse
 
     parser = argparse.ArgumentParser(

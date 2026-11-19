@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.8](https://github.com/1StepMore/AutoInfo/compare/v1.33.7...v1.33.8) (2026-11-19)
+
+
+### Bug Fixes
+
+* **validation:** source-ground future years in _no_year_hallucination ([#864](https://github.com/1StepMore/AutoInfo/issues/864)) ([#879](https://github.com/1StepMore/AutoInfo/issues/879)) ([66c6d71](https://github.com/1StepMore/AutoInfo/commit/66c6d712902b8eec18d25ef9fd2d9e46695df57d))
+
 ## [1.33.7](https://github.com/1StepMore/AutoInfo/compare/v1.33.6...v1.33.7) (2026-11-19)
 
 

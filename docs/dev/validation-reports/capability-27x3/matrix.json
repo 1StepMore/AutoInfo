@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-18T19:45:58+00:00",
-  "command": "'D:\\贯维\\AutoInfo\\.venv\\Scripts\\python.exe' 'D:\\贯维\\AutoInfo\\scripts\\capability_matrix.py' --domains ai-commercial,language-learning,medical-research --only column:markdown --only digest:agent --only digest:epub --only digest:html --only digest:json --only digest:markdown --only enterprise-briefing:html --only enterprise-briefing:markdown --only magazine-digest:html --only magazine-digest:markdown --only premium-briefing:html --only premium-briefing:markdown --only presentation:markdown --only report:agent --only report:epub --only report:html --only report:json --only report:markdown --only tutorial:agent --only tutorial:markdown --checkpoint 'C:\\Users\\RenAnZai\\AppData\\Local\\Temp\\matrix-refresh-pending.json' --out docs/dev/validation-reports/capability-27x3",
+  "generated_at": "2026-11-18T20:24:35+00:00",
+  "command": "'D:\\贯维\\AutoInfo\\.venv\\Scripts\\python.exe' 'D:\\贯维\\AutoInfo\\scripts\\capability_matrix.py' --domains ai-commercial,language-learning,medical-research --only premium-briefing:markdown --checkpoint 'C:\\Users\\RenAnZai\\AppData\\Local\\Temp\\matrix-one-pending.json' --out docs/dev/validation-reports/capability-27x3",
   "spec": "docs/dev/specs/end-user-matrix.yaml",
   "domains": [
     "ai-commercial",
@@ -9,26 +9,7 @@
   ],
   "keyed": "keyed",
   "only": [
-    "column:markdown",
-    "digest:agent",
-    "digest:epub",
-    "digest:html",
-    "digest:json",
-    "digest:markdown",
-    "enterprise-briefing:html",
-    "enterprise-briefing:markdown",
-    "magazine-digest:html",
-    "magazine-digest:markdown",
-    "premium-briefing:html",
-    "premium-briefing:markdown",
-    "presentation:markdown",
-    "report:agent",
-    "report:epub",
-    "report:html",
-    "report:json",
-    "report:markdown",
-    "tutorial:agent",
-    "tutorial:markdown"
+    "premium-briefing:markdown"
   ],
   "only_assert": false,
   "rows": [
@@ -697,13 +678,13 @@
       "format": "markdown",
       "gated": true,
       "keyed": "keyed",
-      "artifact": "outputs/capability-matrix/language-learning/premium-briefing-markdown-20261118-181744-116986.md",
+      "artifact": "outputs/capability-matrix/language-learning/premium-briefing-markdown-20261118-202435-969341.md",
       "reached": "L3",
       "l1": true,
       "l2": true,
       "l3": true,
-      "detail": "bytes=11382; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1",
-      "duration_s": 84.831,
+      "detail": "bytes=7853; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1",
+      "duration_s": 52.022,
       "llm_generated": true,
       "llm_status": "llm",
       "provenance": ""

@@ -413,6 +413,20 @@ _HEX_RUN_RE = re.compile(r"[0-9A-Fa-f]{8,}")
 # URL-embedded 4-digit runs (e.g. "https://x.com/2023/01") are legitimate —
 # never fire the year checks on the path/query portion of a URL.
 _URL_RE = re.compile(r"https?://\S+")
+# #864 — a FUTURE year is NOT a hallucination when the SAME source line carries
+# grounding evidence for it.  The scan strips URLs first (above), so grounding
+# is checked against the ORIGINAL line: an inline URL / markdown link, a
+# ``Source:`` / ``来源：`` label, or a quotation (wrapped, or attributed with
+# said/announced/according to/报道/表示).  This is the #445 grounding pattern
+# reused for year claims — the source really does say "2027".
+_MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
+_SOURCE_LABEL_RE = re.compile(
+    r"(?:source\s*:|来源\s*[:：]|source_url)", re.IGNORECASE
+)
+_QUOTE_SPAN_RE = re.compile(r"“[^”]*”|\"[^\"]*\"|「[^」]*」|『[^』]*』")
+_ATTRIBUTION_RE = re.compile(
+    r"(?:said|announced|according\s+to|报道|表示)", re.IGNORECASE
+)
 # #351 V4 + #41 — a FUTURE year is only a hallucination when it is asserted as
 # a completed fact.  Forward-looking projections ("Revenue to double by 2030",
 # "targeting 2027", "2025-2030 runway") are legitimate financial prose, and
@@ -479,6 +493,17 @@ _NAMED_YEAR_RE = re.compile(
 # noun and never matches.
 _ELECTION_YEAR_RE = re.compile(
     r"\b(?:18|19|20)\d{2}\s+(?:(?:[A-Za-z][A-Za-z0-9&'’.-]+\s+){0,3}election\b)",
+    re.IGNORECASE,
+)
+# #864 — a future year naming a scheduled EVENT or PLAN ("the 2027 Grammy
+# nominations", "the 2027 Grammy Awards", "the 2027 nominations list", "the
+# 2027 roadmap", "the 2027 release") is a name/plan token, not a completed-fact
+# date claim.  The year must directly begin the event/plan noun phrase, so a
+# bare prose claim ("In 2027, the company shipped 40 units") never matches.
+_EVENT_PLAN_YEAR_RE = re.compile(
+    r"\b(?:18|19|20)\d{2}\s+"
+    r"(?:(?:[A-Za-z][A-Za-z0-9&'’.-]+\s+){0,3})?"
+    r"(?:nominations|nomination|awards|award|roadmap|release|releases)\b",
     re.IGNORECASE,
 )
 # #41 — game/franchise/product/series NAME years.  A year that is an integral
@@ -948,6 +973,9 @@ def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionRes
     2027 French presidential election", "Metro 2039", "Présidentielle 2027")
     is a legitimate reference, not a hallucination, and does NOT fire (#351
     V5, #41).
+    A future year backed by source-grounding evidence on the SAME original line
+    (inline URL / markdown link, ``Source:`` / ``来源：`` label, or a quotation)
+    is also legitimate and is reported only as an informational note (#864).
     Plausible prose years (1950..current year) and forward-looking projections
     pass.  The References section (from the ``## References`` heading) is
     EXCLUDED — legitimate citations carry old years.  URL-embedded 4-digit
@@ -955,8 +983,8 @@ def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionRes
     number is not a year (``_is_non_year_number``).  ``severity`` is ``P0``
     when a future failure exists, else ``P1``."""
     refs = _REFS_HEADING.search(text)
-    body = text[: refs.start()] if refs else text
-    body = _URL_RE.sub(" ", body)
+    raw_body = text[: refs.start()] if refs else text
+    body = _URL_RE.sub(" ", raw_body)
     failures: list[str] = []
     informational: list[str] = []
     for m in _MONTH_YEAR_RE.finditer(body):
@@ -968,7 +996,14 @@ def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionRes
             and not _is_forward_looking(body, m)
             and not _is_named_year(body, m)
         ):
-            failures.append(f"future bare month-year {m.group(0)!r} ({year})")
+            raw_line = _original_line(raw_body, body, m)
+            if _is_source_grounded(raw_line, m.group(0)):
+                informational.append(
+                    "informational (source-grounded, not a failure): "
+                    f"future bare month-year {m.group(0)!r} ({year})"
+                )
+            else:
+                failures.append(f"future bare month-year {m.group(0)!r} ({year})")
         elif year < _MIN_PLAUSIBLE_YEAR:
             informational.append(
                 "informational (historical reference, not a failure): "
@@ -983,7 +1018,14 @@ def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionRes
             and not _is_forward_looking(body, m)
             and not _is_named_year(body, m)
         ):
-            failures.append(f"future year {year}")
+            raw_line = _original_line(raw_body, body, m)
+            if _is_source_grounded(raw_line, m.group(0)):
+                informational.append(
+                    "informational (source-grounded, not a failure): "
+                    f"future year {year}"
+                )
+            else:
+                failures.append(f"future year {year}")
         elif year < _MIN_PLAUSIBLE_YEAR:
             informational.append(
                 f"informational (historical reference, not a failure): distant-past year {year}"
@@ -1026,6 +1068,45 @@ def _is_non_year_number(text: str, m: re.Match[str]) -> bool:
     return "-" in token and _HEX_RUN_RE.search(token) is not None
 
 
+def _original_line(raw: str, body: str, m: re.Match[str]) -> str:
+    """Return the line containing ``m`` from the ORIGINAL (URL-intact) text.
+
+    ``_no_year_hallucination`` scans ``body`` after ``_URL_RE.sub`` removes
+    URLs, but that also destroys the inline-URL grounding evidence (#864).
+    URL stripping replaces only ``\\S+`` runs and never touches newlines, so the
+    line index in ``body`` is identical to the line index in ``raw``."""
+    line_index = body.count("\n", 0, m.start())
+    raw_lines = raw.split("\n")
+    if 0 <= line_index < len(raw_lines):
+        return raw_lines[line_index]
+    return ""
+
+
+def _is_source_grounded(raw_line: str, token: str) -> bool:
+    """True when ``raw_line`` carries source evidence for the year ``token``
+    (#864): an inline URL / markdown link, a ``Source:`` / ``来源：`` /
+    ``source_url`` label, or a quotation that contains the year (wrapped in
+    ``“…”`` / ``"…"`` / ``「…」``) or is immediately attributed
+    (``said`` / ``announced`` / ``according to`` / ``报道`` / ``表示``).  A future
+    year with none of these is still a hallucination (P0)."""
+    if _URL_RE.search(raw_line) or _MARKDOWN_LINK_RE.search(raw_line):
+        return True
+    if _SOURCE_LABEL_RE.search(raw_line):
+        return True
+    for quote in _QUOTE_SPAN_RE.finditer(raw_line):
+        if token in quote.group(0):
+            return True
+    idx = raw_line.find(token)
+    if idx != -1:
+        tail = raw_line[idx + len(token) :].lstrip(" \t\"”’」』,，.。:：-—")
+        if _ATTRIBUTION_RE.match(tail):
+            return True
+        head = raw_line[:idx]
+        if _ATTRIBUTION_RE.search(head):
+            return True
+    return False
+
+
 def _is_forward_looking(text: str, m: re.Match[str]) -> bool:
     """True when the matched year sits in a forward-looking context: the line
     carries a projection marker (``target`` / ``forecast`` / ``projected`` /
@@ -1055,9 +1136,11 @@ def _is_named_year(text: str, m: re.Match[str]) -> bool:
     ``_NAMED_YEAR_RE`` / ``_ELECTION_YEAR_RE`` / ``_FRANCHISE_YEAR_RE``) — e.g.
     "The Princeton Review's 2027 Best Colleges guide", "The 2027 Best Colleges
     guide", "the 2027 French presidential election", "Metro 2039",
-    "Présidentielle 2027", "The Witcher 4 (2028)".  A future year that is part
-    of a heading/table title line (an article title) is also a title reference,
-    not a hallucination (#41).  Such a name year is legitimate, never fires."""
+    "Présidentielle 2027", "The Witcher 4 (2028)", "the 2027 Grammy nominations",
+    "the 2027 Grammy Awards", "the 2027 roadmap", "the 2027 release".  A future
+    year that is part of a heading/table title line (an article title) is also
+    a title reference, not a hallucination (#41).  Such a name year is
+    legitimate, never fires."""
     line_start = text.rfind("\n", 0, m.start()) + 1
     line_end = text.find("\n", m.end())
     if line_end == -1:
@@ -1069,6 +1152,9 @@ def _is_named_year(text: str, m: re.Match[str]) -> bool:
         if named.start() <= lo and hi <= named.end():
             return True
     for named in _ELECTION_YEAR_RE.finditer(line):
+        if named.start() <= lo and hi <= named.end():
+            return True
+    for named in _EVENT_PLAN_YEAR_RE.finditer(line):
         if named.start() <= lo and hi <= named.end():
             return True
     for named in _FRANCHISE_YEAR_RE.finditer(line):

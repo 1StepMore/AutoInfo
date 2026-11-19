@@ -169,3 +169,25 @@ def test_goal_cmd_uses_current_interpreter():
     assert cmd is not None
     # goals.md 写的 python3 ⇒ 实际执行换成当前解释器（同一 env，否则模块找不到误报 ERROR）
     assert cmd[0] == sys.executable
+
+
+# ---------------------------------------------------------------- 时区兜底
+def test_shanghai_tz_falls_back_without_tzdata(monkeypatch):
+    """缺 IANA 时区库（Windows 常见）时回退固定 UTC+8，不得让 gate 启动即崩。"""
+    from zoneinfo import ZoneInfoNotFoundError
+
+    def _boom(key):
+        raise ZoneInfoNotFoundError(key)
+
+    monkeypatch.setattr(au, "ZoneInfo", _boom)
+    tz = au._shanghai_tz()
+    from datetime import timedelta
+
+    assert tz.utcoffset(None) == timedelta(hours=8)
+    assert tz.tzname(None) == "UTC+08:00"
+
+
+def test_shanghai_tz_normal_path(monkeypatch):
+    sentinel = object()
+    monkeypatch.setattr(au, "ZoneInfo", lambda key: sentinel)
+    assert au._shanghai_tz() is sentinel

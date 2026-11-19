@@ -43,13 +43,29 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 ROOT = Path(__file__).resolve().parents[2]
 LEASE = ROOT / ".agents" / "autonomy" / "lease.json"
-TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _shanghai_tz():
+    """Asia/Shanghai，缺 IANA 时区库时回退到固定 UTC+8（纯 stdlib）。
+
+    Windows 上 ``zoneinfo`` 依赖 ``tzdata`` 包或系统时区库；两者皆缺时
+    ``ZoneInfo("Asia/Shanghai")`` 会在 import 期就抛 ZoneInfoNotFoundError，
+    让整个 gate/status 无法启动（2026-11-19 实测）。中国自 1991 年起无夏令时，
+    固定 +08:00 与 Asia/Shanghai 对本工具处理的当代日期完全等价。
+    """
+    try:
+        return ZoneInfo("Asia/Shanghai")
+    except ZoneInfoNotFoundError:
+        return timezone(timedelta(hours=8), "UTC+08:00")
+
+
+TZ = _shanghai_tz()
 
 MINE = "owner:code-auto"
 HUMAN = "owner:human-agent"

@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.10](https://github.com/1StepMore/AutoInfo/compare/v1.33.9...v1.33.10) (2026-11-19)
+
+
+### Bug Fixes
+
+* **scripts:** exempt Target Audience enum field from H2 truncation rule ([#885](https://github.com/1StepMore/AutoInfo/issues/885)) ([e92a8b8](https://github.com/1StepMore/AutoInfo/commit/e92a8b8fdf4e5c2d3c05d6f4da21035f544a60df))
+
+
+### Miscellaneous Chores
+
+* **agent-review:** disambiguate local-market-presence expected language ([#888](https://github.com/1StepMore/AutoInfo/issues/888)) ([f212f71](https://github.com/1StepMore/AutoInfo/commit/f212f713a6f06a630c5c44cbdcf06de9393c271c))
+
 ## [1.33.9](https://github.com/1StepMore/AutoInfo/compare/v1.33.8...v1.33.9) (2026-11-19)
 
 

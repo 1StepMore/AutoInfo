@@ -29,6 +29,7 @@ from autoinfo.mcp import server as mcp_server
 from autoinfo.mcp.errors import ErrorCode
 from autoinfo.mcp.server import (
     _handle_add_source,
+    _handle_add_sources,
     _handle_disable_source,
     _handle_enable_source,
     _handle_list_sources,
@@ -218,6 +219,67 @@ class TestMCPAddSource:
         domain = [d for d in config.domains if d.name == "medical-research"][0]
         names = {s.name for s in domain.sources}
         assert "persist-check" in names
+
+    def test_fetch_depth_defaults_to_abstract(self, tmp_config: Path) -> None:
+        result = _handle_add_source(
+            name="depth-default",
+            url="https://example.com/depth-default",
+            type="rss",
+            domain="medical-research",
+        )
+        assert result["source"]["fetch_depth"] == "abstract"
+        config = load_config(Path.cwd() / ".autoinfo" / "config.yaml")
+        domain = [d for d in config.domains if d.name == "medical-research"][0]
+        src = [s for s in domain.sources if s.name == "depth-default"][0]
+        assert src.fetch_depth == "abstract"
+
+    def test_fetch_depth_fulltext_persists_to_top_level(self, tmp_config: Path) -> None:
+        # #845: fetch_depth must land on the top-level SourceConfig field,
+        # not be lost inside settings (where config loading ignores it).
+        result = _handle_add_source(
+            name="depth-full",
+            url="https://example.com/depth-full",
+            type="rss",
+            domain="medical-research",
+            fetch_depth="fulltext",
+        )
+        assert result["source"]["fetch_depth"] == "fulltext"
+        config = load_config(Path.cwd() / ".autoinfo" / "config.yaml")
+        domain = [d for d in config.domains if d.name == "medical-research"][0]
+        src = [s for s in domain.sources if s.name == "depth-full"][0]
+        assert src.fetch_depth == "fulltext"
+        # Must NOT be duplicated into settings — registry injects the
+        # authoritative top-level value and a settings copy is inert/misleading.
+        assert "fetch_depth" not in src.settings
+
+    def test_fetch_depth_rejects_invalid_value(self, tmp_config: Path) -> None:
+        result = _handle_add_source(
+            name="depth-bad",
+            url="https://example.com/depth-bad",
+            type="rss",
+            domain="medical-research",
+            fetch_depth="FULLTEXT",  # must be lowercase enum
+        )
+        assert result["success"] is False
+        assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR.value
+
+    def test_batch_add_passes_fetch_depth(self, tmp_config: Path) -> None:
+        result = _handle_add_sources(
+            [
+                {
+                    "name": "batch-full",
+                    "url": "https://example.com/batch-full",
+                    "type": "rss",
+                    "domain": "medical-research",
+                    "fetch_depth": "fulltext",
+                }
+            ]
+        )
+        assert result["succeeded"] == 1
+        config = load_config(Path.cwd() / ".autoinfo" / "config.yaml")
+        domain = [d for d in config.domains if d.name == "medical-research"][0]
+        src = [s for s in domain.sources if s.name == "batch-full"][0]
+        assert src.fetch_depth == "fulltext"
 
 
 # ======================================================================

@@ -13,17 +13,17 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 141 |
-| Total lines | 40132 |
-| Active files | 109 |
+| Total files | 145 |
+| Total lines | 40539 |
+| Active files | 113 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
-| Category — validation-reports | 26 files / 5752 lines |
-| Category — docs/dev | 39 files / 11502 lines |
+| Category — validation-reports | 27 files / 6046 lines |
+| Category — docs/dev | 42 files / 11615 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -101,6 +101,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/goals.md` | 36 | docs/dev | active | — |
 | `dev/harness-run-facts.md` | 84 | docs/dev | active | — |
 | `dev/llm-config.md` | 82 | docs/dev | active | — |
+| `dev/matrix-ownership.md` | 41 | docs/dev | active | — |
+| `dev/matrix-verdict-policy.md` | 30 | docs/dev | active | — |
 | `dev/mcp-usage-examples.md` | 324 | docs/dev | active | — |
 | `dev/new-domain-guide.md` | 942 | docs/dev | active | — |
 | `dev/plans/2026-08-30-AutoInfo-GraphEngineering落地实施方案-修正版.md` | 153 | docs/dev | active | — |
@@ -126,22 +128,24 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/pipeline.md` | 694 | specs | active | — |
 | `dev/specs/quality-gates.md` | 210 | specs | active | — |
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
+| `dev/task-routing.md` | 42 | docs/dev | active | — |
 | `dev/testing-layers.md` | 259 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 96 | validation-reports | active | — |
 | `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 565 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/README.md` | 55 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/evidence-pack.md` | 325 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/evidence-pack.md` | 328 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/l0-l1-baseline.md` | 58 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/README.md` | 14 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/blockers-2026-10-27.md` | 39 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/collect-delta-2026-10-27.md` | 46 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/kb-purge-2026-10-27.md` | 58 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/matrix.json` | 1149 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/matrix.md` | 95 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/matrix.json` | 1349 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/matrix.md` | 96 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/runs/README.md` | 24 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/source-diagnosis.md` | 101 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/text-66-verdict-2026-11-19.md` | 90 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-19-20.md` | 37 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-22-37.md` | 77 | validation-reports | active | — |
 | `dev/validation-reports/close-backup-issue-3.md` | 51 | validation-reports | active | — |

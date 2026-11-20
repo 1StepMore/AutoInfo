@@ -14,9 +14,11 @@ Exit codes mirror ``scripts/quality_gate.py``: 0 = every artifact passed,
 function directly).
 
 Format detection is by extension, with one deliberate exception: audiobook
-artifacts in this repo are chaptered MP3s that carry a ``.zip`` extension
-(issue D12), so a ``.zip`` is classified by its magic bytes rather than its
-name.  A genuine ZIP is still supported for any future ``zip_b64`` writer.
+artifacts are ZIP bundles of chapter MP3s, but earlier runs wrote the single
+chaptered MP3 under the ``.zip`` name (D12/#901), so a ``.zip`` is classified by
+its magic bytes rather than its name.  ``check_audiobook()`` then also asserts
+that the bytes agree with the suffix, so the mismatched-payload defect fails
+instead of sneaking through the magic dispatch.
 """
 
 from __future__ import annotations
@@ -316,6 +318,20 @@ def check_audiobook(path: Path) -> dict[str, dict[str, Any]]:
         checks["magic"] = _check(
             False, f"unexpected magic={magic.hex()}; expected ID3, MPEG frame sync, or PK"
         )
+
+    # An mp3 renamed to .zip (or a zip renamed to .mp3) still takes the branch
+    # above, so without this the "wrong payload for the suffix" defect (#901)
+    # passed as green.
+    suffix = path.suffix.lower()
+    detected = (
+        "zip"
+        if magic.startswith(b"PK\x03\x04")
+        else ("mp3" if (magic.startswith(b"ID3") or is_frame_sync) else "unknown")
+    )
+    checks["extension_matches_content"] = _check(
+        suffix in (".mp3", ".zip") and detected == suffix.lstrip("."),
+        f"suffix={suffix} content={detected}",
+    )
     return checks
 
 

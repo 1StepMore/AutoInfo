@@ -553,6 +553,11 @@ def _decode_video(content: str, target: Path) -> None:
         video_path = blob.get("video_path")
         if isinstance(video_path, str) and os.path.isfile(video_path):
             shutil.copy2(video_path, target)
+            # The render audit travels with the artifact; its absence is judged by
+            # the gate, not raised here (AutoInfo#895).
+            sidecar = Path(str(video_path) + ".render-audit.json")
+            if sidecar.is_file():
+                shutil.copy2(sidecar, Path(str(target) + ".render-audit.json"))
             return
         raise VideoUnavailableError(
             f"video generator returned no usable video_path (status={blob.get('status')!r})"

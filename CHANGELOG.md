@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.1](https://github.com/1StepMore/AutoInfo/compare/v1.35.0...v1.35.1) (2026-11-20)
+
+
+### Miscellaneous Chores
+
+* **goals:** register P3 backlog burn-down with a mechanical checker ([#911](https://github.com/1StepMore/AutoInfo/issues/911)) ([1fe71bb](https://github.com/1StepMore/AutoInfo/commit/1fe71bb94700e9b443ee4f6efdcf699c8e317e9b))
+
 ## [1.35.0](https://github.com/1StepMore/AutoInfo/compare/v1.34.1...v1.35.0) (2026-11-20)
 
 

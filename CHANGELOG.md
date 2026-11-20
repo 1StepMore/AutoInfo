@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.3](https://github.com/1StepMore/AutoInfo/compare/v1.35.2...v1.35.3) (2026-11-20)
+
+
+### Miscellaneous Chores
+
+* **ci:** make the gh-aw workflow sources strictly compilable (lock landing held for the engine secret) ([#916](https://github.com/1StepMore/AutoInfo/issues/916)) ([b6bd74f](https://github.com/1StepMore/AutoInfo/commit/b6bd74faa0d18be76bdc4cbbfb8880e02640b7a8))
+
 ## [1.35.2](https://github.com/1StepMore/AutoInfo/compare/v1.35.1...v1.35.2) (2026-11-20)
 
 

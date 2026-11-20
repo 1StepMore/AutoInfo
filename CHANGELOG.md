@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.34.0](https://github.com/1StepMore/AutoInfo/compare/v1.33.14...v1.34.0) (2026-11-20)
+
+
+### Features
+
+* **gates:** require a render audit for video artifacts (AutoInfo[#895](https://github.com/1StepMore/AutoInfo/issues/895)) ([#898](https://github.com/1StepMore/AutoInfo/issues/898)) ([27978e3](https://github.com/1StepMore/AutoInfo/commit/27978e302c89e0f4dfcd95de8a629b3ce706d6fc))
+
 ## [1.33.14](https://github.com/1StepMore/AutoInfo/compare/v1.33.13...v1.33.14) (2026-11-20)
 
 

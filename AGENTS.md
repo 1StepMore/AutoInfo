@@ -171,7 +171,7 @@ All tools return `{success: true, data}` 或 `{success: false, error: {code, mes
 `src/`, `tests/`, `docs/`, repo metadata are **source** — the only source of truth for
 behavior. `collections/`, `knowledge/`, `outputs/`, `mvp/`, `autoinfo.db`, `logs/`,
 `.autoinfo/`, `.omo/` are gitignored **runtime state**. Never hand-edit runtime artifacts
-to fix behavior — fix the source. Full per-path table: `docs/dev/repo-map.md`.
+to fix behavior — fix the source. Full per-path table: `docs/dev/repo-map.md`. **交叉审产物中转 + 真假模型（MUST）**：要交叉审的产物必须入库走 git（`docs/dev/validation-evidence/` + `manifest.json`；`outputs/` 只是本机临时区、不是交付通道），`quality.verdict=pass` 必须带存在的 evidence；质量判定必须真模型，fake 只准用于链路·契约·覆盖（记 `confidence=mock`）；没 key ⇒ **先用本 harness 自带默认模型 → 再用本机已有 OpenAI 兼容端点（只读） → 都不行则问屏幕前的人类**（`blocked:no-llm-key`，写清 base_url + key + 模型名；免不免费由他定，不许硬编码厂商/免费额度）。细则：`docs/dev/cross-audit-evidence.md`；自检 `python3 99-Tools/check_evidence_committed.py <repo>` 例外（仓外工具，按 workspace 根路径跑）。
 
 ## Backlog Priority Triggers
 

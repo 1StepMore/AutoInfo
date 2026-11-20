@@ -40,8 +40,10 @@ jobs:
       # asserts the verdict mechanism, not that CI owns a key.
       - name: Run agent_ready (expect exit 2 on keyless CI)
         run: |
+          set +e
           python scripts/agent_ready.py --json > agent-ready.json
           code=$?
+          set -e
           python -c "import json,sys; r=json.load(open('agent-ready.json',encoding='utf-8')); assert r['schema']=='agent-ready/v1'; print('contract ok, next_action:', r['next_action'])"
           if [ "$code" != "0" ] && [ "$code" != "2" ]; then echo "unexpected exit $code (want 0 or 2)"; exit 1; fi
           echo "agent_ready exit=$code (0=green, 2=honest no-llm-key)"

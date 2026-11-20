@@ -212,6 +212,56 @@ def test_c3_ai_commercial_bilingual_exempt() -> None:
     assert qg.find_cjk_residue(text, "cross-domain") == []
 
 
+def test_c3_mixed_corpus_domains_exempt() -> None:
+    # Issue #865: tech-ai-developer / gaming / legal-compliance configure
+    # Chinese sources by design (juejin/qbitai/infoq-cn/Bilibili; gcores/
+    # yystv; thepaper-legal) — same category as ai-commercial (#190/193):
+    # CJK in their products is corpus faithfully summarized, not residue.
+    text = "中文字符残留" * 4  # well above threshold
+    for domain in ("tech-ai-developer", "gaming", "legal-compliance"):
+        assert qg.find_cjk_residue(text, domain) == [], domain
+
+
+def test_domain_language_config_first(tmp_path: Path) -> None:
+    # Issue #865: a runtime default_language declaration wins over the seed
+    # value (mirrors the output layer's resolution chain and the issue #8
+    # distinction between "key present" and "key missing").
+    (tmp_path / ".autoinfo").mkdir()
+    (tmp_path / ".autoinfo" / "config.yaml").write_text(
+        "domains:\n  - name: medical-research\n    default_language: zh\n",
+        encoding="utf-8",
+    )
+    assert qg._domain_language("medical-research", root=tmp_path) == "zh"
+
+
+def test_domain_language_seed_fallback(tmp_path: Path) -> None:
+    # No config declaration -> the demo-domain seed default_language applies.
+    seed_dir = tmp_path / "src" / "autoinfo" / "data" / "domains" / "demo-zh"
+    seed_dir.mkdir(parents=True)
+    (seed_dir / "sources.yaml").write_text("default_language: zh\nsources: []\n", encoding="utf-8")
+    assert qg._domain_language("demo-zh", root=tmp_path) == "zh"
+
+
+def test_domain_language_unknown_is_empty(tmp_path: Path) -> None:
+    # Neither config nor seed -> empty (strictness: C3 still applies).
+    assert qg._domain_language("no-such-domain", root=tmp_path) == ""
+
+
+def test_c3_declared_cjk_language_exempt(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Issue #865: a domain whose declared language resolves to a CJK-script
+    # corpus language is exempt without a static-list edit.
+    monkeypatch.setattr(qg, "_domain_language", lambda domain, root=None: "zh")
+    assert qg.find_cjk_residue("中文字符残留" * 4, "any-domain") == []
+
+
+def test_c3_unknown_language_still_flags_cjk(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Strictness preserved: a domain that is neither statically exempt nor
+    # declared CJK-corpus still flags CJK residue above threshold.
+    monkeypatch.setattr(qg, "_domain_language", lambda domain, root=None: "en")
+    text = "English product with 中文残留内容混入." * 4
+    assert qg.find_cjk_residue(text, "some-unknown-domain") != []
+
+
 # ---------------------------------------------------------------------------
 # C4 truncated lines
 # ---------------------------------------------------------------------------

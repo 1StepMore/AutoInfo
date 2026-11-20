@@ -16,7 +16,10 @@ Layers are cumulative and monotone:
   L2 structural pass *is* the acceptance; for documents L3 additionally requires
   a non-empty artifact.  In practice both collapse to ``L2 and size > 0``; a
   row may never report L3 when L1 or L2 failed (``compute_layers`` is the single
-  enforcement point).
+  enforcement point).  For video, L3 additionally requires
+  ``<artifact>.render-audit.json`` proving the frames are rendered content —
+  a structurally valid artifact whose pixels are unrendered template source
+  cannot reach L3.
 
 Retry policy (this driver's own — the generators expose no override, and T17
 owns that public-API decision): **one attempt per cell, one retry only for
@@ -550,6 +553,11 @@ def _decode_video(content: str, target: Path) -> None:
         video_path = blob.get("video_path")
         if isinstance(video_path, str) and os.path.isfile(video_path):
             shutil.copy2(video_path, target)
+            # The render audit travels with the artifact; its absence is judged by
+            # the gate, not raised here (AutoInfo#895).
+            sidecar = Path(str(video_path) + ".render-audit.json")
+            if sidecar.is_file():
+                shutil.copy2(sidecar, Path(str(target) + ".render-audit.json"))
             return
         raise VideoUnavailableError(
             f"video generator returned no usable video_path (status={blob.get('status')!r})"

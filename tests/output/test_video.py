@@ -8,6 +8,7 @@ separately in ``test_video_integration.py``.
 
 from __future__ import annotations
 
+import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -19,6 +20,7 @@ from autoinfo.output.video import (
     VideoConfig,
     _pick_layouts,
     _split_narration_into_scenes,
+    _write_scene_composition,
     generate_audio_narration,
     generate_hyperframes_project,
     select_theme,
@@ -290,6 +292,44 @@ class TestGenerateHyperframesProject:
         assert len(meta["scenes"]) == 2
         assert meta["scenes"][0]["start"] == 0
         assert meta["scenes"][1]["start"] > 0
+
+
+class TestRenderAudit:
+    """Rendered compositions carry a machine-checkable audit (issue #895)."""
+
+    def test_project_writes_render_audit(self, tmp_path: str) -> None:
+        """A healthy project writes render-audit.json with clean counters."""
+        project = generate_hyperframes_project(
+            title="Audit",
+            sections=[
+                {"heading": "One", "body": "First body"},
+                {"heading": "Two", "body": "Second body"},
+            ],
+            output_dir=str(tmp_path),
+        )
+        audit_path = os.path.join(project, "render-audit.json")
+        assert os.path.isfile(audit_path)
+        with open(audit_path, encoding="utf-8") as f:
+            audit = json.load(f)
+        assert audit["unresolved_template_tokens"] == 0
+        assert audit["text_chars"] > 0
+        assert len(audit["scenes"]) == 2
+        assert audit["text_chars"] == sum(s["text_chars"] for s in audit["scenes"])
+
+    def test_unrendered_template_raises(self, tmp_path: str) -> None:
+        """Literal Jinja source in a composition fails the render immediately."""
+        compositions = os.path.join(str(tmp_path), "compositions")
+        os.makedirs(compositions)
+        scene = {"duration": 2.0, "heading": "Heading", "body": "Body"}
+        with pytest.raises(RuntimeError, match="unrendered template tokens"):
+            _write_scene_composition(
+                compositions,
+                1,
+                scene,
+                _LAYOUT_ORDER[0],
+                select_theme(VideoConfig()),
+                layout_html="{{ heading }}",
+            )
 
 
 class TestLayoutInnerTemplateRendering:

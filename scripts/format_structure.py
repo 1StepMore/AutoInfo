@@ -75,6 +75,7 @@ MIN_EPUB_TEXT = 200
 MIN_HTML_TEXT = 500
 MIN_MARKDOWN_WORDS = 200
 MIN_HTML_HEADINGS = 3
+MIN_VIDEO_TEXT_CHARS = 200
 FFPROBE_TIMEOUT = 60
 ALLOWED_PIX_FMTS = {"yuv420p", "yuvj420p"}
 
@@ -338,6 +339,42 @@ def _fps(value: Any) -> float:
         return 0.0
 
 
+def _check_render_audit(path: Path) -> dict[str, Any]:
+    """Prove the video pixels came from rendered content, not template source.
+
+    The sidecar is written by the video pipeline at render time (issue #895).
+    Structural checks alone cannot tell a real scene from a frame full of
+    unrendered Jinja source.
+    """
+    sidecar = path.with_name(path.name + ".render-audit.json")
+    if not sidecar.is_file():
+        return _check(
+            False, "render audit sidecar missing (cannot prove rendered content)"
+        )
+    try:
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return _check(False, f"render audit unreadable: {exc}")
+    if not isinstance(data, dict):
+        return _check(False, "render audit is not a JSON object")
+    try:
+        tokens = int(data.get("unresolved_template_tokens", 0))
+        text_chars = int(data.get("text_chars", 0))
+    except (TypeError, ValueError):
+        return _check(False, "render audit has non-numeric counters")
+    if tokens > 0:
+        return _check(
+            False, f"unresolved_template_tokens={tokens} (unrendered template source)"
+        )
+    if text_chars < MIN_VIDEO_TEXT_CHARS:
+        return _check(
+            False, f"text_chars={text_chars} (need >= {MIN_VIDEO_TEXT_CHARS})"
+        )
+    scenes = data.get("scenes")
+    scene_count = len(scenes) if isinstance(scenes, list) else 0
+    return _check(True, f"unresolved=0 text_chars={text_chars} scenes={scene_count}")
+
+
 def check_video(path: Path) -> dict[str, dict[str, Any]]:
     checks: dict[str, dict[str, Any]] = {}
     size = path.stat().st_size
@@ -348,6 +385,7 @@ def check_video(path: Path) -> dict[str, dict[str, Any]]:
     probe, error = _run_ffprobe(path)
     if probe is None:
         checks["ffprobe"] = _check(False, error)
+        checks["render_audit"] = _check_render_audit(path)
         return checks
 
     streams = probe.get("streams") or []
@@ -355,6 +393,7 @@ def check_video(path: Path) -> dict[str, dict[str, Any]]:
     checks["ffprobe"] = _check(True, f"{len(video_streams)} video stream(s)")
     checks["video_stream"] = _check(bool(video_streams), f"video streams={len(video_streams)}")
     if not video_streams:
+        checks["render_audit"] = _check_render_audit(path)
         return checks
     stream = video_streams[0]
 
@@ -380,6 +419,7 @@ def check_video(path: Path) -> dict[str, dict[str, Any]]:
     checks["pix_fmt"] = _check(
         pix_fmt in ALLOWED_PIX_FMTS, f"pix_fmt={pix_fmt!r} (allowed {sorted(ALLOWED_PIX_FMTS)})"
     )
+    checks["render_audit"] = _check_render_audit(path)
     return checks
 
 

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 from datetime import datetime, timezone
 from typing import Any, cast
@@ -267,6 +268,13 @@ def _render_video_scaffold(
         output_path=output_path,
         config=vcfg,
     )
+
+    # Copy the render audit next to the MP4 (issue #895).  A missing audit is
+    # not an exception here — the L2 gate reports it as a failed check.
+    audit_src = os.path.join(output_dir, "render-audit.json")
+    audit_dst = video_path + ".render-audit.json"
+    if os.path.isfile(audit_src) and not os.path.isfile(audit_dst):
+        shutil.copy2(audit_src, audit_dst)
 
     return json.dumps(
         {

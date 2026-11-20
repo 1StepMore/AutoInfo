@@ -17,11 +17,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Callable, cast
 
 logger = logging.getLogger("autoinfo.output")
@@ -420,14 +422,37 @@ def _render_inline(template_str: str, **ctx: Any) -> str:
     return cast(str, _jinja_env().from_string(template_str).render(**ctx))
 
 
+_SCRIPT_BLOCK = re.compile(r"<script\b[^>]*>.*?</script>", re.DOTALL | re.IGNORECASE)
+_STYLE_BLOCK = re.compile(r"<style\b[^>]*>.*?</style>", re.DOTALL | re.IGNORECASE)
+_HTML_TAG = re.compile(r"<[^>]+>")
+_WHITESPACE = re.compile(r"\s+")
+
+UNRESOLVED_TEMPLATE_TOKENS = ("{{", "{%", "}}", "%}")
+
+
+def _audit_rendered_html(html: str) -> tuple[int, int]:
+    """Return ``(unresolved_template_tokens, text_chars)`` for rendered HTML."""
+    unresolved = sum(html.count(token) for token in UNRESOLVED_TEMPLATE_TOKENS)
+    visible = _SCRIPT_BLOCK.sub("", html)
+    visible = _STYLE_BLOCK.sub("", visible)
+    visible = _HTML_TAG.sub("", visible)
+    text_chars = len(_WHITESPACE.sub("", visible))
+    return unresolved, text_chars
+
+
 def _write_scene_composition(
     compositions_dir: str,
     index: int,
     scene: dict[str, Any],
     layout_name: str,
     theme: dict[str, Any],
-) -> None:
-    """Write one scene composition HTML (layout + GSAP timeline)."""
+    layout_html: str | None = None,
+) -> dict[str, Any]:
+    """Write one scene composition HTML (layout + GSAP timeline).
+
+    Returns a render-audit record for the scene.  ``layout_html`` may be
+    supplied to exercise unrendered-template detection (issue #895).
+    """
     layout = LAYOUTS[layout_name]
     ctx: dict[str, Any] = {
         "theme": theme,
@@ -443,7 +468,8 @@ def _write_scene_composition(
     }
     # The layout html is itself a Jinja template; render it before passing it
     # to scene.html.j2 (Jinja does not re-render data inserted via ``| safe``).
-    layout_html = _render_inline(layout["html"], **ctx)
+    if layout_html is None:
+        layout_html = _render_inline(layout["html"], **ctx)
     html = _render_jinja(
         "scene.html.j2",
         **ctx,
@@ -453,9 +479,20 @@ def _write_scene_composition(
             "animations": layout["animations"],
         },
     )
+    unresolved, text_chars = _audit_rendered_html(html)
+    if unresolved:
+        raise RuntimeError(
+            f"unrendered template tokens in compositions: {unresolved} (scene {index})"
+        )
     path = os.path.join(compositions_dir, f"{index:02d}-scene.html")
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
+    return {
+        "index": index,
+        "layout": layout_name,
+        "unresolved_template_tokens": unresolved,
+        "text_chars": text_chars,
+    }
 
 
 def generate_hyperframes_project(
@@ -528,8 +565,28 @@ def generate_hyperframes_project(
     # --- compositions/ ---
     compositions_dir = os.path.join(output_dir, "compositions")
     os.makedirs(compositions_dir, exist_ok=True)
+    scene_audits: list[dict[str, Any]] = []
     for i, scene in enumerate(scenes, start=1):
-        _write_scene_composition(compositions_dir, i, scene, layout_names[i - 1], theme)
+        scene_audits.append(
+            _write_scene_composition(compositions_dir, i, scene, layout_names[i - 1], theme)
+        )
+
+    # --- render-audit.json (proves the compositions are rendered content) ---
+    unresolved = sum(a["unresolved_template_tokens"] for a in scene_audits)
+    if unresolved:
+        first = next(a for a in scene_audits if a["unresolved_template_tokens"])
+        raise RuntimeError(
+            f"unrendered template tokens in compositions: "
+            f"{first['unresolved_template_tokens']} (scene {first['index']})"
+        )
+    audit = {
+        "scenes": scene_audits,
+        "unresolved_template_tokens": unresolved,
+        "text_chars": sum(a["text_chars"] for a in scene_audits),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(os.path.join(output_dir, "render-audit.json"), "w", encoding="utf-8") as f:
+        json.dump(audit, f, indent=2)
 
     # --- index.html (root composition + audio track + scene hosts) ---
     index_html = _render_jinja(
@@ -738,6 +795,12 @@ def generate_report_video(
         if output_path is None:
             output_path = os.path.join(work_dir, f"autoinfo_video_{int(time.time())}.mp4")
         render_hyperframes(project_dir, output_path, quality=cfg.quality)
+
+        # Sidecar the render audit next to the MP4 so gates can prove the
+        # pixels came from rendered content, not unrendered template source.
+        audit_src = os.path.join(project_dir, "render-audit.json")
+        if os.path.isfile(audit_src):
+            shutil.copy2(audit_src, output_path + ".render-audit.json")
 
         return os.path.abspath(output_path)
     except Exception:

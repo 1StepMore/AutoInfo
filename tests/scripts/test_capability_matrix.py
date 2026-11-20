@@ -386,3 +386,45 @@ def test_repo_relative_keeps_published_paths_portable() -> None:
 
     outside = Path("/tmp/elsewhere/x.md")
     assert cm.repo_relative(outside) == "/tmp/elsewhere/x.md"
+
+
+def test_write_video_carries_the_render_audit_sidecar(tmp_path: Path) -> None:
+    """The video artifact must not lose the render audit on its way to outputs (#895)."""
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"fake mp4")
+    audit = Path(str(source) + ".render-audit.json")
+    audit.write_text(json.dumps({"rendered_frames": 3}), encoding="utf-8")
+
+    target = cm.write_artifact(
+        artifact_root=tmp_path / "artifacts",
+        domain="demo",
+        product="report",
+        fmt="video",
+        content=json.dumps({"status": "success", "video_path": str(source)}),
+        force=False,
+    )
+
+    assert target.is_file()
+    sidecar = Path(str(target) + ".render-audit.json")
+    assert sidecar.is_file()
+    assert json.loads(sidecar.read_text(encoding="utf-8")) == {"rendered_frames": 3}
+
+
+def test_write_video_without_a_sidecar_still_copies_the_mp4(tmp_path: Path) -> None:
+    """A missing sidecar is the gate's call, never an exception here (#895)."""
+
+    source = tmp_path / "bare.mp4"
+    source.write_bytes(b"fake mp4")
+
+    target = cm.write_artifact(
+        artifact_root=tmp_path / "artifacts",
+        domain="demo",
+        product="report",
+        fmt="video",
+        content=json.dumps({"status": "success", "video_path": str(source)}),
+        force=False,
+    )
+
+    assert target.read_bytes() == b"fake mp4"
+    assert not Path(str(target) + ".render-audit.json").exists()

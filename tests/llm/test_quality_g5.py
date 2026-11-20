@@ -526,6 +526,16 @@ class TestG5PipelineIntegration:
                 "autoinfo.process.llm_judge",
                 side_effect=RuntimeError("G5 crashed"),
             ),
+            # Issue #849 (direction 1): the fallback single-LLM-check path
+            # instantiates G5TranslationAccuracy directly — with an ambient
+            # AUTOINFO_LLM_API_KEY it made a REAL network call and returned
+            # faithful=False instead of the expected fallback-failure
+            # (faithful=None).  Patch the class so the fallback failure path
+            # is deterministic and hermetic on keyed harnesses.
+            patch(
+                "autoinfo.process.G5TranslationAccuracy",
+                side_effect=RuntimeError("fallback LLM unavailable"),
+            ),
             patch("autoinfo.process.KBStore", return_value=mock_store),
         ):
             result = run_processing("medical-research", check_translation=True)

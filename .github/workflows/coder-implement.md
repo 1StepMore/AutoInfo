@@ -1,9 +1,8 @@
-<!--
-结构示意 · 待编译 · 未装 gh-aw CLI · 不得直接执行（D3 降级，Owner 决策 7）
-依据：02 稿 §4.4 + A6（M1：draft 依据挂 gh-aw create-pull-request.draft 默认 policy，
-不挂 GitHub 博客）；R-1 逐键以官方当前版为准，落地前必须 `gh aw compile --strict`。
--->
 ---
+# 结构示意 · 待编译（D3 降级解除记录，Owner 决策 7 / A6 / R-1）：本文件由
+# gh-aw 编译生成 .lock.yml 后生效；语法以官方 Frontmatter Reference 当前版为准，
+# 落地必须 gh aw compile --strict 校验。
+# M1：draft 依据挂 create-pull-request.draft 默认 policy，不挂 GitHub 博客。
 on:
   issues:
     types: [labeled]

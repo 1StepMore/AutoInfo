@@ -527,3 +527,57 @@ def test_real_zip_audiobook_member_is_parsed(
     assert exit_code == 0
     assert result["passed"] is True, result
     assert any(name.startswith("member_") for name in result["checks"])
+
+
+def test_audio_without_narration_audit_is_a_pass(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Legacy artifacts predate the audit; a missing sidecar is not a failure (#900)."""
+
+    path = tmp_path / "legacy.mp3"
+    path.write_bytes(_id3_with_title("Legacy") + _mp3_seconds(6.0))
+
+    exit_code, result = _run_json(capsys, path)
+
+    assert exit_code == 0
+    check = result["checks"]["narration_audit"]
+    assert check["passed"] is True
+    assert "legacy artifact" in check["detail"]
+
+
+def test_audio_narration_audit_with_spoken_urls_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A non-zero token count means an address reached the listener (#900)."""
+
+    path = tmp_path / "spoken.mp3"
+    path.write_bytes(_id3_with_title("Spoken") + _mp3_seconds(6.0))
+    Path(str(path) + ".narration-audit.json").write_text(
+        json.dumps({"spoken_url_tokens": 3, "text_chars": 120, "sample_head": "x"}),
+        encoding="utf-8",
+    )
+
+    exit_code, result = _run_json(capsys, path)
+
+    assert exit_code == 1
+    check = result["checks"]["narration_audit"]
+    assert check["passed"] is False
+    assert "spoken_url_tokens=3" in check["detail"]
+
+
+def test_audio_narration_audit_with_zero_tokens_passes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A clean audit proves the address was never spoken (#900)."""
+
+    path = tmp_path / "clean.mp3"
+    path.write_bytes(_id3_with_title("Clean") + _mp3_seconds(6.0))
+    Path(str(path) + ".narration-audit.json").write_text(
+        json.dumps({"spoken_url_tokens": 0, "text_chars": 120, "sample_head": "x"}),
+        encoding="utf-8",
+    )
+
+    exit_code, result = _run_json(capsys, path)
+
+    assert exit_code == 0
+    assert result["checks"]["narration_audit"]["passed"] is True

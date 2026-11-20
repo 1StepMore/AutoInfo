@@ -175,6 +175,32 @@ def _audio_checks(audio: Any, *, require_id3: bool) -> dict[str, dict[str, Any]]
     return checks
 
 
+def _check_narration_audit(path: Path) -> dict[str, Any]:
+    """Prove the spoken text never contained an address (issue #900).
+
+    The sidecar is written by the audio/audiobook producer when it can hand
+    the audit over.  A missing sidecar is deliberately NOT a failure here —
+    unlike the video render audit (#895), the six artifacts produced before
+    the audit existed carry none, and this gate must not turn them all red.
+    """
+    sidecar = path.with_name(path.name + ".narration-audit.json")
+    if not sidecar.is_file():
+        return _check(True, "no narration audit sidecar (legacy artifact)")
+    try:
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return _check(False, f"narration audit unreadable: {exc}")
+    if not isinstance(data, dict):
+        return _check(False, "narration audit is not a JSON object")
+    try:
+        tokens = int(data.get("spoken_url_tokens", 0))
+    except (TypeError, ValueError):
+        return _check(False, "narration audit has a non-numeric spoken_url_tokens")
+    if tokens > 0:
+        return _check(False, f"spoken_url_tokens={tokens} (addresses are read aloud)")
+    return _check(True, "spoken_url_tokens=0")
+
+
 def check_audio(path: Path) -> dict[str, dict[str, Any]]:
     checks: dict[str, dict[str, Any]] = {}
     size = path.stat().st_size
@@ -214,6 +240,7 @@ def check_audio(path: Path) -> dict[str, dict[str, Any]]:
             duration > MIN_AUDIOBOOK_DURATION,
             f"format.duration={duration:.3f}s (need > {MIN_AUDIOBOOK_DURATION}s)",
         )
+    checks["narration_audit"] = _check_narration_audit(path)
     return checks
 
 
@@ -318,7 +345,6 @@ def check_audiobook(path: Path) -> dict[str, dict[str, Any]]:
         checks["magic"] = _check(
             False, f"unexpected magic={magic.hex()}; expected ID3, MPEG frame sync, or PK"
         )
-
     # An mp3 renamed to .zip (or a zip renamed to .mp3) still takes the branch
     # above, so without this the "wrong payload for the suffix" defect (#901)
     # passed as green.
@@ -332,6 +358,7 @@ def check_audiobook(path: Path) -> dict[str, dict[str, Any]]:
         suffix in (".mp3", ".zip") and detected == suffix.lstrip("."),
         f"suffix={suffix} content={detected}",
     )
+    checks["narration_audit"] = _check_narration_audit(path)
     return checks
 
 

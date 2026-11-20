@@ -2752,6 +2752,26 @@ def _select_story_set(
     return ordered, (date_from, date_to), period_was_empty
 
 
+def _publish_narration_audit(
+    audit: dict[str, Any],
+    sink: dict[str, Any] | None,
+    *,
+    product: str,
+) -> None:
+    """Surface a narration audit (issue #900) without changing return values.
+
+    The audit proves what the TTS engine was actually handed.  A non-zero
+    ``spoken_url_tokens`` means an address was read aloud; log it so the
+    producer is never silent about it.  *sink* is the caller-owned dict the
+    audit is forwarded to (``None`` when the caller cannot carry it).
+    """
+    tokens = int(audit.get("spoken_url_tokens", 0) or 0)
+    if tokens:
+        logger.warning("audio.spoken_url_tokens=%d (product=%s)", tokens, product)
+    if sink is not None:
+        sink.update(audit)
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -2777,6 +2797,7 @@ def generate_digest(
     *,
     max_synthesis_attempts: int = 2,
     retry_backoff_seconds: float = 0.0,
+    narration_audit_out: dict[str, Any] | None = None,
 ) -> str | DeliveryOutput:
     """Generate a digest of KB entries for *domain* over the given *period*.
 
@@ -2848,6 +2869,11 @@ def generate_digest(
         (:func:`_normalize_digest_product_context`), sorted by (has non-empty
         summary desc, ``relevance_score`` desc) — identical to the report
         path (issue #11).
+    narration_audit_out:
+        Optional dict filled with the narration audit for ``audio`` /
+        ``audiobook`` formats (issue #900): ``spoken_url_tokens``,
+        ``text_chars`` and ``sample_head`` of the text handed to TTS.
+        Ignored for every other format; the return type never changes.
 
     Returns
     -------
@@ -3370,8 +3396,12 @@ def generate_digest(
         rendered = _render_digest_html(context)
     elif format == "audio":
         markdown_text = _render_markdown(context)
-        mp3_bytes = _render_audio(markdown_text)
+        narration_audit: dict[str, Any] = {}
+        mp3_bytes = _render_audio(markdown_text, audit_out=narration_audit)
         rendered = base64.b64encode(mp3_bytes).decode("ascii")
+        _publish_narration_audit(
+            narration_audit, narration_audit_out, product="digest-audio"
+        )
     elif format in ("epub", "audiobook"):
         from autoinfo.output.ebook import render_audiobook, render_epub  # noqa: PLC0415
 
@@ -3385,11 +3415,18 @@ def generate_digest(
             )
             rendered = ebook_result["data_b64"]
         else:
-            ebook_result = render_audiobook(ebook_chapters)
+            ebook_result = render_audiobook(
+                ebook_chapters, audit_out=narration_audit_out
+            )
             # AUDIOBOOK_ARTIFACT = the ZIP bundle of chapter MP3s (see #901):
             # the matrix/coverage mappings say .zip and check_audiobook_zip()
             # validates per-chapter ID3 inside it.
             rendered = ebook_result["zip_b64"]
+            _publish_narration_audit(
+                ebook_result.get("narration_audit") or {},
+                None,
+                product="digest-audiobook",
+            )
     else:
         rendered = _render_markdown(context)
 
@@ -3516,6 +3553,7 @@ def generate_report(
     *,
     max_synthesis_attempts: int = _RETRY_MAX_ATTEMPTS,
     retry_backoff_seconds: float = _RETRY_BACKOFF_SECONDS,
+    narration_audit_out: dict[str, Any] | None = None,
 ) -> str | DeliveryOutput:
     """Generate a structured report for the given *domain* (or *domains*).
 
@@ -3587,6 +3625,11 @@ def generate_report(
         context-build site, so title-only entries (empty summary, e.g.
         ProductHunt) de-prioritize.  All render formats (markdown/html/json/
         agent/audio/epub/video) are capped uniformly (issue #11).
+    narration_audit_out:
+        Optional dict filled with the narration audit for ``audio`` /
+        ``audiobook`` formats (issue #900): ``spoken_url_tokens``,
+        ``text_chars`` and ``sample_head`` of the text handed to TTS.
+        Ignored for every other format; the return type never changes.
 
     Returns
     -------
@@ -3802,8 +3845,12 @@ def generate_report(
             rendered = _render_empty_report_html(report_title_domain)
         elif format == "audio":
             empty_md = _render_empty_report(report_title_domain)
-            mp3_bytes = _render_audio(empty_md)
+            empty_audit: dict[str, Any] = {}
+            mp3_bytes = _render_audio(empty_md, audit_out=empty_audit)
             rendered = base64.b64encode(mp3_bytes).decode("ascii")
+            _publish_narration_audit(
+                empty_audit, narration_audit_out, product="report-audio"
+            )
         elif format in ("epub", "audiobook"):
             from autoinfo.output.ebook import render_audiobook, render_epub  # noqa: PLC0415
 
@@ -3822,9 +3869,16 @@ def generate_report(
                 )
                 rendered = ebook_result["data_b64"]
             else:
-                ebook_result = render_audiobook(empty_chapters)
+                ebook_result = render_audiobook(
+                    empty_chapters, audit_out=narration_audit_out
+                )
                 # AUDIOBOOK_ARTIFACT = the ZIP bundle of chapter MP3s (see #901).
                 rendered = ebook_result["zip_b64"]
+                _publish_narration_audit(
+                    ebook_result.get("narration_audit") or {},
+                    None,
+                    product="report-audiobook",
+                )
         elif format == "video":
             rendered = _render_video_scaffold({}, report_title_domain, sections=None)
         else:
@@ -4248,8 +4302,12 @@ def generate_report(
         rendered = _render_report_html(report_data, period=period)
     elif format == "audio":
         markdown_text = _render_report_template(report_data, source_tier_badge=source_tier_badge)
-        mp3_bytes = _render_audio(markdown_text)
+        report_audit: dict[str, Any] = {}
+        mp3_bytes = _render_audio(markdown_text, audit_out=report_audit)
         rendered = base64.b64encode(mp3_bytes).decode("ascii")
+        _publish_narration_audit(
+            report_audit, narration_audit_out, product="report-audio"
+        )
     elif format in ("epub", "audiobook"):
         from autoinfo.output.ebook import render_audiobook, render_epub  # noqa: PLC0415
 
@@ -4273,9 +4331,16 @@ def generate_report(
             )
             rendered = ebook_result["data_b64"]
         else:
-            ebook_result = render_audiobook(report_chapters)
+            ebook_result = render_audiobook(
+                report_chapters, audit_out=narration_audit_out
+            )
             # AUDIOBOOK_ARTIFACT = the ZIP bundle of chapter MP3s (see #901).
             rendered = ebook_result["zip_b64"]
+            _publish_narration_audit(
+                ebook_result.get("narration_audit") or {},
+                None,
+                product="report-audiobook",
+            )
     elif format == "video":
         report_sections: list[dict[str, str]] = []
         for section in report_data.sections:

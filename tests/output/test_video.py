@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from autoinfo.output.video import (
+    _LAYOUT_ORDER,
     LAYOUTS,
     VideoConfig,
     _pick_layouts,
@@ -289,3 +290,74 @@ class TestGenerateHyperframesProject:
         assert len(meta["scenes"]) == 2
         assert meta["scenes"][0]["start"] == 0
         assert meta["scenes"][1]["start"] > 0
+
+
+class TestLayoutInnerTemplateRendering:
+    """Inner layout Jinja templates must be rendered before scaffolding (#821)."""
+
+    @pytest.fixture(scope="class")
+    def six_scene_project(self, tmp_path_factory: pytest.TempPathFactory) -> tuple[str, list[dict[str, str]]]:
+        """Generate one project whose six scenes cover all six layouts."""
+        output_dir = tmp_path_factory.mktemp("video-six-scenes")
+        sections = [
+            {"heading": f"Heading Number {i}", "body": f"Body Number {i}"}
+            for i in range(1, len(LAYOUTS) + 1)
+        ]
+        project = generate_hyperframes_project(
+            title="Six Scenes",
+            sections=sections,
+            output_dir=str(output_dir),
+        )
+        return project, sections
+
+    def test_all_scene_compositions_have_no_unrendered_jinja(
+        self, six_scene_project: tuple[str, list[dict[str, str]]]
+    ) -> None:
+        """Every composition is fully rendered, with its heading as real text."""
+        project, sections = six_scene_project
+        compositions = os.path.join(project, "compositions")
+        files = sorted(
+            os.path.join(compositions, name)
+            for name in os.listdir(compositions)
+            if name.endswith("-scene.html")
+        )
+        assert len(files) == len(sections)
+        for i, path in enumerate(files):
+            with open(path, encoding="utf-8") as f:
+                html = f.read()
+            assert "{{" not in html, path
+            assert "{%" not in html, path
+            assert sections[i]["heading"] in html, path
+
+    @pytest.mark.parametrize(
+        "index,layout_name",
+        list(enumerate(_LAYOUT_ORDER, start=1)),
+        ids=list(_LAYOUT_ORDER),
+    )
+    def test_each_layout_renders_heading(
+        self,
+        six_scene_project: tuple[str, list[dict[str, str]]],
+        layout_name: str,
+        index: int,
+    ) -> None:
+        """All six layouts render without leftover Jinja source."""
+        project, sections = six_scene_project
+        path = os.path.join(project, "compositions", f"{index:02d}-scene.html")
+        with open(path, encoding="utf-8") as f:
+            html = f.read()
+        assert LAYOUTS[layout_name]["label"] in html
+        assert "{{" not in html
+        assert "{%" not in html
+        assert sections[index - 1]["heading"] in html
+
+    def test_heading_is_html_escaped(self, tmp_path: str) -> None:
+        """Dangerous heading markup is escaped, not injected verbatim."""
+        project = generate_hyperframes_project(
+            title="Escaping",
+            sections=[{"heading": "<b>A&B</b>", "body": "Body"}],
+            output_dir=str(tmp_path),
+        )
+        with open(os.path.join(project, "compositions", "01-scene.html"), encoding="utf-8") as f:
+            html = f.read()
+        assert "&lt;b&gt;A&amp;B&lt;/b&gt;" in html
+        assert "<b>" not in html

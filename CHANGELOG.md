@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.13](https://github.com/1StepMore/AutoInfo/compare/v1.33.12...v1.33.13) (2026-11-20)
+
+
+### Documentation
+
+* **validation:** seed cross-audit evidence root ([#882](https://github.com/1StepMore/AutoInfo/issues/882)) ([2da0059](https://github.com/1StepMore/AutoInfo/commit/2da00591051feed55335798cb296067584175ccd))
+
 ## [1.33.12](https://github.com/1StepMore/AutoInfo/compare/v1.33.11...v1.33.12) (2026-11-19)
 
 

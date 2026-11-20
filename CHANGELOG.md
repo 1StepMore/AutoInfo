@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.2](https://github.com/1StepMore/AutoInfo/compare/v1.35.1...v1.35.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb:** sanitize Windows-invalid topic dirs before KB writes ([#908](https://github.com/1StepMore/AutoInfo/issues/908)) ([2385286](https://github.com/1StepMore/AutoInfo/commit/23852860e8c700c4ac5ddbd76080dd5865a487e6)), closes [#862](https://github.com/1StepMore/AutoInfo/issues/862)
+* **output:** persist the audiobook ZIP bundle, not the chaptered MP3 (AutoInfo[#901](https://github.com/1StepMore/AutoInfo/issues/901)) ([#905](https://github.com/1StepMore/AutoInfo/issues/905)) ([34eea31](https://github.com/1StepMore/AutoInfo/commit/34eea316cfb851e5e16432998837e096e51c1f7e))
+
 ## [1.35.1](https://github.com/1StepMore/AutoInfo/compare/v1.35.0...v1.35.1) (2026-11-20)
 
 

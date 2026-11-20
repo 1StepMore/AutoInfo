@@ -24,6 +24,9 @@ import random
 import re
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 from typing import Any, Callable, Optional
 
@@ -1121,6 +1124,76 @@ def _litellm_model_name(raw: str, provider: str) -> str:
     return raw if "/" in raw else f"{provider}/{raw}"
 
 
+# ---------------------------------------------------------------------------
+# Choke-point cost metering (#863)
+# ---------------------------------------------------------------------------
+
+_cost_attributes: ContextVar[dict[str, str]] = ContextVar("autoinfo_cost_attributes", default={})
+"""Per-thread attribution for ``cost_log`` rows (#863) — domain / item_id."""
+
+
+@contextmanager
+def cost_attributes(**attrs: str) -> Iterator[None]:
+    """Attach attribution metadata to every LLM call made inside the block.
+
+    The choke-point metering in :func:`call_with_fallback` reads this
+    per-thread context when writing ``cost_log`` rows, so callers that know
+    their attribution (e.g. the process pipeline's extraction step) keep
+    ``domain`` / ``item_id`` on their cost rows.  Callers that don't set the
+    context are still metered — with empty attribution, which is strictly
+    better than the pre-#863 behavior where the G3 relevance judge and any
+    direct :class:`LLMExtractor` usage were invisible to budget-alert /
+    cost-dashboard entirely.
+    """
+    merged = {**_cost_attributes.get(), **attrs}
+    token = _cost_attributes.set(merged)
+    try:
+        yield
+    finally:
+        _cost_attributes.reset(token)
+
+
+def _log_response_cost(model: str, response: Any) -> None:
+    """Best-effort ``cost_log`` metering at the single LLM choke point (#863).
+
+    Logs one ``llm_tokens`` row per successful provider response that carries
+    integer token counters.  Never raises: metering must not be able to break
+    an LLM call, and MagicMock-style test doubles (whose auto-created
+    ``usage`` attributes are not ints) are skipped by the int guard instead
+    of being logged as garbage.
+    """
+    try:
+        usage = getattr(response, "usage", None)
+        if usage is None and isinstance(response, dict):
+            usage = response.get("usage")
+        if usage is None:
+            return
+        if isinstance(usage, dict):
+            prompt_tokens = usage.get("prompt_tokens")
+            completion_tokens = usage.get("completion_tokens")
+        else:
+            prompt_tokens = getattr(usage, "prompt_tokens", None)
+            completion_tokens = getattr(usage, "completion_tokens", None)
+        if not isinstance(prompt_tokens, int) or not isinstance(completion_tokens, int):
+            return
+        if prompt_tokens <= 0 and completion_tokens <= 0:
+            return
+        attrs = _cost_attributes.get() or {}
+        # Local import: cost.py sits below llm.py in the dependency graph and
+        # must never import llm.py back (mirrors the process.py seam).
+        from autoinfo.cost import CostMeter  # noqa: PLC0415
+
+        CostMeter().log_llm_tokens(
+            model=model,
+            input_tokens=int(prompt_tokens),
+            output_tokens=int(completion_tokens),
+            domain=attrs.get("domain", ""),
+            item_id=attrs.get("item_id", ""),
+        )
+    except Exception as exc:  # metering is best-effort — never break the call
+        logger.warning("cost_log metering skipped for model %s: %s", model, exc)
+
+
 def call_with_fallback(
     messages: list[dict[str, str]],
     *,
@@ -1304,6 +1377,11 @@ def call_with_fallback(
                         entry["model"],
                         primary,
                     )
+                # #863: single choke-point cost metering — every successful
+                # provider response leaves one llm_tokens row in cost_log
+                # (G3 judge / G4 / G5 / direct-extractor / synthesis paths
+                # included); scattered per-path logging would double-count.
+                _log_response_cost(entry["model"], response)
                 return response
             except Exception as exc:
                 entry_error = exc

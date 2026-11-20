@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.33.14](https://github.com/1StepMore/AutoInfo/compare/v1.33.13...v1.33.14) (2026-11-20)
+
+
+### Bug Fixes
+
+* **output:** render layout inner templates before composition ([#821](https://github.com/1StepMore/AutoInfo/issues/821)) ([#823](https://github.com/1StepMore/AutoInfo/issues/823)) ([041a45f](https://github.com/1StepMore/AutoInfo/commit/041a45f2a9e8366c96429096c3b7a22f87ee2896))
+
 ## [1.33.13](https://github.com/1StepMore/AutoInfo/compare/v1.33.12...v1.33.13) (2026-11-20)
 
 

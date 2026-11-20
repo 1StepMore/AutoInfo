@@ -327,6 +327,95 @@ def test_negative_audio_smaller_than_size_floor(
     assert "need > 51200" in _details(result)
 
 
+# ---------------------------------------------------------------------------
+# Render audit sidecar (issue #895)
+# ---------------------------------------------------------------------------
+
+
+def _synthesize_video(tmp_path: Path) -> Path:
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg/ffprobe not installed; cannot synthesize a video")
+    path = tmp_path / "audited.mp4"
+    completed = subprocess.run(
+        [
+            shutil.which("ffmpeg") or "ffmpeg",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=64x64:r=10",
+            "-t",
+            "2",
+            "-c:v",
+            "mpeg4",
+            "-pix_fmt",
+            "yuv420p",
+            "-y",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if completed.returncode != 0:
+        pytest.skip(f"ffmpeg could not synthesize a video: {completed.stderr[-200:]}")
+    return path
+
+
+def _write_render_audit(path: Path, **payload: Any) -> None:
+    audit: dict[str, Any] = {
+        "scenes": [
+            {
+                "index": 1,
+                "layout": "hero",
+                "unresolved_template_tokens": 0,
+                "text_chars": 1000,
+            }
+        ],
+        "unresolved_template_tokens": 0,
+        "text_chars": 1000,
+        "generated_at": "2026-11-20T00:00:00+00:00",
+    }
+    audit.update(payload)
+    path.with_name(path.name + ".render-audit.json").write_text(
+        json.dumps(audit), encoding="utf-8"
+    )
+
+
+def test_render_audit_passes_with_clean_sidecar(tmp_path: Path) -> None:
+    path = _synthesize_video(tmp_path)
+    _write_render_audit(path)
+    check = fs.check_video(path)["render_audit"]
+    assert check["passed"] is True, check
+    assert "unresolved=0" in check["detail"]
+    assert "text_chars=1000" in check["detail"]
+
+
+def test_render_audit_rejects_missing_sidecar(tmp_path: Path) -> None:
+    path = _synthesize_video(tmp_path)
+    check = fs.check_video(path)["render_audit"]
+    assert check["passed"] is False
+    assert "sidecar missing" in check["detail"]
+
+
+def test_render_audit_rejects_unresolved_tokens(tmp_path: Path) -> None:
+    path = _synthesize_video(tmp_path)
+    _write_render_audit(path, unresolved_template_tokens=1)
+    check = fs.check_video(path)["render_audit"]
+    assert check["passed"] is False
+    assert "unresolved_template_tokens=1" in check["detail"]
+
+
+def test_render_audit_rejects_too_little_text(tmp_path: Path) -> None:
+    path = _synthesize_video(tmp_path)
+    _write_render_audit(path, text_chars=10)
+    check = fs.check_video(path)["render_audit"]
+    assert check["passed"] is False
+    assert "text_chars=10" in check["detail"]
+
+
 def test_negative_video_shorter_than_three_seconds(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

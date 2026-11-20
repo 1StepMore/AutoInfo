@@ -13,7 +13,7 @@ queryable knowledge base. **Domain-agnostic** — demo domains are configuration
 ## Agent Operating Model
 
 **Agent-first**: the human director communicates intent in natural language → you translate
-to MCP tool calls (stdio server). **Before any work** run `python3 scripts/agent/autonomy.py gate` (lease > clock + goal gate; exit 3 = not your shift, 5 = goal achieved, 6 = env broken) — `docs/dev/autonomy.md`. All capabilities are MCP tools (counts: `README.md` →
+to MCP tool calls (stdio server). **动手前先跑** `python scripts/agent_ready.py --json`（#884 machine-verdict entrypoint——venv/依赖/LLM 阶梯/doc 门/证据根一查即知，按 `next_action` 走）。**Before any work** run `python3 scripts/agent/autonomy.py gate` (lease > clock + goal gate; exit 3 = not your shift, 5 = goal achieved, 6 = env broken) — `docs/dev/autonomy.md`. All capabilities are MCP tools (counts: `README.md` →
 Status table). CLI mirrors MCP — `--domain X --topic Y` maps 1:1 to tool parameters.
 
 ## §0 安全条款（不可覆盖 · overrides every layer below）

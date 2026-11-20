@@ -3383,9 +3383,13 @@ def generate_digest(
                 lang="en",
                 chapters=ebook_chapters,
             )
+            rendered = ebook_result["data_b64"]
         else:
             ebook_result = render_audiobook(ebook_chapters)
-        rendered = ebook_result["data_b64"]
+            # AUDIOBOOK_ARTIFACT = the ZIP bundle of chapter MP3s (see #901):
+            # the matrix/coverage mappings say .zip and check_audiobook_zip()
+            # validates per-chapter ID3 inside it.
+            rendered = ebook_result["zip_b64"]
     else:
         rendered = _render_markdown(context)
 
@@ -3816,9 +3820,11 @@ def generate_report(
                     lang="en",
                     chapters=empty_chapters,
                 )
+                rendered = ebook_result["data_b64"]
             else:
                 ebook_result = render_audiobook(empty_chapters)
-            rendered = ebook_result["data_b64"]
+                # AUDIOBOOK_ARTIFACT = the ZIP bundle of chapter MP3s (see #901).
+                rendered = ebook_result["zip_b64"]
         elif format == "video":
             rendered = _render_video_scaffold({}, report_title_domain, sections=None)
         else:
@@ -4265,9 +4271,11 @@ def generate_report(
                 chapters=report_chapters,
                 summary=report_data.executive_summary,
             )
+            rendered = ebook_result["data_b64"]
         else:
             ebook_result = render_audiobook(report_chapters)
-        rendered = ebook_result["data_b64"]
+            # AUDIOBOOK_ARTIFACT = the ZIP bundle of chapter MP3s (see #901).
+            rendered = ebook_result["zip_b64"]
     elif format == "video":
         report_sections: list[dict[str, str]] = []
         for section in report_data.sections:

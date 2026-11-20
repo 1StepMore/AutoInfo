@@ -180,6 +180,23 @@ def test_negative_non_chaptered_zip_audiobook(
     assert "CHAP" in _details(result)
 
 
+def test_negative_mp3_payload_named_zip_fails(tmp_path: Path) -> None:
+    """An mp3 renamed to .zip is the #901 defect: the extension lies."""
+    path = tmp_path / "fake_audiobook.zip"
+    path.write_bytes(_EMPTY_ID3 + _mp3_seconds(30.0))
+    result = fs.check_audiobook(path)
+    assert result["extension_matches_content"]["passed"] is False
+    assert "content=mp3" in result["extension_matches_content"]["detail"]
+
+
+def test_positive_zip_bundle_named_zip_passes(tmp_path: Path) -> None:
+    path = tmp_path / "real_audiobook.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("chapter_000.mp3", _id3_with_title("Chapter 1") + _mp3_seconds(6.0))
+    result = fs.check_audiobook(path)
+    assert result["extension_matches_content"]["passed"] is True
+
+
 def test_negative_markdown_todo(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "draft.md"
     path.write_text("# Draft\n\nTODO finish the report\nhttps://example.com\n", encoding="utf-8")

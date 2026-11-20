@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.0](https://github.com/1StepMore/AutoInfo/compare/v1.34.1...v1.35.0) (2026-11-20)
+
+
+### Features
+
+* **agent:** add scripts/agent_ready.py machine-verdict entrypoint ([#906](https://github.com/1StepMore/AutoInfo/issues/906)) ([73b363c](https://github.com/1StepMore/AutoInfo/commit/73b363cbaa70999b7b916ee6ab6db8390774c7ce))
+
+
+### Tests
+
+* **g5:** make the fallback-failure path hermetic on keyed harnesses ([#909](https://github.com/1StepMore/AutoInfo/issues/909)) ([5100617](https://github.com/1StepMore/AutoInfo/commit/5100617b006227abe641ca421f112a5e0c20600f))
+
 ## [1.34.1](https://github.com/1StepMore/AutoInfo/compare/v1.34.0...v1.34.1) (2026-11-20)
 
 

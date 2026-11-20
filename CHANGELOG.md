@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.34.1](https://github.com/1StepMore/AutoInfo/compare/v1.34.0...v1.34.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **cost:** meter every LLM call at the call_with_fallback choke point ([#902](https://github.com/1StepMore/AutoInfo/issues/902)) ([ab2f033](https://github.com/1StepMore/AutoInfo/commit/ab2f03377d4667d95f4480357ad94d0b475b7944))
+* **gate:** exempt mixed-corpus domains from C3 and resolve language config-first ([#903](https://github.com/1StepMore/AutoInfo/issues/903)) ([b2705c8](https://github.com/1StepMore/AutoInfo/commit/b2705c8d5cabab2c8bf9640e7e2577944cca179b))
+
 ## [1.34.0](https://github.com/1StepMore/AutoInfo/compare/v1.33.14...v1.34.0) (2026-11-20)
 
 

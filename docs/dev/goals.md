@@ -1,6 +1,6 @@
 # 目标阶梯（当前目标 / 达标判据 / 下一阶段）
 
-<!-- goal-cmd: python3 scripts/goal_matrix_quality.py -->
+<!-- goal-cmd: python3 scripts/goal_p3_backlog.py -->
 <!-- 约定：goal-cmd 退出码 0 = 当前目标达标；非 0 = 未达标；2 = 环境/用法错误（不算达标） -->
 
 > 给任何 agent / harness：**每班开工先跑** `python3 scripts/agent/autonomy.py goal`。

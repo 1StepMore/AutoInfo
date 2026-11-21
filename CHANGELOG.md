@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.9](https://github.com/1StepMore/AutoInfo/compare/v1.35.8...v1.35.9) (2026-11-21)
+
+
+### Documentation
+
+* **validation:** record T9 backdoor draft purge + KB parity restore ([#887](https://github.com/1StepMore/AutoInfo/issues/887)) ([#936](https://github.com/1StepMore/AutoInfo/issues/936)) ([095e6b3](https://github.com/1StepMore/AutoInfo/commit/095e6b3a959dc770e35fad2df0df3a87f3965781))
+
 ## [1.35.8](https://github.com/1StepMore/AutoInfo/compare/v1.35.7...v1.35.8) (2026-11-21)
 
 

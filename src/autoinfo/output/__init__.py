@@ -3880,7 +3880,10 @@ def generate_report(
                     product="report-audiobook",
                 )
         elif format == "video":
-            rendered = _render_video_scaffold({}, report_title_domain, sections=None)
+            rendered = _render_video_scaffold(
+                {}, report_title_domain, sections=None,
+                narration_audit_out=narration_audit_out,
+            )
         else:
             rendered = _render_empty_report(report_title_domain)
 
@@ -4355,6 +4358,7 @@ def generate_report(
             {},
             report_data.title if hasattr(report_data, "title") else report_title_domain,
             sections=report_sections,
+            narration_audit_out=narration_audit_out,
         )
     else:
         rendered = _render_report_template(report_data, source_tier_badge=source_tier_badge)

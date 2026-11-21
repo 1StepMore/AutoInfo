@@ -308,6 +308,8 @@ def _render_video_scaffold(
     context: dict[str, Any],
     title: str,
     sections: list[dict[str, str]] | None = None,
+    *,
+    narration_audit_out: dict[str, Any] | None = None,
 ) -> str:
     """Generate a video report — audio narration + slide images → MP4 via FFmpeg.
 
@@ -348,6 +350,7 @@ def _render_video_scaffold(
         sections=sections,
         output_path=output_path,
         config=vcfg,
+        narration_audit_out=narration_audit_out,
     )
 
     # Copy the render audit next to the MP4 (issue #895).  A missing audit is

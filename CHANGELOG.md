@@ -2,6 +2,21 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.8](https://github.com/1StepMore/AutoInfo/compare/v1.35.7...v1.35.8) (2026-11-21)
+
+
+### Bug Fixes
+
+* **llm:** hermetic LLM network gate for tests + always-resolved request timeout ([#849](https://github.com/1StepMore/AutoInfo/issues/849)) ([#932](https://github.com/1StepMore/AutoInfo/issues/932)) ([96f9836](https://github.com/1StepMore/AutoInfo/commit/96f983691b41beb3071151cf854a2f98750801d0))
+* **output:** rescue truncated digest synthesis JSON instead of falling back silently ([#928](https://github.com/1StepMore/AutoInfo/issues/928)) ([#931](https://github.com/1StepMore/AutoInfo/issues/931)) ([bd547f4](https://github.com/1StepMore/AutoInfo/commit/bd547f4c609fb6d61183c6fcafabe2e986998160))
+
+
+### Miscellaneous Chores
+
+* **deps-dev:** bump ruff from 0.17.4 to 0.17.5 ([#829](https://github.com/1StepMore/AutoInfo/issues/829)) ([850d0a3](https://github.com/1StepMore/AutoInfo/commit/850d0a387b0d9dffe41febf445b354c391919cf3))
+* **deps:** update stripe requirement from &lt;17.0,&gt;=9.0 to &gt;=9.0,&lt;18.0 ([#828](https://github.com/1StepMore/AutoInfo/issues/828)) ([117234e](https://github.com/1StepMore/AutoInfo/commit/117234ec252f4f122fc83b03d8e0b36e0694b414))
+* **goals:** point the goal-cmd judge at the active P3 criteria ([#930](https://github.com/1StepMore/AutoInfo/issues/930)) ([658eb7d](https://github.com/1StepMore/AutoInfo/commit/658eb7d1dda5baf9d724c77452155361ecf9d7d0))
+
 ## [1.35.7](https://github.com/1StepMore/AutoInfo/compare/v1.35.6...v1.35.7) (2026-11-21)
 
 

@@ -121,8 +121,20 @@ _CJK_EXEMPT_DOMAINS_DEFAULT = frozenset(
         "spanish-learning",
         "ai-commercial",
         "cross-domain",
+        # Issue #865: mixed-corpus domains with Chinese sources configured by
+        # design (juejin/qbitai/infoq-cn/Bilibili; gcores/yystv; thepaper-legal)
+        # — same category as ai-commercial (#190/193): CJK in their products is
+        # corpus faithfully summarized, not residue.
+        "tech-ai-developer",
+        "gaming",
+        "legal-compliance",
     }
 )
+
+# Corpus languages whose script IS CJK: a domain declared with one of these
+# languages collects CJK-script content by design, so CJK in its products is
+# corpus, not residue (#865).  Resolved per-domain via _domain_language.
+_CJK_LANGUAGES = frozenset({"zh", "ja", "ko"})
 
 _CJK_DEFAULT_THRESHOLD = 5  # a stray ideograph in a code sample is not noise
 
@@ -280,17 +292,27 @@ def _normalize_domain(raw: str) -> str:
     return raw
 
 
-def _domain_language(domain: str) -> str:
-    """Best-effort language for a domain dir (reads the domain seed yaml)."""
-    seed = (
-        Path(__file__).resolve().parent.parent
-        / "src"
-        / "autoinfo"
-        / "data"
-        / "domains"
-        / domain
-        / "sources.yaml"
-    )
+def _domain_language(domain: str, root: Path | None = None) -> str:
+    """Resolve a domain's declared language, config-first (#865).
+
+    Fallback chain (mirrors the output layer's product-language resolution):
+    ``.autoinfo/config.yaml`` domain-level ``default_language`` (when the raw
+    YAML declares the key for the domain, even empty — issue #8 distinction)
+    -> demo-domain seed yaml ``default_language`` -> empty string (unknown).
+    """
+    root = root or Path(__file__).resolve().parent.parent
+    config_path = root / ".autoinfo" / "config.yaml"
+    if config_path.is_file():
+        try:
+            import yaml  # PyYAML is a project dependency
+
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            for d in raw.get("domains", []):
+                if d.get("name") == domain and "default_language" in d:
+                    return str(d.get("default_language") or "")
+        except Exception:
+            pass
+    seed = root / "src" / "autoinfo" / "data" / "domains" / domain / "sources.yaml"
     if not seed.is_file():
         return ""
     try:
@@ -400,12 +422,17 @@ def find_cjk_residue(
 ) -> list[str]:
     """C3: flag CJK residue in a non-bilingual domain product.
 
-    ``*-learning`` domains are exempt (bilingual by design).  A CJK char
-    count above *threshold* is a leak (a stray ideograph in a code sample is
-    not).
+    Exempt: the bilingual-by-design domains in *exempt_domains* (static list,
+    mirrors the output layer) and any domain whose declared language resolves
+    config-first (#865) to a CJK-script corpus language — CJK there is
+    corpus, not residue.  A CJK char count above *threshold* is a leak (a
+    stray ideograph in a code sample is not).
     """
     domain_key = _normalize_domain(domain)
     if domain_key in exempt_domains:
+        return []
+    declared = _domain_language(domain_key).split("-")[0].strip().lower()
+    if declared in _CJK_LANGUAGES:
         return []
     count = count_cjk(text)
     if count > threshold:
@@ -1011,6 +1038,14 @@ def find_word_boundary_truncation(text: str) -> list[str]:
         # falsely flagged as a mid-word truncation. Source lines never carry
         # prose truncation — skip them (same rationale as bare-link lines).
         if re.match(r"^\*\*Source\*\*\s*:", line):
+            continue
+        # `**Target Audience**: <enum>` (tutorial front matter) is likewise a
+        # configuration fact: the value is validated against the audience
+        # enum *before* rendering (generate_tutorial raises on anything off
+        # the vocabulary), so it is structurally incapable of being prose
+        # truncation. A singular enum like `student` false-flagged against
+        # prose `students` (2026-11-20 capability-matrix L0 run).
+        if re.match(r"^\*\*Target Audience\*\*\s*:", line):
             continue
         if re.search(r"[.!?。！？…]$|\.\.\.$", line):
             continue  # terminated normally

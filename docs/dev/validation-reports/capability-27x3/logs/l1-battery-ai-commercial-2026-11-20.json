@@ -1,0 +1,88 @@
+{
+  "directory": "outputs\\capability-matrix\\ai-commercial",
+  "l0_defects": [],
+  "worklist": [
+    {
+      "family": "all",
+      "files": [
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-161115-079881.md",
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-191818-046080.md",
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-192637-598552.md",
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-193013-533199.md",
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261118-190038-278968.md",
+        "outputs\\capability-matrix\\ai-commercial\\digest-markdown-20261118-190722-809523.md",
+        "outputs\\capability-matrix\\ai-commercial\\enterprise-briefing-markdown-20261118-191212-262569.md",
+        "outputs\\capability-matrix\\ai-commercial\\magazine-digest-markdown-20261118-191516-666234.md",
+        "outputs\\capability-matrix\\ai-commercial\\premium-briefing-markdown-20261118-191736-748368.md",
+        "outputs\\capability-matrix\\ai-commercial\\presentation-markdown-20261118-183607-583234.md",
+        "outputs\\capability-matrix\\ai-commercial\\presentation-markdown-20261118-191914-775290.md",
+        "outputs\\capability-matrix\\ai-commercial\\report-markdown-20261027-094357-296825.md",
+        "outputs\\capability-matrix\\ai-commercial\\report-markdown-20261027-094724-013770.md",
+        "outputs\\capability-matrix\\ai-commercial\\report-markdown-20261027-094911-932941.md",
+        "outputs\\capability-matrix\\ai-commercial\\report-markdown-20261118-192637-351896.md",
+        "outputs\\capability-matrix\\ai-commercial\\tutorial-markdown-20261119-180800-192971.md"
+      ],
+      "blind_spot": "cross-product-entity-consistency",
+      "name": "Cross-product entity consistency",
+      "check_desc": "The same company/product described with CONFLICTING type claims across products (one says 'legal-industry AI-native OS', another says 'model-evaluation platform') is a defect.  This is the semantic layer above quality_gate X1's deterministic copular scan.",
+      "evidence_required": "the two conflicting descriptions + product files"
+    },
+    {
+      "family": "bilingual-domains",
+      "files": [
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-161115-079881.md",
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-191818-046080.md",
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-192637-598552.md",
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-193013-533199.md",
+        "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261118-190038-278968.md",
+        "outputs\\capability-matrix\\ai-commercial\\digest-markdown-20261118-190722-809523.md",
+        "outputs\\capability-matrix\\ai-commercial\\enterprise-briefing-markdown-20261118-191212-262569.md",
+        "outputs\\capability-matrix\\ai-commercial\\magazine-digest-markdown-20261118-191516-666234.md",
+        "outputs\\capability-matrix\\ai-commercial\\premium-briefing-markdown-20261118-191736-748368.md",
+        "outputs\\capability-matrix\\ai-commercial\\presentation-markdown-20261118-183607-583234.md",
+        "outputs\\capability-matrix\\ai-commercial\\presentation-markdown-20261118-191914-775290.md",
+        "outputs\\capability-matrix\\ai-commercial\\report-markdown-20261027-094357-296825.md",
+        "outputs\\capability-matrix\\ai-commercial\\report-markdown-20261027-094724-013770.md",
+        "outputs\\capability-matrix\\ai-commercial\\report-markdown-20261027-094911-932941.md",
+        "outputs\\capability-matrix\\ai-commercial\\report-markdown-20261118-192637-351896.md",
+        "outputs\\capability-matrix\\ai-commercial\\tutorial-markdown-20261119-180800-192971.md"
+      ],
+      "blind_spot": "local-market-presence",
+      "name": "Local-market presence",
+      "check_desc": "For a bilingual domain (ai-commercial #190, *-learning), the local- market content (Chinese AI news / target-language material) actually reached the entries — the absence class #190 caught.",
+      "evidence_required": "local-market entry that should appear + its absence"
+    }
+  ],
+  "verdicts": [
+    {
+      "verdict": "PASS",
+      "evidence": "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-161115-079881.md:1 (奕斯伟计算 described as RISC-V computing company); outputs\\capability-matrix\\ai-commercial\\digest-markdown-20261118-190722-809523.md:1 (Corma/Corba consistently described as cybersecurity AI startup)",
+      "note": "Cross-product descriptions for shared entities (e.g., Corma/Corba, Unsiloed AI, Nvidia, TCL) are consistently typed, with no conflicting entity-type claims across the reviewed AI Commercial products. The consistent Corba/Corma naming variation is an internal alias note, not a cross-product type conflict.",
+      "blind_spot": "cross-product-entity-consistency",
+      "family": "all",
+      "file": "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-161115-079881.md"
+    },
+    {
+      "verdict": "PASS",
+      "evidence": "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261118-190038-278968.md (Additional Topics rows 1–3, 6–7, 15, 24); digest-markdown-20261118-190722-809523.md (Chinese AI entries: 豆包工作, TCL华星, Visa与连连数字, 博理科技, 玻璃基板); report-markdown-20261118-192637-351896.md (Chinese AI entries rows 1, 2, 3, 6, 7, 15, 24)",
+      "note": "Target-language (Chinese) local-market AI material did reach the entries, satisfying the ai-commercial #190 *-learning local-market-presence class: Chinese-language AI sources (36kr) are included, summarized, and carried into References across the later column, digest, report, tutorial, and briefing outputs. The only files that omit local-market content are the four 2026-11-12 column/report snapshots and the generic 2026-11-18 AI-funding presentation, which are earlier/different outputs and do not negate the class being covered in the reviewed set.",
+      "blind_spot": "local-market-presence",
+      "family": "bilingual-domains",
+      "file": "outputs\\capability-matrix\\ai-commercial\\column-markdown-20261112-161115-079881.md"
+    }
+  ],
+  "honesty": {
+    "reviewed": [
+      "cross-product-entity-consistency (all)",
+      "local-market-presence (bilingual-domains)"
+    ],
+    "not_reviewed": [],
+    "channel": "config.llm markdown"
+  },
+  "summary": {
+    "l0_failed": false,
+    "flagged": 0,
+    "escalated": 0,
+    "passed": 2
+  }
+}

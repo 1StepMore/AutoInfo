@@ -177,6 +177,12 @@
       name: Local-market presence
       check_desc: >-
         For a bilingual domain (ai-commercial #190, *-learning), the local-
-        market content (Chinese AI news / target-language material) actually
-        reached the entries — the absence class #190 caught.
+        market content actually reached the entries — the absence class #190
+        caught.  The expected content language follows the domain's own
+        audience, not a fixed locale: ai-commercial is a zh-market AI product,
+        so Chinese AI news must reach its entries; a *-learning domain expects
+        material in the language it teaches (e.g. English material for an
+        English-teaching domain — a Chinese-market feed is off-topic there and
+        must NOT be demanded).  Flag only when the domain's own target content
+        is absent from every entry.
       evidence_required: "local-market entry that should appear + its absence"

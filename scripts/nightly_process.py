@@ -8,7 +8,18 @@ can stay flat for weeks even while the cache grows.
 
 Running the LLM-heavy process stage for every domain every night is expensive,
 so this script computes a per-domain backlog and only invokes ``autoinfo
-process`` when the backlog reaches ``--min-backlog``::
+process`` when the backlog reaches a per-domain threshold (AutoInfo#722)::
+
+    effective_min = max(1, min(--min-backlog, 7-day daily average of new items))
+
+``--min-backlog-mode dynamic`` (default) applies that low-volume-aware
+threshold; ``fixed`` restores the pre-#722 behaviour where ``--min-backlog``
+is used verbatim.  A low-volume domain with a positive backlog is additionally
+forced due when its last successful processing is at least two days old, so a
+tiny-but-real backlog cannot starve forever.  ``--min-backlog`` therefore
+remains an upper bound, never a lower bound, in dynamic mode.
+
+Backlog definition::
 
     backlog = cached item ids in the window - ids in the processing_items ledger
 
@@ -79,9 +90,12 @@ DEFAULT_DOMAINS_DIR = REPO / "src" / "autoinfo" / "data" / "domains"
 DEFAULT_COLLECTIONS = REPO / "collections"
 DEFAULT_DB = REPO / "autoinfo.db"
 DEFAULT_MIN_BACKLOG = 20
+DEFAULT_MIN_BACKLOG_MODE = "dynamic"
 DEFAULT_TIMEOUT = 7200
 DEFAULT_MAX_SECONDS = 2400
 DEFAULT_SECONDS_PER_ITEM = 40
+DYNAMIC_WINDOW_DAYS = 7
+FLOOR_STALE_DAYS = 2
 SCHEMA = "autoinfo-nightly-process/1"
 
 logger = logging.getLogger("autoinfo.nightly_process")
@@ -230,6 +244,121 @@ def read_processed_count(db_path: Path, domain: str) -> int:
             conn.close()
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Return column names for *table* (empty when it does not exist)."""
+    try:
+        return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+    except sqlite3.Error:
+        return set()
+
+
+def read_daily_new_rate(
+    db_path: Path, domain: str, days: int = DYNAMIC_WINDOW_DAYS
+) -> float | None:
+    """Return the domain's average new items per day over the last *days*.
+
+    Prefers ``processing_items.created_at`` (the processing ledger) and falls
+    back to ``entries.created_at`` when that table or column is unavailable
+    (AutoInfo#722).  Returns None when neither source exists so the caller can
+    treat the domain as having no data (effective minimum of 1).
+    """
+    if not db_path.is_file():
+        return None
+
+    conn: sqlite3.Connection | None = None
+    try:
+        uri = db_path.resolve().as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+        source = None
+        for table in ("processing_items", "entries"):
+            columns = _table_columns(conn, table)
+            if "created_at" in columns and "domain" in columns:
+                source = table
+                break
+        if source is None:
+            return None
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days - 1)).date().isoformat()
+        row = conn.execute(
+            f"SELECT COUNT(*) FROM {source} WHERE domain = ? AND date(created_at) >= ?",
+            (domain, cutoff),
+        ).fetchone()
+        total = int(row[0]) if row else 0
+    except (sqlite3.Error, OSError, ValueError):
+        return None
+    finally:
+        if conn is not None:
+            conn.close()
+
+    return total / float(days)
+
+
+def read_last_processed_at(db_path: Path, domain: str) -> datetime | None:
+    """Return the most recent successful processing timestamp, if any."""
+    if not db_path.is_file():
+        return None
+
+    conn: sqlite3.Connection | None = None
+    try:
+        uri = db_path.resolve().as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+        row = conn.execute(
+            "SELECT MAX(processed_at) FROM processing_items WHERE domain = ? "
+            "AND processed_at IS NOT NULL AND processed_at != ''",
+            (domain,),
+        ).fetchone()
+    except (sqlite3.Error, OSError, ValueError):
+        return None
+    finally:
+        if conn is not None:
+            conn.close()
+
+    raw = row[0] if row else None
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _effective_min_backlog(min_backlog: int, daily_rate: float | None) -> int:
+    """Dynamic threshold: the 7-day daily average, capped by ``--min-backlog``."""
+    if daily_rate is None:
+        return 1
+    return max(1, min(min_backlog, int(daily_rate)))
+
+
+def _floor_due(last_processed: datetime | None, now: datetime) -> bool:
+    """True when a positive backlog must run regardless of the threshold."""
+    if last_processed is None:
+        return True
+    return now - last_processed >= timedelta(days=FLOOR_STALE_DAYS)
+
+
+def _resolve_action(
+    backlog: int,
+    mode: str,
+    min_backlog: int,
+    daily_rate: float | None,
+    last_processed: datetime | None,
+    now: datetime,
+) -> tuple[str, int, str]:
+    """Return ``(action, effective_min, action_reason)`` for one domain."""
+    if mode == "fixed":
+        action = "pending" if backlog >= min_backlog else "skip"
+        return action, min_backlog, "fixed"
+
+    effective = _effective_min_backlog(min_backlog, daily_rate)
+    if backlog >= effective:
+        return "pending", effective, "backlog_ok"
+    if backlog > 0 and _floor_due(last_processed, now):
+        return "pending", effective, "floor_forced"
+    return "skip", effective, "dynamic_below"
+
+
 def _autoinfo_cmd(python: str) -> list[str]:
     """Prefer the console script from the same venv; fall back to ``-m``."""
     # Do not resolve(): a venv's bin/python is a symlink to the system Python.
@@ -285,6 +414,7 @@ def _log_row(row: dict[str, object]) -> None:
         f"[nightly-process] {row['domain']}: cached={row['cached_items']} "
         f"processed={row['processed_count']} backlog={row['backlog']} "
         f"budget={row['budget_s']}s batch={row['batch_size']} "
+        f"min_eff={row['min_backlog_effective']} reason={row['action_reason']} "
         f"delta={row['processed_delta']} -> {row['action']}{suffix}",
         flush=True,
     )
@@ -299,22 +429,24 @@ def _render_md(report: dict[str, object]) -> str:
         "# AutoInfo nightly process (#554)",
         "",
         f"- generated: {report['generated_at']}",
-        f"- min backlog: {report['min_backlog']}",
+        f"- min backlog: {report['min_backlog']} ({report['min_backlog_mode']})",
         f"- max seconds: {report['max_seconds']} (0 = unlimited)",
         f"- dry run: {str(report['dry_run']).lower()}",
         f"- selected: {summary['selected']} / executed: {summary['executed']} / "
         f"failed: {summary['failed']} / skipped: {summary['skipped']} / "
         f"skipped_budget: {summary['skipped_budget']} / stalled: {summary['stalled']}",
         "",
-        "| domain | cached | processed | backlog | action | budget_s | batch | exit | seconds |",
-        "|:---|---:|---:|---:|:---|---:|---:|---:|---:|",
+        "| domain | cached | processed | backlog | min_eff | action | reason | "
+        "budget_s | batch | exit | seconds |",
+        "|:---|---:|---:|---:|---:|:---|:---|---:|---:|---:|---:|",
     ]
     for row in rows:
         assert isinstance(row, dict)
         lines.append(
             f"| {row['domain']} | {row['cached_items']} | "
             f"{row['processed_count']} | {row['backlog']} | "
-            f"{row['action']} | {row['budget_s']} | {row['batch_size']} | "
+            f"{row['min_backlog_effective']} | {row['action']} | "
+            f"{row['action_reason']} | {row['budget_s']} | {row['batch_size']} | "
             f"{row['exit_code']} | {row['duration_s']} |"
         )
     if not rows:
@@ -347,6 +479,14 @@ def main(
         default=DEFAULT_MIN_BACKLOG,
         help=f"Run when cached - processed is at least this many items "
         f"(default: {DEFAULT_MIN_BACKLOG}).",
+    )
+    ap.add_argument(
+        "--min-backlog-mode",
+        choices=("dynamic", "fixed"),
+        default=DEFAULT_MIN_BACKLOG_MODE,
+        help="dynamic scales the threshold to the domain's 7-day daily average "
+        "and adds a low-volume floor; fixed keeps --min-backlog verbatim "
+        f"(default: {DEFAULT_MIN_BACKLOG_MODE}).",
     )
     ap.add_argument(
         "--max-seconds",
@@ -430,6 +570,7 @@ def main(
             )
 
     rows: list[dict[str, object]] = []
+    now = datetime.now(timezone.utc)
     for domain in configured:
         cached = count_cached_items(collections, domain, since_days=args.since_days)
         if cached == 0:
@@ -439,13 +580,33 @@ def main(
             collections, db_path, domain, since_days=args.since_days
         )
         backlog = unprocessed if unprocessed is not None else max(0, cached - processed)
+        daily_rate = (
+            read_daily_new_rate(db_path, domain)
+            if args.min_backlog_mode == "dynamic"
+            else None
+        )
+        last_processed = (
+            read_last_processed_at(db_path, domain)
+            if args.min_backlog_mode == "dynamic"
+            else None
+        )
+        action, effective_min, action_reason = _resolve_action(
+            backlog,
+            args.min_backlog_mode,
+            args.min_backlog,
+            daily_rate,
+            last_processed,
+            now,
+        )
         rows.append(
             {
                 "domain": domain,
                 "cached_items": cached,
                 "processed_count": processed,
                 "backlog": backlog,
-                "action": "pending" if backlog >= args.min_backlog else "skip",
+                "min_backlog_effective": effective_min,
+                "action": action,
+                "action_reason": action_reason,
                 "budget_s": 0.0,
                 "batch_size": 0,
                 "exit_code": 0,
@@ -541,6 +702,7 @@ def main(
         "schema": SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "min_backlog": args.min_backlog,
+        "min_backlog_mode": args.min_backlog_mode,
         "max_seconds": args.max_seconds,
         "seconds_per_item": args.seconds_per_item,
         "batch_size": args.batch_size,
@@ -549,6 +711,7 @@ def main(
         "collections": str(collections),
         "db": str(db_path),
         "domains": rows,
+        "rows": rows,
         "summary": {
             "domains": len(rows),
             "selected": selected,

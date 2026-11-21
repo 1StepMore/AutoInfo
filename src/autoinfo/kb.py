@@ -192,6 +192,47 @@ def _slugify(text: str, max_bytes: int = 255) -> str:
     return slug.encode("utf-8")[:max_bytes].decode("utf-8", errors="ignore").rstrip("-")
 
 
+# Windows forbids these characters (plus control chars 0x00-0x1f) in file and
+# directory names; Linux accepts them, which is how a colon-bearing topic tag
+# ("3.6:1 ratio") reached the KB silently on Linux and broke the write on
+# Windows (issue #862).
+_WINDOWS_RESERVED_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+# Windows also reserves these exact device names (case-insensitive) — a topic
+# tag "CON" would fail mkdir on Windows even though it carries no forbidden
+# character.
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        *(f"COM{i}" for i in range(1, 10)),
+        *(f"LPT{i}" for i in range(1, 10)),
+    }
+)
+
+
+def _sanitize_dir_component(name: str, fallback: str = "topic") -> str:
+    """Make *name* safe as a single path component on Windows (issue #862).
+
+    Windows forbids ``< > : " / \\ | ? *`` and control chars in directory
+    names; Linux accepts them, which is how colon-bearing topic tags reached
+    the KB silently and broke ``process`` on Windows (issue #862).  Forbidden
+    runs collapse to a single space; leading/trailing dots and spaces are
+    trimmed (Windows rejects trailing dots/spaces too); Windows reserved
+    device names get an underscore prefix.  Deterministic — identity is the
+    #695 fingerprint, the directory is opaque to every reader (they walk
+    files recursively), so dedup/idempotency is unaffected.
+    """
+    cleaned = _WINDOWS_RESERVED_CHARS_RE.sub(" ", str(name)).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = cleaned.strip(" .")
+    if cleaned.upper() in _WINDOWS_RESERVED_NAMES:
+        cleaned = f"_{cleaned}"
+    return cleaned or fallback
+
+
 def _decode_html_entities(text: str) -> str:
     """Decode residual HTML entities in *text* (issue #55).
 
@@ -2968,7 +3009,11 @@ class KBStore:
         """
         # --- derive metadata ---------------------------------------------------
         domain = item.domain or "default"
-        topic = item.topic_tags[0] if item.topic_tags else "general"
+        # Issue #862: the topic becomes a path COMPONENT (tier/<topic>/); a
+        # raw tag like "3.6:1 ratio" is an invalid Windows directory name and
+        # the item was silently dropped there.  Sanitized deterministically —
+        # identity is the #695 fingerprint, so dedup/idempotency is unchanged.
+        topic = _sanitize_dir_component(item.topic_tags[0] if item.topic_tags else "general")
         slug = _slugify(item.title, 100) or "entry"
         collected_date = _parse_date(item.collected_at)
         date_str = collected_date.isoformat()
@@ -3618,7 +3663,10 @@ class KBStore:
                 topics.add(fp.parts[-2])
 
         domain = domains.pop() if len(domains) == 1 else "default"
-        topic = topics.pop() if len(topics) == 1 else "general"
+        # Issue #862: existing raw-file topic dirs may carry Windows-invalid
+        # characters (colon-bearing tags on Linux stores) — sanitize before
+        # reusing as a draft directory component.
+        topic = _sanitize_dir_component(topics.pop() if len(topics) == 1 else "general")
         slug = _slugify(title, 100) or "draft"
         today_str = date.today().isoformat()
 

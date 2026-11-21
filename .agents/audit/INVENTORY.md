@@ -13,17 +13,17 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 145 |
-| Total lines | 40539 |
-| Active files | 113 |
+| Total files | 154 |
+| Total lines | 41126 |
+| Active files | 122 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
-| Category — validation-reports | 27 files / 6046 lines |
-| Category — docs/dev | 42 files / 11615 lines |
+| Category — validation-reports | 33 files / 6559 lines |
+| Category — docs/dev | 45 files / 11689 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -94,11 +94,12 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/best-practice-review.md` | 388 | docs/dev | active | best-practice-review |
 | `dev/cli-mcp-rest-parity.md` | 539 | docs/dev | active | — |
 | `dev/coverage-baseline.md` | 67 | docs/dev | active | — |
+| `dev/cross-audit-evidence.md` | 32 | docs/dev | active | — |
 | `dev/cross-dimensional-catalog.md` | 1067 | docs/dev | active | — |
 | `dev/director-user-guide.md` | 756 | docs/dev | active | — |
 | `dev/enduser-coverage-matrix.md` | 220 | docs/dev | active | — |
 | `dev/founder-expectations.md` | 461 | docs/dev | active | — |
-| `dev/goals.md` | 36 | docs/dev | active | — |
+| `dev/goals.md` | 37 | docs/dev | active | — |
 | `dev/harness-run-facts.md` | 84 | docs/dev | active | — |
 | `dev/llm-config.md` | 82 | docs/dev | active | — |
 | `dev/matrix-ownership.md` | 41 | docs/dev | active | — |
@@ -130,19 +131,27 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/user-lifecycle-definition.md` | 450 | specs | active | — |
 | `dev/task-routing.md` | 42 | docs/dev | active | — |
 | `dev/testing-layers.md` | 259 | docs/dev | active | — |
+| `dev/validation-evidence/README.md` | 37 | docs/dev | active | — |
+| `dev/validation-evidence/manifest.json` | 4 | docs/dev | active | — |
 | `dev/validation-governance.md` | 110 | docs/dev | active | — |
 | `dev/validation-loop-log.md` | 238 | docs/dev | active | plan |
 | `dev/validation-reports/README.md` | 96 | validation-reports | active | — |
 | `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 565 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/README.md` | 55 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/evidence-pack.md` | 328 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/evidence-pack.md` | 336 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/l0-l1-baseline.md` | 58 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/README.md` | 14 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/artifact-residue-cleanup-2026-11-20.md` | 87 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/blockers-2026-10-27.md` | 39 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/collect-delta-2026-10-27.md` | 46 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/kb-purge-2026-10-27.md` | 58 | validation-reports | active | — |
-| `dev/validation-reports/capability-27x3/matrix.json` | 1349 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/kb-purge-2026-11-20.md` | 59 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/l1-battery-ai-commercial-2026-11-20.json` | 88 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/l1-battery-language-learning-2026-11-20.json` | 72 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/l1-battery-medical-research-2026-11-20.json` | 66 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/matrix.json` | 1392 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/matrix.md` | 96 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/quality-verdict-2026-11-20.md` | 90 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/runs/README.md` | 24 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/source-diagnosis.md` | 101 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/text-66-verdict-2026-11-19.md` | 90 | validation-reports | active | — |

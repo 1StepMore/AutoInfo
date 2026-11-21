@@ -17,12 +17,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Callable, cast
 
 logger = logging.getLogger("autoinfo.output")
 
@@ -295,6 +297,7 @@ def generate_audio_narration(
     sections: list[dict[str, str]],
     output_dir: str,
     voice: str = "default",
+    audit_out: dict[str, Any] | None = None,
 ) -> str:
     """Generate TTS audio narration for content.
 
@@ -303,6 +306,7 @@ def generate_audio_narration(
         sections: List of dicts with 'heading' and 'body' keys
         output_dir: Directory to write audio file
         voice: TTS voice name
+        audit_out: Optional dict filled with the narration audit (issue #914).
 
     Returns:
         Path to audio file
@@ -325,7 +329,7 @@ def generate_audio_narration(
     # Use existing TTS engine from output.py
     from autoinfo.output import _render_audio
 
-    audio_bytes = _render_audio(narration_text, voice=voice)
+    audio_bytes = _render_audio(narration_text, voice=voice, audit_out=audit_out)
 
     os.makedirs(output_dir, exist_ok=True)
     audio_path = os.path.join(output_dir, "narration.mp3")
@@ -399,16 +403,43 @@ def _split_narration_into_scenes(
     return scenes
 
 
-def _render_jinja(template_name: str, **ctx: Any) -> str:
-    """Render a template from the ported assets dir."""
+def _jinja_env() -> Any:
+    """Build the Jinja environment shared by file and inline rendering."""
     from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-    env = Environment(
+    return Environment(
         loader=FileSystemLoader(os.path.join(_ASSETS_DIR, "templates")),
         undefined=StrictUndefined,
         autoescape=False,
     )
-    return env.get_template(template_name).render(**ctx)
+
+
+def _render_jinja(template_name: str, **ctx: Any) -> str:
+    """Render a template from the ported assets dir."""
+    return cast(str, _jinja_env().get_template(template_name).render(**ctx))
+
+
+def _render_inline(template_str: str, **ctx: Any) -> str:
+    """Render a Jinja template string in-memory (no file loader)."""
+    return cast(str, _jinja_env().from_string(template_str).render(**ctx))
+
+
+_SCRIPT_BLOCK = re.compile(r"<script\b[^>]*>.*?</script>", re.DOTALL | re.IGNORECASE)
+_STYLE_BLOCK = re.compile(r"<style\b[^>]*>.*?</style>", re.DOTALL | re.IGNORECASE)
+_HTML_TAG = re.compile(r"<[^>]+>")
+_WHITESPACE = re.compile(r"\s+")
+
+UNRESOLVED_TEMPLATE_TOKENS = ("{{", "{%", "}}", "%}")
+
+
+def _audit_rendered_html(html: str) -> tuple[int, int]:
+    """Return ``(unresolved_template_tokens, text_chars)`` for rendered HTML."""
+    unresolved = sum(html.count(token) for token in UNRESOLVED_TEMPLATE_TOKENS)
+    visible = _SCRIPT_BLOCK.sub("", html)
+    visible = _STYLE_BLOCK.sub("", visible)
+    visible = _HTML_TAG.sub("", visible)
+    text_chars = len(_WHITESPACE.sub("", visible))
+    return unresolved, text_chars
 
 
 def _write_scene_composition(
@@ -417,30 +448,53 @@ def _write_scene_composition(
     scene: dict[str, Any],
     layout_name: str,
     theme: dict[str, Any],
-) -> None:
-    """Write one scene composition HTML (layout + GSAP timeline)."""
+    layout_html: str | None = None,
+) -> dict[str, Any]:
+    """Write one scene composition HTML (layout + GSAP timeline).
+
+    Returns a render-audit record for the scene.  ``layout_html`` may be
+    supplied to exercise unrendered-template detection (issue #895).
+    """
     layout = LAYOUTS[layout_name]
+    ctx: dict[str, Any] = {
+        "theme": theme,
+        "loop": {"index": index},
+        "duration": scene["duration"],
+        "heading": scene["heading"],
+        "body": scene["body"],
+        "body_left": scene.get("heading"),
+        "body_right": scene.get("body"),
+        "cards": scene.get("cards", []),
+        "stats": scene.get("stats", []),
+        "steps": scene.get("steps", []),
+    }
+    # The layout html is itself a Jinja template; render it before passing it
+    # to scene.html.j2 (Jinja does not re-render data inserted via ``| safe``).
+    if layout_html is None:
+        layout_html = _render_inline(layout["html"], **ctx)
     html = _render_jinja(
         "scene.html.j2",
-        theme=theme,
-        loop={"index": index},
-        duration=scene["duration"],
+        **ctx,
         layout={
             "name": layout["label"],
-            "html": layout["html"],
+            "html": layout_html,
             "animations": layout["animations"],
         },
-        heading=scene["heading"],
-        body=scene["body"],
-        body_left=scene.get("heading"),
-        body_right=scene.get("body"),
-        cards=scene.get("cards", []),
-        stats=scene.get("stats", []),
-        steps=scene.get("steps", []),
     )
+    unresolved, text_chars = _audit_rendered_html(html)
+    if unresolved:
+        raise RuntimeError(
+            f"unrendered template tokens in compositions: {unresolved} (scene {index})"
+        )
     path = os.path.join(compositions_dir, f"{index:02d}-scene.html")
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
+    return {
+        "index": index,
+        "layout": layout_name,
+        "unresolved_template_tokens": unresolved,
+        "text_chars": text_chars,
+    }
 
 
 def generate_hyperframes_project(
@@ -465,6 +519,20 @@ def generate_hyperframes_project(
         src = os.path.join(_ASSETS_DIR, "templates", name)
         if os.path.isfile(src):
             shutil.copy(src, os.path.join(output_dir, name))
+
+    # --- Vendored GSAP (relative-path first; CDN is only a fallback) ---
+    vendor_src = os.path.join(_ASSETS_DIR, "vendor")
+    if os.path.isdir(vendor_src):
+        shutil.copytree(
+            vendor_src,
+            os.path.join(output_dir, "vendor"),
+            dirs_exist_ok=True,
+        )
+    else:
+        logger.warning(
+            "Vendored GSAP assets missing at %s — rendering will need the CDN fallback",
+            vendor_src,
+        )
 
     # --- Audio ---
     has_audio = bool(audio_path and os.path.isfile(audio_path))
@@ -499,8 +567,28 @@ def generate_hyperframes_project(
     # --- compositions/ ---
     compositions_dir = os.path.join(output_dir, "compositions")
     os.makedirs(compositions_dir, exist_ok=True)
+    scene_audits: list[dict[str, Any]] = []
     for i, scene in enumerate(scenes, start=1):
-        _write_scene_composition(compositions_dir, i, scene, layout_names[i - 1], theme)
+        scene_audits.append(
+            _write_scene_composition(compositions_dir, i, scene, layout_names[i - 1], theme)
+        )
+
+    # --- render-audit.json (proves the compositions are rendered content) ---
+    unresolved = sum(a["unresolved_template_tokens"] for a in scene_audits)
+    if unresolved:
+        first = next(a for a in scene_audits if a["unresolved_template_tokens"])
+        raise RuntimeError(
+            f"unrendered template tokens in compositions: "
+            f"{first['unresolved_template_tokens']} (scene {first['index']})"
+        )
+    audit = {
+        "scenes": scene_audits,
+        "unresolved_template_tokens": unresolved,
+        "text_chars": sum(a["text_chars"] for a in scene_audits),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(os.path.join(output_dir, "render-audit.json"), "w", encoding="utf-8") as f:
+        json.dump(audit, f, indent=2)
 
     # --- index.html (root composition + audio track + scene hosts) ---
     index_html = _render_jinja(
@@ -529,6 +617,58 @@ def generate_hyperframes_project(
 # ---------------------------------------------------------------------------
 
 
+GSAP_CDN_URL = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
+
+
+class GsapUnavailableError(RuntimeError):
+    """Neither the vendored GSAP copy nor the CDN fallback is available.
+
+    Rendering such a project would surface a generic
+    ``sub_timeline_script_failure`` (the template timelines call
+    ``gsap.timeline`` on a null global).  Failing here with an explicit
+    ``gsap_unavailable`` keeps that correctness signal reserved for genuine
+    template defects.
+    """
+
+
+def _gsap_cdn_reachable(timeout: float = 10.0) -> bool:
+    """True when the GSAP CDN fallback can be reached."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(GSAP_CDN_URL, timeout=timeout) as resp:
+            return bool(200 <= resp.status < 300)
+    except OSError:
+        return False
+
+
+def ensure_gsap_available(
+    project_dir: str,
+    cdn_probe: Callable[[], bool] | None = None,
+) -> str:
+    """Return the GSAP source the project can use, or raise ``gsap_unavailable``.
+
+    The vendored file is preferred (offline-safe).  Only when it is absent do
+    we probe the CDN fallback baked into the templates.  If neither is
+    available the render is rejected before HyperFrames runs, so the failure
+    is ``gsap_unavailable`` rather than a misleading
+    ``sub_timeline_script_failure``.
+    """
+    vendor = os.path.join(project_dir, "vendor", "gsap.min.js")
+    if os.path.isfile(vendor) and os.path.getsize(vendor) > 0:
+        return vendor
+
+    probe = cdn_probe or _gsap_cdn_reachable
+    if probe():
+        return GSAP_CDN_URL
+
+    raise GsapUnavailableError(
+        "gsap_unavailable: neither the vendored GSAP copy (vendor/gsap.min.js) "
+        f"nor the CDN fallback ({GSAP_CDN_URL}) is available; refusing to render "
+        "a video whose scene timelines would fail to load"
+    )
+
+
 def _find_binary(name: str) -> str:
     """Locate an executable on PATH (bun, ffmpeg, ffprobe)."""
     path = shutil.which(name)
@@ -554,6 +694,7 @@ def render_hyperframes(
     or missing output.
     """
     bun = _find_binary("bun")
+    ensure_gsap_available(project_dir)
 
     # --- lint gate (G3 equivalent) ---
     lint = subprocess.run(
@@ -616,6 +757,7 @@ def generate_report_video(
     output_path: str | None = None,
     config: VideoConfig | None = None,
     voice: str = "default",
+    narration_audit_out: dict[str, Any] | None = None,
 ) -> str:
     """Generate a video report: TTS -> HyperFrames project -> MP4.
 
@@ -625,6 +767,7 @@ def generate_report_video(
         output_path: Optional output MP4 path (default: temp dir)
         config: Optional VideoConfig
         voice: TTS voice name
+        narration_audit_out: Optional dict filled with the narration audit (issue #914).
 
     Returns:
         Absolute path to the rendered MP4.
@@ -640,7 +783,9 @@ def generate_report_video(
     try:
         # 1. TTS narration
         audio_dir = os.path.join(work_dir, "audio")
-        audio_path = generate_audio_narration(title, sections, audio_dir, voice=voice)
+        audio_path = generate_audio_narration(
+            title, sections, audio_dir, voice=voice, audit_out=narration_audit_out
+        )
 
         # 2. HyperFrames project
         project_dir = os.path.join(work_dir, "project")
@@ -656,6 +801,12 @@ def generate_report_video(
         if output_path is None:
             output_path = os.path.join(work_dir, f"autoinfo_video_{int(time.time())}.mp4")
         render_hyperframes(project_dir, output_path, quality=cfg.quality)
+
+        # Sidecar the render audit next to the MP4 so gates can prove the
+        # pixels came from rendered content, not unrendered template source.
+        audit_src = os.path.join(project_dir, "render-audit.json")
+        if os.path.isfile(audit_src):
+            shutil.copy2(audit_src, output_path + ".render-audit.json")
 
         return os.path.abspath(output_path)
     except Exception:

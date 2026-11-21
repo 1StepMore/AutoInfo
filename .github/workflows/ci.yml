@@ -24,6 +24,29 @@ on:
   pull_request:
 
 jobs:
+  agent-ready:
+    name: Agent-ready entrypoint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # #884: the machine-verdict entrypoint must produce a valid
+      # agent-ready/v1 contract on a clean checkout.  Keyless CI resolves
+      # the ladder honestly: no harness endpoint and no machine key =>
+      # blocked:no-llm-key => exit 2 (precedence 2 > 3 > 4; no config file
+      # is present, so not-onboarded would also apply - 2 wins).  The job
+      # asserts the verdict mechanism, not that CI owns a key.
+      - name: Run agent_ready (expect exit 2 on keyless CI)
+        run: |
+          set +e
+          python scripts/agent_ready.py --json > agent-ready.json
+          code=$?
+          set -e
+          python -c "import json,sys; r=json.load(open('agent-ready.json',encoding='utf-8')); assert r['schema']=='agent-ready/v1'; print('contract ok, next_action:', r['next_action'])"
+          if [ "$code" != "0" ] && [ "$code" != "2" ]; then echo "unexpected exit $code (want 0 or 2)"; exit 1; fi
+          echo "agent_ready exit=$code (0=green, 2=honest no-llm-key)"
   lint:
     name: Lint
     runs-on: ubuntu-latest

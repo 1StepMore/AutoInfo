@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 from datetime import datetime, timezone
 from typing import Any, cast
@@ -35,6 +36,36 @@ _MD_LIST_PATTERN = re.compile(r"^[\s]*[-*+]\s+", re.MULTILINE)
 
 _MD_ORDERED_LIST_PATTERN = re.compile(r"^[\s]*\d+\.\s+", re.MULTILINE)
 
+# --- Speech cleaning (issue #900) ------------------------------------------
+# `_strip_markdown` only removes URLs that live inside Markdown link syntax;
+# a bare URL reaches the TTS engine verbatim and is read aloud character by
+# character ("https冒号斜-斜-techcrunch.com斜-2026...").  The patterns below
+# match what must never be spoken.
+
+# Characters allowed inside a bare URL/domain path.  Closing brackets and
+# sentence punctuation are excluded so removal never eats the surrounding
+# text ("(https://x.com/a)" keeps its parentheses).
+_URL_BODY = r"[^\s<>()（）\[\]「」,，。;；、]+"
+
+# Bare URL: scheme-qualified or "www."-prefixed.
+_SPOKEN_URL_PATTERN = re.compile(rf"(?:https?://|www\.){_URL_BODY}", re.IGNORECASE)
+
+# Domain-shaped citation without a scheme ("techcrunch.com/2026/11/12").
+_SPOKEN_DOMAIN_PATTERN = re.compile(
+    rf"\b[\w-]+\.(?:com|org|net|io|gov|edu|cn)(?:/{_URL_BODY})?",
+    re.IGNORECASE,
+)
+
+# Query-string residue left behind when a URL is partially stripped.
+_SPOKEN_QUERY_PATTERN = re.compile(r"\?\S*=\S*|&\w+=|retmode=", re.IGNORECASE)
+
+# What the listener hears instead of the address: the source claim survives,
+# the address itself never does.
+SPOKEN_SOURCE_REPLACEMENT = "（来源见文末）"
+
+# Audit tokens: none of these may survive cleaning (see `audit_speech_text`).
+_SPOKEN_AUDIT_TOKENS = ("http", "www.", ".com", "斜杠", "冒号", "等号")
+
 
 # Default TTS voice for audio output.
 DEFAULT_TTS_VOICE = "alloy"
@@ -44,7 +75,7 @@ DEFAULT_LOCAL_TTS_VOICE = "en-US-JennyNeural"
 
 # Default Azure Speech voice and output format (issue #647).
 DEFAULT_AZURE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
-AZURE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3"
+AZURE_TTS_OUTPUT_FORMAT = "audio-48khz-192kbitrate-mono-mp3"
 # Required by the Azure Speech REST contract: User-Agent (< 255 chars) and
 # the SSML 1.0 namespace on <speak>.
 AZURE_TTS_USER_AGENT = "AutoInfo-TTS/1.0"
@@ -97,6 +128,47 @@ def _strip_markdown(text: str) -> str:
     return text.strip()
 
 
+def _tidy_spoken_text(text: str) -> str:
+    """Collapse whitespace and punctuation runs left dangling by removals."""
+    # Runs of spaces/tabs left where an address was cut out.
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    # Space before sentence punctuation ("、 ," / "， 。").
+    text = re.sub(r"[ \t]+([,，;；、。.!！?？])", r"\1", text)
+    # Punctuation runs made adjacent by a removal (", ," / "、、").
+    text = re.sub(r"([,，;；、])(?:[ \t]*[,，;；、])+", r"\1", text)
+    # Duplicated full stops (。"。").
+    text = re.sub(r"。{2,}", "。", text)
+    return text.strip()
+
+
+def _strip_for_speech(text: str) -> str:
+    """Remove anything that would be read aloud as character soup.
+
+    Applied AFTER _strip_markdown so markdown links are already reduced to
+    their text; link syntax is reduced here too, so calling this function on
+    raw Markdown gives the same answer.  Bare URLs, bare domains, query
+    strings and trailing punctuation runs are replaced with
+    SPOKEN_SOURCE_REPLACEMENT (source semantics kept, address never spoken).
+    """
+    # Idempotent: _strip_markdown already did this in the render path.
+    text = _MD_IMAGE_PATTERN.sub(r"\1", text)
+    text = _MD_LINK_PATTERN.sub(r"\1", text)
+    text = _SPOKEN_URL_PATTERN.sub(SPOKEN_SOURCE_REPLACEMENT, text)
+    text = _SPOKEN_DOMAIN_PATTERN.sub(SPOKEN_SOURCE_REPLACEMENT, text)
+    text = _SPOKEN_QUERY_PATTERN.sub("", text)
+    return _tidy_spoken_text(text)
+
+
+def audit_speech_text(text: str) -> dict[str, Any]:
+    """Return {"spoken_url_tokens": int, "text_chars": int, "sample_head": str}."""
+    lowered = text.lower()
+    return {
+        "spoken_url_tokens": sum(lowered.count(token) for token in _SPOKEN_AUDIT_TOKENS),
+        "text_chars": len(text),
+        "sample_head": text[:200],
+    }
+
+
 def _render_audio(
     text: str,
     voice: str = DEFAULT_TTS_VOICE,
@@ -105,6 +177,8 @@ def _render_audio(
     local_voice: str = DEFAULT_LOCAL_TTS_VOICE,
     azure_voice: str | None = None,
     azure_region: str | None = None,
+    *,
+    audit_out: dict[str, Any] | None = None,
 ) -> bytes:
     """Render *text* as MP3 audio using the configured TTS engine.
 
@@ -137,6 +211,10 @@ def _render_audio(
         Azure Speech region (``tts.azure_region``, else
         ``AZURE_SPEECH_REGION``).  The key always comes from
         ``AZURE_SPEECH_KEY``.
+    audit_out:
+        Optional dict filled with :func:`audit_speech_text` of the final
+        text handed to the TTS engine (issue #900).  Callers that need the
+        audit pass an empty dict; no global state is kept.
 
     Returns
     -------
@@ -160,11 +238,15 @@ def _render_audio(
         # Truncate at 4000 characters and append a note.
         text = text[:4000] + "... [truncated]"
 
-    # Strip markdown for cleaner TTS output.
+    # Strip markdown and anything that would be spoken as character soup.
     text = _strip_markdown(text)
+    text = _strip_for_speech(text)
 
     if not text:
         raise ValueError("Text is empty after stripping markdown formatting")
+
+    if audit_out is not None:
+        audit_out.update(audit_speech_text(text))
 
     # --- Resolve engine ---
     resolved_engine = engine
@@ -226,6 +308,8 @@ def _render_video_scaffold(
     context: dict[str, Any],
     title: str,
     sections: list[dict[str, str]] | None = None,
+    *,
+    narration_audit_out: dict[str, Any] | None = None,
 ) -> str:
     """Generate a video report — audio narration + slide images → MP4 via FFmpeg.
 
@@ -266,7 +350,15 @@ def _render_video_scaffold(
         sections=sections,
         output_path=output_path,
         config=vcfg,
+        narration_audit_out=narration_audit_out,
     )
+
+    # Copy the render audit next to the MP4 (issue #895).  A missing audit is
+    # not an exception here — the L2 gate reports it as a failed check.
+    audit_src = os.path.join(output_dir, "render-audit.json")
+    audit_dst = video_path + ".render-audit.json"
+    if os.path.isfile(audit_src) and not os.path.isfile(audit_dst):
+        shutil.copy2(audit_src, audit_dst)
 
     return json.dumps(
         {

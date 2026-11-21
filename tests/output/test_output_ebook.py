@@ -136,10 +136,12 @@ def test_render_audiobook_chapters(monkeypatch: pytest.MonkeyPatch) -> None:
     import autoinfo.output.ebook as ebook_mod
 
     fake_mp3 = b"ID3\x04\x00\x00\x00\x00\x00\x00fake"
+    # The real _render_audio takes the optional issue-#900 audit sink; the
+    # fake mirrors that signature so render_audiobook can forward it.
     monkeypatch.setattr(
         ebook_mod,
         "_render_audio",
-        lambda text, voice="alloy", engine=None: fake_mp3,
+        lambda text, voice="alloy", engine=None, audit_out=None: fake_mp3,
     )
 
     result = render_audiobook(
@@ -148,16 +150,28 @@ def test_render_audiobook_chapters(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["format"] == "audiobook"
     assert result["chapter_count"] == 2
 
+    from mutagen.id3 import ID3
+
     with zipfile.ZipFile(
         io.BytesIO(base64.b64decode(result["zip_b64"]))
     ) as zf:
         assert zf.namelist() == ["chapter_000.mp3", "chapter_001.mp3"]
-        assert zf.read("chapter_000.mp3") == fake_mp3
-        assert zf.read("chapter_001.mp3") == fake_mp3
+        members = [
+            (zf.read("chapter_000.mp3"), "Chapter One", "1/2"),
+            (zf.read("chapter_001.mp3"), "第二章", "2/2"),
+        ]
+    # issue #920: each bundled chapter mp3 carries ID3v2 TIT2/TRCK tags.
+    for data, title, track in members:
+        assert data.startswith(b"ID3")
+        assert data.endswith(b"fake")
+        tags = ID3(io.BytesIO(data))
+        assert str(tags["TIT2"]) == title
+        assert str(tags["TRCK"]) == track
 
-    # Chaptered MP3 falls back to plain concatenation when tagging fails
-    # (fake bytes are not parseable MPEG frames).
-    assert base64.b64decode(result["data_b64"]) == fake_mp3 * 2
+    # Chaptered MP3 falls back to plain concatenation when CHAP/CTOC tagging
+    # fails (fake bytes are not parseable MPEG frames); the concatenated
+    # chapters still carry their per-chapter ID3 tags.
+    assert base64.b64decode(result["data_b64"]) == members[0][0] + members[1][0]
 
 
 def test_render_audiobook_empty_chapters() -> None:
@@ -180,3 +194,37 @@ def test_render_mobi_no_calibre() -> None:
     )
     with pytest.raises(RuntimeError, match="calibre"):
         render_mobi(epub_result["data_b64"])
+
+
+def test_render_audiobook_aggregates_chapter_narration_audit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chapter audits are summed; the first chapter supplies sample_head (#900)."""
+    import autoinfo.output.ebook as ebook_mod
+
+    fake_mp3 = b"ID3\x04\x00\x00\x00\x00\x00\x00fake"
+
+    def fake_render(text, voice="alloy", engine=None, audit_out=None):
+        if audit_out is not None:
+            audit_out.update(
+                {
+                    "spoken_url_tokens": 0,
+                    "text_chars": len(text),
+                    "sample_head": text[:200],
+                }
+            )
+        return fake_mp3
+
+    monkeypatch.setattr(ebook_mod, "_render_audio", fake_render)
+
+    sink: dict[str, object] = {}
+    result = render_audiobook(
+        chapters=[("One", "first body"), ("Two", "second body longer")],
+        audit_out=sink,
+    )
+
+    audit = result["narration_audit"]
+    assert audit["spoken_url_tokens"] == 0
+    assert audit["text_chars"] == len("first body") + len("second body longer")
+    assert audit["sample_head"] == "first body"
+    assert sink == audit

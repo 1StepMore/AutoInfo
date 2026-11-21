@@ -212,6 +212,56 @@ def test_c3_ai_commercial_bilingual_exempt() -> None:
     assert qg.find_cjk_residue(text, "cross-domain") == []
 
 
+def test_c3_mixed_corpus_domains_exempt() -> None:
+    # Issue #865: tech-ai-developer / gaming / legal-compliance configure
+    # Chinese sources by design (juejin/qbitai/infoq-cn/Bilibili; gcores/
+    # yystv; thepaper-legal) — same category as ai-commercial (#190/193):
+    # CJK in their products is corpus faithfully summarized, not residue.
+    text = "中文字符残留" * 4  # well above threshold
+    for domain in ("tech-ai-developer", "gaming", "legal-compliance"):
+        assert qg.find_cjk_residue(text, domain) == [], domain
+
+
+def test_domain_language_config_first(tmp_path: Path) -> None:
+    # Issue #865: a runtime default_language declaration wins over the seed
+    # value (mirrors the output layer's resolution chain and the issue #8
+    # distinction between "key present" and "key missing").
+    (tmp_path / ".autoinfo").mkdir()
+    (tmp_path / ".autoinfo" / "config.yaml").write_text(
+        "domains:\n  - name: medical-research\n    default_language: zh\n",
+        encoding="utf-8",
+    )
+    assert qg._domain_language("medical-research", root=tmp_path) == "zh"
+
+
+def test_domain_language_seed_fallback(tmp_path: Path) -> None:
+    # No config declaration -> the demo-domain seed default_language applies.
+    seed_dir = tmp_path / "src" / "autoinfo" / "data" / "domains" / "demo-zh"
+    seed_dir.mkdir(parents=True)
+    (seed_dir / "sources.yaml").write_text("default_language: zh\nsources: []\n", encoding="utf-8")
+    assert qg._domain_language("demo-zh", root=tmp_path) == "zh"
+
+
+def test_domain_language_unknown_is_empty(tmp_path: Path) -> None:
+    # Neither config nor seed -> empty (strictness: C3 still applies).
+    assert qg._domain_language("no-such-domain", root=tmp_path) == ""
+
+
+def test_c3_declared_cjk_language_exempt(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Issue #865: a domain whose declared language resolves to a CJK-script
+    # corpus language is exempt without a static-list edit.
+    monkeypatch.setattr(qg, "_domain_language", lambda domain, root=None: "zh")
+    assert qg.find_cjk_residue("中文字符残留" * 4, "any-domain") == []
+
+
+def test_c3_unknown_language_still_flags_cjk(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Strictness preserved: a domain that is neither statically exempt nor
+    # declared CJK-corpus still flags CJK residue above threshold.
+    monkeypatch.setattr(qg, "_domain_language", lambda domain, root=None: "en")
+    text = "English product with 中文残留内容混入." * 4
+    assert qg.find_cjk_residue(text, "some-unknown-domain") != []
+
+
 # ---------------------------------------------------------------------------
 # C4 truncated lines
 # ---------------------------------------------------------------------------
@@ -749,6 +799,28 @@ def test_h2_source_field_slug_not_truncation() -> None:
         "- Diversify market exposure across channels as the brand did.\n\n**Source**: retail-dive\n"
     )
     assert qg.find_word_boundary_truncation(text) == []
+
+
+def test_h2_target_audience_enum_not_truncation() -> None:
+    """Tutorial front matter renders the validated audience enum verbatim
+    (`**Target Audience**: student`); a singular enum false-flags against
+    prose `students`. The value is enum-validated before rendering, so it is
+    structurally incapable of prose truncation — same rationale as #844's
+    Source-slug exemption (2026-11-20 capability-matrix L0 run)."""
+    text = (
+        "**Target Audience**: student\n\n"
+        "Students learn to evaluate model outputs by studying both the "
+        "applications and the underlying technologies across the units."
+    )
+    assert qg.find_word_boundary_truncation(text) == []
+
+
+def test_h2_narrative_line_ending_in_enum_word_still_flagged() -> None:
+    """Guard: the exemption is field-scoped. A narrative line ending in the
+    same bare-word prefix is a REAL cut and must still be flagged."""
+    text = "**Target Audience**: student\n\nThe onboarding guide for the new studen"
+    defects = qg.find_word_boundary_truncation(text)
+    assert any("studen" in d for d in defects), defects
 
 
 def test_h3_hyphenated_number_compound_not_glue() -> None:

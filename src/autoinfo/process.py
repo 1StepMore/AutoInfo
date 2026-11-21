@@ -43,7 +43,7 @@ from autoinfo.kb import (
     PromotionRejected,
 )
 from autoinfo.keywords import KeywordsFile, KeywordState
-from autoinfo.llm import LLMExtractor
+from autoinfo.llm import LLMExtractor, cost_attributes
 from autoinfo.models import ExtractionResult, Item, KBEntry
 from autoinfo.quality import (
     G0SchemaIntegrity,
@@ -1316,25 +1316,20 @@ def run_processing(
                 stats["logged"] = False
                 return item_log, stats
 
-            # Step a: LLM extraction (with custom schema if configured)
-            extraction = extractor.extract(item, schema=extract_fields)
-            # Aggregate token usage from this item, and record to the cost
-            # meter so billing / budget-alert / cost-dashboard tools have
-            # real data to query after processing completes.
+            # Step a: LLM extraction (with custom schema if configured).
+            # #863: the cost_attributes context keeps domain/item_id on the
+            # cost_log row that the llm.call_with_fallback choke point writes;
+            # metering here as well would double-count.
+            with cost_attributes(domain=domain, item_id=item.id):
+                extraction = extractor.extract(item, schema=extract_fields)
+            # Aggregate token usage from this item.  The cost_log row itself
+            # is written once by the llm.call_with_fallback choke point
+            # (#863) — billing / budget-alert / cost-dashboard tools query it
+            # after processing completes.
             if extraction.usage:
                 for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
                     stats["token_usage"][k] += extraction.usage.get(k, 0)
                 stats["token_usage"]["items_with_usage"] += 1
-
-                from autoinfo.cost import CostMeter  # noqa: PLC0415
-
-                CostMeter().log_llm_tokens(
-                    model=extractor._model,
-                    input_tokens=extraction.usage.get("prompt_tokens", 0),
-                    output_tokens=extraction.usage.get("completion_tokens", 0),
-                    domain=domain,
-                    item_id=item.id,
-                )
             item_log["tl_dr_length"] = len(extraction.tl_dr)
             item_log["key_points_count"] = len(extraction.key_points)
             item_log["relevance_score"] = extraction.relevance_score

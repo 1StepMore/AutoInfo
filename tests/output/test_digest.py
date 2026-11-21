@@ -25,8 +25,11 @@ from autoinfo.output import (
     _build_digest_llm_prompt,
     _call_llm_for_digest,
     _compute_date_range,
+    _looks_truncated_json,
     _parse_json_response,
     generate_digest,
+    llm_provenance,
+    reset_llm_provenance,
 )
 from tests._freshness import fresh_date
 
@@ -925,3 +928,120 @@ class TestSynthesisTraceabilityAndRmbUsd:
     def test_rmb_textual_disabled_when_rate_zero(self) -> None:
         assert "≈" not in _annotate_rmb_usd("超千万元融资", 0)
         assert "≈" not in _annotate_rmb_usd("超亿元融资", None)
+
+
+# ---------------------------------------------------------------------------
+# Issue #928: truncated LLM JSON escalates max_tokens on the retry and the
+# failure (attempt / finish_reason / parse_error) reaches the provenance.
+# ---------------------------------------------------------------------------
+
+
+class TestDigestTruncationEscalation:
+    """Issue #928: truncation-aware retry + failure provenance."""
+
+    def _make_response(self, content: str, finish_reason: Any = None) -> MagicMock:
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = content
+        resp.choices[0].finish_reason = finish_reason
+        return resp
+
+    def test_truncated_json_escalates_max_tokens_on_retry(self) -> None:
+        truncated = self._make_response(
+            '{ "executive_summary": "The period suggests retail growth is '
+            "increasingly hinging on digital and fulfillment capabilities, "
+            "with Home Depot, Lowe's, and Walmart reporting double-digit or 23% e-c",
+            finish_reason="length",
+        )
+        good = self._make_response(json.dumps({"valid": True}))
+        with (
+            patch("autoinfo.output.call_with_fallback", side_effect=[truncated, good]) as calls,
+            patch("autoinfo.output.load_config", return_value=None),
+        ):
+            result = _call_llm_for_digest("prompt")
+        assert result.get("valid") is True
+        assert calls.call_args_list[0].kwargs["max_tokens"] == 8000
+        assert calls.call_args_list[1].kwargs["max_tokens"] == 16000
+
+    def test_truncation_detected_from_content_alone(self) -> None:
+        truncated = self._make_response('{"key_findings": ["unclosed string and brace')
+        good = self._make_response(json.dumps({"executive_summary": "ok"}))
+        with (
+            patch("autoinfo.output.call_with_fallback", side_effect=[truncated, good]) as calls,
+            patch("autoinfo.output.load_config", return_value=None),
+        ):
+            assert _call_llm_for_digest("prompt").get("executive_summary") == "ok"
+        assert calls.call_args_list[1].kwargs["max_tokens"] == 16000
+
+    def test_non_truncated_failure_keeps_base_budget(self) -> None:
+        empty = self._make_response("not json at all")
+        with (
+            patch("autoinfo.output.call_with_fallback", side_effect=[empty, empty]) as calls,
+            patch("autoinfo.output.load_config", return_value=None),
+        ):
+            assert _call_llm_for_digest("prompt") == {}
+        got = [c.kwargs["max_tokens"] for c in calls.call_args_list]
+        assert got == [8000, 8000]
+
+    def test_llm_failure_provenance_recorded_on_give_up(self) -> None:
+        truncated = self._make_response(
+            '{"executive_summary": "cut off mid', finish_reason="length"
+        )
+        with (
+            patch("autoinfo.output.call_with_fallback", side_effect=[truncated, truncated]),
+            patch("autoinfo.output.load_config", return_value=None),
+        ):
+            reset_llm_provenance()
+            assert _call_llm_for_digest("prompt") == {}
+        provenance = llm_provenance()
+        failure = provenance["llm_failure"]
+        assert failure["attempt"] == 2
+        assert failure["finish_reason"] == "length"
+        assert failure["truncated"] is True
+        assert "Unterminated string" in failure["parse_error"]
+        assert provenance["llm_generated"] is True
+        assert provenance["kb_fallback_reasons"] == []
+        reset_llm_provenance()
+
+    def test_reset_llm_provenance_clears_failure_record(self) -> None:
+        truncated = self._make_response("{oops", finish_reason="length")
+        with (
+            patch("autoinfo.output.call_with_fallback", side_effect=[truncated, truncated]),
+            patch("autoinfo.output.load_config", return_value=None),
+        ):
+            _call_llm_for_digest("prompt")
+        assert "llm_failure" in llm_provenance()
+        reset_llm_provenance()
+        assert "llm_failure" not in llm_provenance()
+
+
+class TestLooksTruncatedJson:
+    def test_complete_json_not_truncated(self) -> None:
+        assert _looks_truncated_json('{"a": 1, "b": "two"}') is False
+
+    def test_unterminated_string_is_truncated(self) -> None:
+        assert _looks_truncated_json('{"a": "23% e-c') is True
+
+    def test_unclosed_brace_is_truncated(self) -> None:
+        assert _looks_truncated_json('{"a": {"b": 1}') is True
+
+    def test_prose_prefix_with_complete_json_not_truncated(self) -> None:
+        assert _looks_truncated_json('Sure! {"a": 1}') is False
+
+    def test_prose_prefix_with_cut_json_is_truncated(self) -> None:
+        assert _looks_truncated_json('Here: {"a": "cut') is True
+
+    def test_no_brace_is_not_truncation(self) -> None:
+        assert _looks_truncated_json("not json at all") is False
+
+    def test_none_and_empty(self) -> None:
+        assert _looks_truncated_json(None) is False
+        assert _looks_truncated_json("") is False
+
+
+class TestParseJsonResponseErrors:
+    def test_parse_error_collected(self) -> None:
+        errors: list[str] = []
+        assert _parse_json_response('{"a": "cut', errors=errors) == {}
+        assert errors, "expected at least one parse error entry"
+        assert any("Unterminated string" in e for e in errors)

@@ -1753,6 +1753,78 @@ def _build_digest_llm_prompt(
     return "\n".join(lines)
 
 
+# Issue #928: the synthesis call already requests 8000 tokens; a reasoning
+# model can still spend most of that budget on chain-of-thought and get the
+# JSON cut off mid-string ("length" finish).  A retried identical call only
+# re-rolls the dice, so a truncated response escalates the token budget once.
+_DIGEST_SYNTHESIS_MAX_TOKENS = 8000
+_DIGEST_SYNTHESIS_ESCALATION_MAX_TOKENS = 16000
+
+# Issue #928: last digest synthesis attempt failure, cleared by
+# reset_llm_provenance() and surfaced through llm_provenance() so a
+# "digest_synthesis_empty" fallback carries the why (finish_reason /
+# parse_error) instead of degrading silently.
+_llm_failure_record: dict[str, Any] = {}
+
+
+def _looks_truncated_json(content: str | None) -> bool:
+    """Return True when *content* looks like a JSON object cut off mid-stream.
+
+    Heuristic for an LLM response whose generation stopped before the JSON
+    closed: an unterminated string, an unbalanced brace/bracket, or a
+    dangling escape at the end.  Prose before the opening brace is skipped.
+    Non-JSON content (no brace at all) is not truncation.
+    """
+    if not content:
+        return False
+    start = content.find("{")
+    if start == -1:
+        return False
+    in_string = False
+    escaped = False
+    depth_obj = 0
+    depth_arr = 0
+    for ch in content[start:]:
+        if escaped:
+            escaped = False
+            continue
+        if in_string:
+            if ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth_obj += 1
+        elif ch == "}":
+            depth_obj -= 1
+        elif ch == "[":
+            depth_arr += 1
+        elif ch == "]":
+            depth_arr -= 1
+    return in_string or escaped or depth_obj > 0 or depth_arr > 0
+
+
+def _record_llm_failure(
+    attempt: int,
+    finish_reason: str | None,
+    parse_error: str | None,
+    truncated: bool,
+) -> None:
+    """Record the latest digest synthesis attempt failure (issue #928)."""
+    _llm_failure_record.clear()
+    _llm_failure_record.update(
+        {
+            "attempt": attempt,
+            "finish_reason": finish_reason,
+            "parse_error": parse_error,
+            "truncated": truncated,
+        }
+    )
+
+
 def _call_llm_for_digest(
     prompt: str,
     config: Config | None = None,
@@ -1802,9 +1874,20 @@ def _call_llm_for_digest(
     # 2-attempt / no-sleep behaviour.
     attempts = max(1, max_synthesis_attempts)
     last: dict[str, Any] = {}
+    # Issue #928: clear any stale failure record for a fresh synthesis call.
+    _llm_failure_record.clear()
+    last_truncated = False
     for _attempt in range(attempts):
         if _attempt > 0:
             sleep_fn(retry_backoff_seconds)
+        # Issue #928: a truncated response escalates the token budget on the
+        # retry instead of re-rolling the identical call that just got cut
+        # off mid-JSON (the "no mechanism responds to truncation" gap).
+        effective_max_tokens = (
+            _DIGEST_SYNTHESIS_ESCALATION_MAX_TOKENS
+            if _attempt > 0 and last_truncated
+            else _DIGEST_SYNTHESIS_MAX_TOKENS
+        )
         try:
             response = call_with_fallback(
                 model=full_model,
@@ -1813,36 +1896,71 @@ def _call_llm_for_digest(
                     {"role": "user", "content": prompt},
                 ],
                 json_mode=config.llm.json_mode and not config.llm.reasoning_model,
-                max_tokens=8000,
+                max_tokens=effective_max_tokens,
                 temperature=0.1,
-                api_key=config.llm.api_key or None,
-                base_url=config.llm.base_url or None,
             )
         except Exception as exc:
             logger.error("LLM digest synthesis failed: %s", exc)
+            _record_llm_failure(
+                attempt=_attempt + 1,
+                finish_reason=None,
+                parse_error=str(exc),
+                truncated=last_truncated,
+            )
             break
 
-        content: str = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        content: str = choice.message.content or ""
         content = fault_inject.maybe_fault_content("digest", content)
-        parsed = _parse_json_response(content)
+        parse_errors: list[str] = []
+        parsed = _parse_json_response(content, errors=parse_errors)
         if parsed:
             return parsed
         last = parsed
+        finish_reason = getattr(choice, "finish_reason", None)
+        if not isinstance(finish_reason, str):
+            finish_reason = None
+        truncated = finish_reason == "length" or _looks_truncated_json(content)
+        last_truncated = truncated
+        _record_llm_failure(
+            attempt=_attempt + 1,
+            finish_reason=finish_reason,
+            parse_error=(parse_errors[-1] if parse_errors else None),
+            truncated=truncated,
+        )
         logger.warning(
-            "LLM digest synthesis returned empty/missing fields (attempt %d/%d) — retrying",
+            "LLM digest synthesis returned empty/missing fields (attempt %d/%d, "
+            "finish_reason=%s, truncated=%s, parse_error=%s)%s — retrying",
             _attempt + 1,
             attempts,
+            finish_reason,
+            truncated,
+            (parse_errors[-1] if parse_errors else "unknown"),
+            (
+                " with escalated max_tokens=%d" % _DIGEST_SYNTHESIS_ESCALATION_MAX_TOKENS
+                if truncated
+                else ""
+            ),
         )
 
     return last
 
 
-def _parse_json_response(content: str | None) -> dict[str, Any]:
+def _parse_json_response(
+    content: str | None,
+    *,
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
     """Parse a JSON string with fallback strategies.
 
     1. Direct :func:`json.loads`.
     2. Extract JSON from markdown code blocks.
     3. Find the first ``{…}`` brace-delimited block.
+
+    Issue #928: when *errors* is a list, every strategy's JSONDecodeError
+    message is appended to it so the caller can surface the concrete parse
+    failure (e.g. "Unterminated string") in the LLM failure provenance
+    instead of a bare empty dict.
     """
     import re  # noqa: PLC0415
 
@@ -1853,24 +1971,27 @@ def _parse_json_response(content: str | None) -> dict[str, Any]:
     # Strategy 1 — direct
     try:
         return cast(dict[str, Any], json.loads(content))
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as exc:
+        if errors is not None:
+            errors.append(f"direct: {exc}")
 
     # Strategy 2 — fenced code block
     match = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
     if match:
         try:
             return cast(dict[str, Any], json.loads(match.group(1)))
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            if errors is not None:
+                errors.append(f"fenced: {exc}")
 
     # Strategy 3 — bare JSON object
     match = re.search(r"\{[\s\S]*\}", content)
     if match:
         try:
             return cast(dict[str, Any], json.loads(match.group(0)))
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            if errors is not None:
+                errors.append(f"bare: {exc}")
 
     logger.warning("Failed to parse LLM digest response as JSON: %.200s", content)
     return {}
@@ -3399,9 +3520,7 @@ def generate_digest(
         narration_audit: dict[str, Any] = {}
         mp3_bytes = _render_audio(markdown_text, audit_out=narration_audit)
         rendered = base64.b64encode(mp3_bytes).decode("ascii")
-        _publish_narration_audit(
-            narration_audit, narration_audit_out, product="digest-audio"
-        )
+        _publish_narration_audit(narration_audit, narration_audit_out, product="digest-audio")
     elif format in ("epub", "audiobook"):
         from autoinfo.output.ebook import render_audiobook, render_epub  # noqa: PLC0415
 
@@ -3415,9 +3534,7 @@ def generate_digest(
             )
             rendered = ebook_result["data_b64"]
         else:
-            ebook_result = render_audiobook(
-                ebook_chapters, audit_out=narration_audit_out
-            )
+            ebook_result = render_audiobook(ebook_chapters, audit_out=narration_audit_out)
             # AUDIOBOOK_ARTIFACT = the ZIP bundle of chapter MP3s (see #901):
             # the matrix/coverage mappings say .zip and check_audiobook_zip()
             # validates per-chapter ID3 inside it.
@@ -3848,9 +3965,7 @@ def generate_report(
             empty_audit: dict[str, Any] = {}
             mp3_bytes = _render_audio(empty_md, audit_out=empty_audit)
             rendered = base64.b64encode(mp3_bytes).decode("ascii")
-            _publish_narration_audit(
-                empty_audit, narration_audit_out, product="report-audio"
-            )
+            _publish_narration_audit(empty_audit, narration_audit_out, product="report-audio")
         elif format in ("epub", "audiobook"):
             from autoinfo.output.ebook import render_audiobook, render_epub  # noqa: PLC0415
 
@@ -3869,9 +3984,7 @@ def generate_report(
                 )
                 rendered = ebook_result["data_b64"]
             else:
-                ebook_result = render_audiobook(
-                    empty_chapters, audit_out=narration_audit_out
-                )
+                ebook_result = render_audiobook(empty_chapters, audit_out=narration_audit_out)
                 # AUDIOBOOK_ARTIFACT = the ZIP bundle of chapter MP3s (see #901).
                 rendered = ebook_result["zip_b64"]
                 _publish_narration_audit(
@@ -3881,7 +3994,9 @@ def generate_report(
                 )
         elif format == "video":
             rendered = _render_video_scaffold(
-                {}, report_title_domain, sections=None,
+                {},
+                report_title_domain,
+                sections=None,
                 narration_audit_out=narration_audit_out,
             )
         else:
@@ -4308,9 +4423,7 @@ def generate_report(
         report_audit: dict[str, Any] = {}
         mp3_bytes = _render_audio(markdown_text, audit_out=report_audit)
         rendered = base64.b64encode(mp3_bytes).decode("ascii")
-        _publish_narration_audit(
-            report_audit, narration_audit_out, product="report-audio"
-        )
+        _publish_narration_audit(report_audit, narration_audit_out, product="report-audio")
     elif format in ("epub", "audiobook"):
         from autoinfo.output.ebook import render_audiobook, render_epub  # noqa: PLC0415
 
@@ -4334,9 +4447,7 @@ def generate_report(
             )
             rendered = ebook_result["data_b64"]
         else:
-            ebook_result = render_audiobook(
-                report_chapters, audit_out=narration_audit_out
-            )
+            ebook_result = render_audiobook(report_chapters, audit_out=narration_audit_out)
             # AUDIOBOOK_ARTIFACT = the ZIP bundle of chapter MP3s (see #901).
             rendered = ebook_result["zip_b64"]
             _publish_narration_audit(
@@ -4539,6 +4650,7 @@ _kb_fallback_reasons: set[str] = set()
 def reset_llm_provenance() -> None:
     """Clear the recorded KB-derived fallbacks before a product generation."""
     _kb_fallback_reasons.clear()
+    _llm_failure_record.clear()
 
 
 def mark_kb_fallback(reason: str) -> None:
@@ -4554,7 +4666,17 @@ def llm_provenance() -> dict[str, Any]:
     the model".
     """
     reasons = sorted(_kb_fallback_reasons)
-    return {"llm_generated": not reasons, "kb_fallback_reasons": reasons}
+    provenance: dict[str, Any] = {
+        "llm_generated": not reasons,
+        "kb_fallback_reasons": reasons,
+    }
+    # Issue #928: surface the last digest synthesis failure (attempt /
+    # finish_reason / parse_error / truncated) alongside the fallback reasons
+    # so a silent "content degradation" is distinguishable from an artifact
+    # defect.  Key present only when a failure was recorded.
+    if _llm_failure_record:
+        provenance["llm_failure"] = dict(_llm_failure_record)
+    return provenance
 
 
 # Issue #167: source-type group headings must state WHERE content came from,

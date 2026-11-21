@@ -793,6 +793,18 @@ def generate_cell(
 
     attempts_detail = f"attempts={attempts}"
     provenance = output_hub.llm_provenance()
+    failure = provenance.get("llm_failure")
+    failure_detail = (
+        ""
+        if provenance["llm_generated"] or not failure
+        else "llm_failure=attempt=%s,finish_reason=%s,truncated=%s,parse_error=%s"
+        % (
+            failure.get("attempt"),
+            failure.get("finish_reason"),
+            failure.get("truncated"),
+            failure.get("parse_error"),
+        )
+    )
     detail = _detail_parts(
         [
             RETRY_POLICY,
@@ -804,6 +816,7 @@ def generate_cell(
                 else "llm_status=fallback (non-LLM-direct); kb_fallback="
                 + ",".join(provenance["kb_fallback_reasons"])
             ),
+            failure_detail,
         ]
     )
 
@@ -857,19 +870,20 @@ def generate_cell(
     # was LLM-synthesised or a KB-derived fallback template. The row carries
     # the fields too, but the sidecar survives matrix.json rebuilds.
     llm_status = "llm" if provenance["llm_generated"] else "fallback"
+    sidecar_payload: dict[str, Any] = {
+        "artifact": repo_relative(artifact),
+        "llm_status": llm_status,
+        "llm_generated": bool(provenance["llm_generated"]),
+        "kb_fallback_reasons": list(provenance["kb_fallback_reasons"]),
+    }
+    # Issue #928: carry the concrete synthesis failure (finish_reason /
+    # parse_error / truncated) into the sidecar so a KB fallback is never
+    # silent — "content degradation" becomes visible in the artifact itself.
+    if provenance.get("llm_failure"):
+        sidecar_payload["llm_failure"] = provenance["llm_failure"]
     sidecar = artifact.with_name(artifact.name + ".provenance.json")
     sidecar.write_text(
-        json.dumps(
-            {
-                "artifact": repo_relative(artifact),
-                "llm_status": llm_status,
-                "llm_generated": bool(provenance["llm_generated"]),
-                "kb_fallback_reasons": list(provenance["kb_fallback_reasons"]),
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
+        json.dumps(sidecar_payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     l2_result = check_l2(artifact)

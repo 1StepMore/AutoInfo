@@ -603,7 +603,7 @@ def write_artifact(
 
     # The narration audit travels with the artifact (issue #900).  It is only
     # written when the producer actually supplied one — never fabricated.
-    if narration_audit and fmt in ("audio", "audiobook"):
+    if narration_audit and fmt in ("audio", "audiobook", "video"):
         payload = dict(narration_audit)
         payload["generated_at"] = datetime.now(timezone.utc).isoformat()
         Path(str(target) + ".narration-audit.json").write_text(
@@ -762,7 +762,7 @@ def generate_cell(
     narration_audit: dict[str, Any] = {}
     try:
         call = route(ctx)
-        if combo.format in ("audio", "audiobook") and _accepts_narration_audit(call):
+        if combo.format in ("audio", "audiobook", "video") and _accepts_narration_audit(call):
             call = GenerationCall(
                 call.generator,
                 {**call.kwargs, "narration_audit_out": narration_audit},

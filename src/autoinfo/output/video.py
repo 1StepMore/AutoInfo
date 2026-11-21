@@ -297,6 +297,7 @@ def generate_audio_narration(
     sections: list[dict[str, str]],
     output_dir: str,
     voice: str = "default",
+    audit_out: dict[str, Any] | None = None,
 ) -> str:
     """Generate TTS audio narration for content.
 
@@ -305,6 +306,7 @@ def generate_audio_narration(
         sections: List of dicts with 'heading' and 'body' keys
         output_dir: Directory to write audio file
         voice: TTS voice name
+        audit_out: Optional dict filled with the narration audit (issue #914).
 
     Returns:
         Path to audio file
@@ -327,7 +329,7 @@ def generate_audio_narration(
     # Use existing TTS engine from output.py
     from autoinfo.output import _render_audio
 
-    audio_bytes = _render_audio(narration_text, voice=voice)
+    audio_bytes = _render_audio(narration_text, voice=voice, audit_out=audit_out)
 
     os.makedirs(output_dir, exist_ok=True)
     audio_path = os.path.join(output_dir, "narration.mp3")
@@ -755,6 +757,7 @@ def generate_report_video(
     output_path: str | None = None,
     config: VideoConfig | None = None,
     voice: str = "default",
+    narration_audit_out: dict[str, Any] | None = None,
 ) -> str:
     """Generate a video report: TTS -> HyperFrames project -> MP4.
 
@@ -764,6 +767,7 @@ def generate_report_video(
         output_path: Optional output MP4 path (default: temp dir)
         config: Optional VideoConfig
         voice: TTS voice name
+        narration_audit_out: Optional dict filled with the narration audit (issue #914).
 
     Returns:
         Absolute path to the rendered MP4.
@@ -779,7 +783,9 @@ def generate_report_video(
     try:
         # 1. TTS narration
         audio_dir = os.path.join(work_dir, "audio")
-        audio_path = generate_audio_narration(title, sections, audio_dir, voice=voice)
+        audio_path = generate_audio_narration(
+            title, sections, audio_dir, voice=voice, audit_out=narration_audit_out
+        )
 
         # 2. HyperFrames project
         project_dir = os.path.join(work_dir, "project")

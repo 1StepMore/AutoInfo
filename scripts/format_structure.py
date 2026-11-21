@@ -429,6 +429,7 @@ def check_video(path: Path) -> dict[str, dict[str, Any]]:
     if probe is None:
         checks["ffprobe"] = _check(False, error)
         checks["render_audit"] = _check_render_audit(path)
+        checks["narration_audit"] = _check_narration_audit(path)
         return checks
 
     streams = probe.get("streams") or []
@@ -437,6 +438,7 @@ def check_video(path: Path) -> dict[str, dict[str, Any]]:
     checks["video_stream"] = _check(bool(video_streams), f"video streams={len(video_streams)}")
     if not video_streams:
         checks["render_audit"] = _check_render_audit(path)
+        checks["narration_audit"] = _check_narration_audit(path)
         return checks
     stream = video_streams[0]
 
@@ -463,6 +465,7 @@ def check_video(path: Path) -> dict[str, dict[str, Any]]:
         pix_fmt in ALLOWED_PIX_FMTS, f"pix_fmt={pix_fmt!r} (allowed {sorted(ALLOWED_PIX_FMTS)})"
     )
     checks["render_audit"] = _check_render_audit(path)
+    checks["narration_audit"] = _check_narration_audit(path)
     return checks
 
 

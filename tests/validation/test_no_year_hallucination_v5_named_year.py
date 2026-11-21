@@ -91,3 +91,120 @@ def test_pre_1950_informational_pass() -> None:
     assert r.severity == "P1"
     assert "informational" in r.details
     assert "distant-past year 1917" in r.details
+
+
+# ---------------------------------------------------------------------------
+# #864 — source-grounding exemption for a FUTURE year the source really says.
+# A future year backed by an inline URL / markdown link, a ``Source:`` /
+# ``来源：`` label, or a quotation is grounded evidence, not a hallucination.
+# A future year with none of those is STILL a P0 failure (no over-loosening).
+# ---------------------------------------------------------------------------
+
+
+def test_grammy_nominations_with_source_url_passes() -> None:
+    """The 2027 Grammy nominations line carries the source URL, so the future
+    year is source-grounded — not a hallucination (#864)."""
+    r = vm._no_year_hallucination(
+        "# T\n\nThe 2027 Grammy nominations were announced, with Olivia Rodrigo "
+        "receiving seven nominations. "
+        "[source](https://www.billboard.com/lists/"
+        "grammy-nominations-2027-see-the-full-list)\n",
+        "online-video",
+        "digest",
+    )
+    assert r.passed, r.details
+    assert r.severity != "P0"
+
+
+def test_grammy_event_name_without_url_passes() -> None:
+    """The event-name form ("2027 Grammy nominations") is a named year even
+    without an inline URL — ``_is_named_year`` covers it (#864)."""
+    r = vm._no_year_hallucination(
+        "# T\n\nThe 2027 Grammy nominations were announced on Monday.\n",
+        "online-video",
+        "digest",
+    )
+    assert r.passed, r.details
+
+
+def test_roadmap_release_with_source_label_passes() -> None:
+    """A roadmap/release future year with a ``Source:`` label is grounded."""
+    r = vm._no_year_hallucination(
+        "# T\n\nFull release planned for early 2027. "
+        "Source: https://vendor.example/roadmap\n",
+        "tech-ai-developer",
+        "digest",
+    )
+    assert r.passed, r.details
+
+
+def test_source_label_alone_grounds_completed_fact_year() -> None:
+    """The ``Source:`` label alone grounds a future year even when no
+    forward-looking marker is present — proving the #864 grounding path (not
+    just the older forward-looking exemption) is what passes it."""
+    r = vm._no_year_hallucination(
+        "# T\n\n2027 revenue hit 40 units. Source: annual report\n",
+        "financial-intelligence",
+        "report",
+    )
+    assert r.passed, r.details
+    assert "informational" in r.details
+    assert "source-grounded" in r.details
+
+
+def test_markdown_link_alone_grounds_future_year() -> None:
+    """An inline markdown link grounds a completed-fact future year."""
+    r = vm._no_year_hallucination(
+        "# T\n\n2027 revenue hit 40 units "
+        "([source](https://example.com/report)).\n",
+        "financial-intelligence",
+        "report",
+    )
+    assert r.passed, r.details
+    assert "informational" in r.details
+    assert "source-grounded" in r.details
+
+
+def test_chinese_quoted_future_year_passes() -> None:
+    """A Chinese source quotation containing the year is grounded evidence
+    (#864).  The spaced form ``2027 年`` is matched by ``_YEAR_RE`` and must be
+    exempted by the quotation, not by hiding the content."""
+    r = vm._no_year_hallucination(
+        "# T\n\n“2027 年火的很可能是 AI 工作台”\n",
+        "tech-ai-developer",
+        "digest",
+    )
+    assert r.passed, r.details
+    assert "informational" in r.details
+    assert "source-grounded" in r.details
+    # The exact no-space form from the source is also never flagged.
+    r2 = vm._no_year_hallucination(
+        "# T\n\n“2027年火的很可能是AI工作台”\n",
+        "tech-ai-developer",
+        "digest",
+    )
+    assert r2.passed, r2.details
+
+
+def test_ungrounded_future_year_still_p0_fails() -> None:
+    """Guard against over-loosening: a bare future year with no URL, no
+    quotation, and no Source label is STILL a P0 hallucination (#864)."""
+    r = vm._no_year_hallucination(
+        "# T\n\nIn 2027 the company will have shipped 40 units\n",
+        "financial-intelligence",
+        "report",
+    )
+    assert not r.passed
+    assert r.severity == "P0"
+    assert "future year 2027" in r.details
+
+
+def test_ungrounded_future_month_year_still_p0_fails() -> None:
+    """The month-year branch keeps its P0 behavior when there is no grounding."""
+    r = vm._no_year_hallucination(
+        "# T\n\nIn March 2031, adoption tripled\n",
+        "financial-intelligence",
+        "report",
+    )
+    assert not r.passed
+    assert r.severity == "P0"

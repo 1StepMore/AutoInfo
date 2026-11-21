@@ -2,6 +2,157 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.7](https://github.com/1StepMore/AutoInfo/compare/v1.35.6...v1.35.7) (2026-11-21)
+
+
+### Bug Fixes
+
+* **audio:** raise Azure TTS output to 48kHz/192kbps ([#926](https://github.com/1StepMore/AutoInfo/issues/926)) ([#927](https://github.com/1StepMore/AutoInfo/issues/927)) ([72f7d28](https://github.com/1StepMore/AutoInfo/commit/72f7d28c9a5ed3e7532c1203f1fd87311dfb4706))
+
+## [1.35.6](https://github.com/1StepMore/AutoInfo/compare/v1.35.5...v1.35.6) (2026-11-21)
+
+
+### Bug Fixes
+
+* **output:** tag each audiobook ZIP chapter mp3 with ID3 TIT2/TRCK ([#920](https://github.com/1StepMore/AutoInfo/issues/920)) ([#922](https://github.com/1StepMore/AutoInfo/issues/922)) ([975ca43](https://github.com/1StepMore/AutoInfo/commit/975ca43641132923bc8daac074c3919b8646cc22))
+* **video:** audit narration spoken text for video artifacts ([#914](https://github.com/1StepMore/AutoInfo/issues/914)) ([#925](https://github.com/1StepMore/AutoInfo/issues/925)) ([f7e5867](https://github.com/1StepMore/AutoInfo/commit/f7e58673ea5f7f0e2a3ea54d3d7611405edf366d))
+
+## [1.35.5](https://github.com/1StepMore/AutoInfo/compare/v1.35.4...v1.35.5) (2026-11-21)
+
+
+### Bug Fixes
+
+* **audio:** strip bare URLs before TTS and audit narration ([#900](https://github.com/1StepMore/AutoInfo/issues/900)) ([#904](https://github.com/1StepMore/AutoInfo/issues/904)) ([de62869](https://github.com/1StepMore/AutoInfo/commit/de6286947fe42331ddab09602f86f22e8ef2eb1e))
+
+## [1.35.4](https://github.com/1StepMore/AutoInfo/compare/v1.35.3...v1.35.4) (2026-11-21)
+
+
+### Bug Fixes
+
+* **validation:** accept day-qualified deadlines and Chinese forward markers ([#910](https://github.com/1StepMore/AutoInfo/issues/910)) ([599fb47](https://github.com/1StepMore/AutoInfo/commit/599fb475cba5d057e66a1c5645df919c7ddaad29)), closes [#851](https://github.com/1StepMore/AutoInfo/issues/851)
+
+## [1.35.3](https://github.com/1StepMore/AutoInfo/compare/v1.35.2...v1.35.3) (2026-11-20)
+
+
+### Miscellaneous Chores
+
+* **ci:** make the gh-aw workflow sources strictly compilable (lock landing held for the engine secret) ([#916](https://github.com/1StepMore/AutoInfo/issues/916)) ([b6bd74f](https://github.com/1StepMore/AutoInfo/commit/b6bd74faa0d18be76bdc4cbbfb8880e02640b7a8))
+
+## [1.35.2](https://github.com/1StepMore/AutoInfo/compare/v1.35.1...v1.35.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb:** sanitize Windows-invalid topic dirs before KB writes ([#908](https://github.com/1StepMore/AutoInfo/issues/908)) ([2385286](https://github.com/1StepMore/AutoInfo/commit/23852860e8c700c4ac5ddbd76080dd5865a487e6)), closes [#862](https://github.com/1StepMore/AutoInfo/issues/862)
+* **output:** persist the audiobook ZIP bundle, not the chaptered MP3 (AutoInfo[#901](https://github.com/1StepMore/AutoInfo/issues/901)) ([#905](https://github.com/1StepMore/AutoInfo/issues/905)) ([34eea31](https://github.com/1StepMore/AutoInfo/commit/34eea316cfb851e5e16432998837e096e51c1f7e))
+
+## [1.35.1](https://github.com/1StepMore/AutoInfo/compare/v1.35.0...v1.35.1) (2026-11-20)
+
+
+### Miscellaneous Chores
+
+* **goals:** register P3 backlog burn-down with a mechanical checker ([#911](https://github.com/1StepMore/AutoInfo/issues/911)) ([1fe71bb](https://github.com/1StepMore/AutoInfo/commit/1fe71bb94700e9b443ee4f6efdcf699c8e317e9b))
+
+## [1.35.0](https://github.com/1StepMore/AutoInfo/compare/v1.34.1...v1.35.0) (2026-11-20)
+
+
+### Features
+
+* **agent:** add scripts/agent_ready.py machine-verdict entrypoint ([#906](https://github.com/1StepMore/AutoInfo/issues/906)) ([73b363c](https://github.com/1StepMore/AutoInfo/commit/73b363cbaa70999b7b916ee6ab6db8390774c7ce))
+
+
+### Tests
+
+* **g5:** make the fallback-failure path hermetic on keyed harnesses ([#909](https://github.com/1StepMore/AutoInfo/issues/909)) ([5100617](https://github.com/1StepMore/AutoInfo/commit/5100617b006227abe641ca421f112a5e0c20600f))
+
+## [1.34.1](https://github.com/1StepMore/AutoInfo/compare/v1.34.0...v1.34.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **cost:** meter every LLM call at the call_with_fallback choke point ([#902](https://github.com/1StepMore/AutoInfo/issues/902)) ([ab2f033](https://github.com/1StepMore/AutoInfo/commit/ab2f03377d4667d95f4480357ad94d0b475b7944))
+* **gate:** exempt mixed-corpus domains from C3 and resolve language config-first ([#903](https://github.com/1StepMore/AutoInfo/issues/903)) ([b2705c8](https://github.com/1StepMore/AutoInfo/commit/b2705c8d5cabab2c8bf9640e7e2577944cca179b))
+
+## [1.34.0](https://github.com/1StepMore/AutoInfo/compare/v1.33.14...v1.34.0) (2026-11-20)
+
+
+### Features
+
+* **gates:** require a render audit for video artifacts (AutoInfo[#895](https://github.com/1StepMore/AutoInfo/issues/895)) ([#898](https://github.com/1StepMore/AutoInfo/issues/898)) ([27978e3](https://github.com/1StepMore/AutoInfo/commit/27978e302c89e0f4dfcd95de8a629b3ce706d6fc))
+
+## [1.33.14](https://github.com/1StepMore/AutoInfo/compare/v1.33.13...v1.33.14) (2026-11-20)
+
+
+### Bug Fixes
+
+* **output:** render layout inner templates before composition ([#821](https://github.com/1StepMore/AutoInfo/issues/821)) ([#823](https://github.com/1StepMore/AutoInfo/issues/823)) ([041a45f](https://github.com/1StepMore/AutoInfo/commit/041a45f2a9e8366c96429096c3b7a22f87ee2896))
+
+## [1.33.13](https://github.com/1StepMore/AutoInfo/compare/v1.33.12...v1.33.13) (2026-11-20)
+
+
+### Documentation
+
+* **validation:** seed cross-audit evidence root ([#882](https://github.com/1StepMore/AutoInfo/issues/882)) ([2da0059](https://github.com/1StepMore/AutoInfo/commit/2da00591051feed55335798cb296067584175ccd))
+
+## [1.33.12](https://github.com/1StepMore/AutoInfo/compare/v1.33.11...v1.33.12) (2026-11-19)
+
+
+### Miscellaneous Chores
+
+* **goals:** mark P2 achieved with goal-cmd evidence ([#893](https://github.com/1StepMore/AutoInfo/issues/893)) ([39442ec](https://github.com/1StepMore/AutoInfo/commit/39442ecc6c54b3cdd0557386a51a8bce7cb3c2cf))
+
+## [1.33.11](https://github.com/1StepMore/AutoInfo/compare/v1.33.10...v1.33.11) (2026-11-19)
+
+
+### Documentation
+
+* **matrix:** graft the 2026-11-20 quality-gate evidence into the matrix pack ([#890](https://github.com/1StepMore/AutoInfo/issues/890)) ([4a15221](https://github.com/1StepMore/AutoInfo/commit/4a15221250adda1af8474098806f906c8b154abf))
+
+
+### Miscellaneous Chores
+
+* **agent:** register P2 goal with mechanical matrix-quality checker ([#889](https://github.com/1StepMore/AutoInfo/issues/889)) ([c3a9d2b](https://github.com/1StepMore/AutoInfo/commit/c3a9d2bf0c637cb707a8711d8d74d3f0d6935c5c))
+
+## [1.33.10](https://github.com/1StepMore/AutoInfo/compare/v1.33.9...v1.33.10) (2026-11-19)
+
+
+### Bug Fixes
+
+* **scripts:** exempt Target Audience enum field from H2 truncation rule ([#885](https://github.com/1StepMore/AutoInfo/issues/885)) ([e92a8b8](https://github.com/1StepMore/AutoInfo/commit/e92a8b8fdf4e5c2d3c05d6f4da21035f544a60df))
+
+
+### Miscellaneous Chores
+
+* **agent-review:** disambiguate local-market-presence expected language ([#888](https://github.com/1StepMore/AutoInfo/issues/888)) ([f212f71](https://github.com/1StepMore/AutoInfo/commit/f212f713a6f06a630c5c44cbdcf06de9393c271c))
+
+## [1.33.9](https://github.com/1StepMore/AutoInfo/compare/v1.33.8...v1.33.9) (2026-11-19)
+
+
+### Documentation
+
+* **matrix:** graft the 2026-11-19 12:26 A/V run into the matrix, 81/81 L3 ([#881](https://github.com/1StepMore/AutoInfo/issues/881)) ([4c49bd2](https://github.com/1StepMore/AutoInfo/commit/4c49bd2fec614b70cd5d225cd52c9e20c419e6b4))
+
+## [1.33.8](https://github.com/1StepMore/AutoInfo/compare/v1.33.7...v1.33.8) (2026-11-19)
+
+
+### Bug Fixes
+
+* **validation:** source-ground future years in _no_year_hallucination ([#864](https://github.com/1StepMore/AutoInfo/issues/864)) ([#879](https://github.com/1StepMore/AutoInfo/issues/879)) ([66c6d71](https://github.com/1StepMore/AutoInfo/commit/66c6d712902b8eec18d25ef9fd2d9e46695df57d))
+
+## [1.33.7](https://github.com/1StepMore/AutoInfo/compare/v1.33.6...v1.33.7) (2026-11-19)
+
+
+### Bug Fixes
+
+* A/V matrix refresh + gsap vendor + dynamic backlog + render-failure classification ([#877](https://github.com/1StepMore/AutoInfo/issues/877)) ([c24911e](https://github.com/1StepMore/AutoInfo/commit/c24911e45f306ac3d9a47a8564122dba8ec8c045))
+
+## [1.33.6](https://github.com/1StepMore/AutoInfo/compare/v1.33.5...v1.33.6) (2026-11-19)
+
+
+### Bug Fixes
+
+* **agent:** autonomy gate tolerates missing IANA tzdata on Windows ([#875](https://github.com/1StepMore/AutoInfo/issues/875)) ([5018850](https://github.com/1StepMore/AutoInfo/commit/501885007e105b3caa9b80c0ab2e1e1bcd584ff1))
+
 ## [1.33.5](https://github.com/1StepMore/AutoInfo/compare/v1.33.4...v1.33.5) (2026-11-19)
 
 

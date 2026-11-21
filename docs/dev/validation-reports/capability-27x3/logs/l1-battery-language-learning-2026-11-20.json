@@ -1,0 +1,72 @@
+{
+  "directory": "outputs\\capability-matrix\\language-learning",
+  "l0_defects": [],
+  "worklist": [
+    {
+      "family": "all",
+      "files": [
+        "outputs\\capability-matrix\\language-learning\\column-markdown-20261118-180843-294775.md",
+        "outputs\\capability-matrix\\language-learning\\digest-markdown-20261118-174804-879138.md",
+        "outputs\\capability-matrix\\language-learning\\enterprise-briefing-markdown-20261118-181136-631089.md",
+        "outputs\\capability-matrix\\language-learning\\magazine-digest-markdown-20261118-181514-937748.md",
+        "outputs\\capability-matrix\\language-learning\\premium-briefing-markdown-20261118-202435-969341.md",
+        "outputs\\capability-matrix\\language-learning\\presentation-markdown-20261118-182138-003535.md",
+        "outputs\\capability-matrix\\language-learning\\report-markdown-20261118-175434-137408.md",
+        "outputs\\capability-matrix\\language-learning\\tutorial-markdown-20261118-182350-663461.md"
+      ],
+      "blind_spot": "cross-product-entity-consistency",
+      "name": "Cross-product entity consistency",
+      "check_desc": "The same company/product described with CONFLICTING type claims across products (one says 'legal-industry AI-native OS', another says 'model-evaluation platform') is a defect.  This is the semantic layer above quality_gate X1's deterministic copular scan.",
+      "evidence_required": "the two conflicting descriptions + product files"
+    },
+    {
+      "family": "bilingual-domains",
+      "files": [
+        "outputs\\capability-matrix\\language-learning\\column-markdown-20261118-180843-294775.md",
+        "outputs\\capability-matrix\\language-learning\\digest-markdown-20261118-174804-879138.md",
+        "outputs\\capability-matrix\\language-learning\\enterprise-briefing-markdown-20261118-181136-631089.md",
+        "outputs\\capability-matrix\\language-learning\\magazine-digest-markdown-20261118-181514-937748.md",
+        "outputs\\capability-matrix\\language-learning\\premium-briefing-markdown-20261118-202435-969341.md",
+        "outputs\\capability-matrix\\language-learning\\presentation-markdown-20261118-182138-003535.md",
+        "outputs\\capability-matrix\\language-learning\\report-markdown-20261118-175434-137408.md",
+        "outputs\\capability-matrix\\language-learning\\tutorial-markdown-20261118-182350-663461.md"
+      ],
+      "blind_spot": "local-market-presence",
+      "name": "Local-market presence",
+      "check_desc": "For a bilingual domain (ai-commercial #190, *-learning), the local- market content actually reached the entries — the absence class #190 caught.  The expected content language follows the domain's own audience, not a fixed locale: ai-commercial is a zh-market AI product, so Chinese AI news must reach its entries; a *-learning domain expects material in the language it teaches (e.g. English material for an English-teaching domain — a Chinese-market feed is off-topic there and must NOT be demanded).  Flag only when the domain's own target content is absent from every entry.",
+      "evidence_required": "local-market entry that should appear + its absence"
+    }
+  ],
+  "verdicts": [
+    {
+      "verdict": "PASS",
+      "evidence": "outputs\\capability-matrix\\language-learning\\digest-markdown-20261118-174804-879138.md:Nvidia entries; outputs\\capability-matrix\\language-learning\\enterprise-briefing-markdown-20261118-181136-631089.md:Nvidia key findings; outputs\\capability-matrix\\language-learning\\magazine-digest-markdown-20261118-181514-937748.md:Nvidia feature; https://www.newsinlevels.com/products/nvidia-boss-ends-level-3/",
+      "note": "Across all reviewed products, each shared entity retains a consistent categorical description: Nvidia is consistently framed as a technology/AI company facing a CEO leadership transition, Microsoft as a cloud/productivity services provider experiencing an outage, and CommonLit as a digital reading/learning platform. No cross-product conflicting type claims (e.g., a model-evaluation platform versus a legal-industry AI-native OS) were found, so the blind spot is satisfied.",
+      "blind_spot": "cross-product-entity-consistency",
+      "family": "all",
+      "file": "outputs\\capability-matrix\\language-learning\\column-markdown-20261118-180843-294775.md"
+    },
+    {
+      "verdict": "PASS",
+      "evidence": "column-markdown-20261118-180843-294775.md (lines: \"26 Different Ways To Say GOOD and BAD in English\" and \"50 Common English Prefixes & Suffixes\" from espresso-english); tutorial-markdown-20261118-182350-663461.md (exercises 11–14 referencing \"10 English Phrases for Sales, Deals, and Discounts,\" \"50 Common English Prefixes & Suffixes,\" \"26 Different Ways To Say GOOD and BAD in English,\" and the CommonLit NJSLA study)",
+      "note": "The language-learning domain's target content is English-language instructional material, and that material is present across the entries (Espresso English vocabulary/phrase lessons and the CommonLit English literacy study). Because the domain's own audience expects English content, the absence class was satisfied and no local-market gap needs to be flagged.",
+      "blind_spot": "local-market-presence",
+      "family": "bilingual-domains",
+      "file": "outputs\\capability-matrix\\language-learning\\column-markdown-20261118-180843-294775.md"
+    }
+  ],
+  "honesty": {
+    "reviewed": [
+      "cross-product-entity-consistency (all)",
+      "local-market-presence (bilingual-domains)"
+    ],
+    "not_reviewed": [],
+    "channel": "config.llm markdown"
+  },
+  "summary": {
+    "l0_failed": false,
+    "flagged": 0,
+    "escalated": 0,
+    "passed": 2
+  }
+}

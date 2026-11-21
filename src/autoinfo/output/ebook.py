@@ -242,6 +242,34 @@ def render_mobi(epub_data_b64: str) -> dict[str, Any]:
     }
 
 
+def _tag_chapter(path: Path, title: str, index: int, total: int) -> None:
+    """Write ID3v2 TIT2/TRCK onto a rendered chapter mp3 (issue #920).
+
+    Failures are logged and swallowed: a missing tag degrades the artifact,
+    it must not fail the whole audiobook render (same tolerance as the
+    existing "mutagen unavailable -> untagged" fallback).
+    """
+    try:
+        from mutagen.id3 import ID3, TIT2, TRCK  # noqa: PLC0415
+
+        # mutagen ships py.typed with incomplete annotations; route its API
+        # through Any-typed aliases so strict mypy accepts the calls.
+        id3_ctor: Any = ID3
+        tit2_ctor: Any = TIT2
+        trck_ctor: Any = TRCK
+
+        tag = id3_ctor()
+        tag.add(tit2_ctor(encoding=3, text=title))
+        tag.add(trck_ctor(encoding=3, text=f"{index}/{total}"))
+        tag.save(path)
+    except Exception:
+        logger.warning(
+            "Failed to write ID3 chapter tags to %s — leaving it untagged.",
+            path,
+            exc_info=True,
+        )
+
+
 def _build_chaptered_mp3(mp3_paths: list[Path]) -> bytes:
     """Concatenate chapter MP3s and tag them with ID3v2.3 CHAP/CTOC frames.
 
@@ -328,6 +356,8 @@ def render_audiobook(
     chapters: list[tuple[str, str]],
     voice: str = "alloy",
     engine: str | None = None,
+    *,
+    audit_out: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Render a chaptered MP3 audiobook from Markdown chapters.
 
@@ -349,12 +379,16 @@ def render_audiobook(
     engine:
         TTS engine passed through to :func:`autoinfo.output._render_audio`
         (``None`` resolves from config, default ``"openai"``).
+    audit_out:
+        Optional dict that receives the aggregated per-chapter narration
+        audit (issue #900); the same aggregate is always returned under
+        ``narration_audit``.
 
     Returns
     -------
     dict
         ``{"format": "audiobook", "data_b64": ..., "zip_b64": ...,
-        "chapter_count": n}``.
+        "chapter_count": n, "narration_audit": {...}}``.
 
     Raises
     ------
@@ -389,11 +423,26 @@ def render_audiobook(
     tmp_dir.mkdir(parents=True, exist_ok=True)
     try:
         mp3_paths: list[Path] = []
+        narration_audit: dict[str, Any] = {
+            "spoken_url_tokens": 0,
+            "text_chars": 0,
+            "sample_head": "",
+        }
         for idx, (heading, body) in enumerate(chapters):
-            audio_bytes = _render_audio(body, voice=voice, engine=engine)
+            chapter_audit: dict[str, Any] = {}
+            audio_bytes = _render_audio(
+                body, voice=voice, engine=engine, audit_out=chapter_audit
+            )
+            narration_audit["spoken_url_tokens"] += int(
+                chapter_audit.get("spoken_url_tokens", 0)
+            )
+            narration_audit["text_chars"] += int(chapter_audit.get("text_chars", 0))
+            if idx == 0:
+                narration_audit["sample_head"] = str(chapter_audit.get("sample_head", ""))
             chapter_path = tmp_dir / f"chapter_{idx:03d}.mp3"
             chapter_path.write_bytes(audio_bytes)
             mp3_paths.append(chapter_path)
+            _tag_chapter(chapter_path, heading, idx + 1, len(chapters))
 
         # ZIP bundle of the individual chapter MP3s.
         zip_buf = io.BytesIO()
@@ -405,11 +454,15 @@ def render_audiobook(
         # Single chaptered MP3 (CHAP/CTOC tagged, concatenated fallback).
         tagged_bytes = _build_chaptered_mp3(mp3_paths)
 
+        if audit_out is not None:
+            audit_out.update(narration_audit)
+
         return {
             "format": "audiobook",
             "data_b64": base64.b64encode(tagged_bytes).decode("ascii"),
             "zip_b64": zip_b64,
             "chapter_count": len(chapters),
+            "narration_audit": narration_audit,
         }
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)

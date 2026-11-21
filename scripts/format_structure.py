@@ -14,9 +14,11 @@ Exit codes mirror ``scripts/quality_gate.py``: 0 = every artifact passed,
 function directly).
 
 Format detection is by extension, with one deliberate exception: audiobook
-artifacts in this repo are chaptered MP3s that carry a ``.zip`` extension
-(issue D12), so a ``.zip`` is classified by its magic bytes rather than its
-name.  A genuine ZIP is still supported for any future ``zip_b64`` writer.
+artifacts are ZIP bundles of chapter MP3s, but earlier runs wrote the single
+chaptered MP3 under the ``.zip`` name (D12/#901), so a ``.zip`` is classified by
+its magic bytes rather than its name.  ``check_audiobook()`` then also asserts
+that the bytes agree with the suffix, so the mismatched-payload defect fails
+instead of sneaking through the magic dispatch.
 """
 
 from __future__ import annotations
@@ -75,6 +77,7 @@ MIN_EPUB_TEXT = 200
 MIN_HTML_TEXT = 500
 MIN_MARKDOWN_WORDS = 200
 MIN_HTML_HEADINGS = 3
+MIN_VIDEO_TEXT_CHARS = 200
 FFPROBE_TIMEOUT = 60
 ALLOWED_PIX_FMTS = {"yuv420p", "yuvj420p"}
 
@@ -172,6 +175,32 @@ def _audio_checks(audio: Any, *, require_id3: bool) -> dict[str, dict[str, Any]]
     return checks
 
 
+def _check_narration_audit(path: Path) -> dict[str, Any]:
+    """Prove the spoken text never contained an address (issue #900).
+
+    The sidecar is written by the audio/audiobook producer when it can hand
+    the audit over.  A missing sidecar is deliberately NOT a failure here —
+    unlike the video render audit (#895), the six artifacts produced before
+    the audit existed carry none, and this gate must not turn them all red.
+    """
+    sidecar = path.with_name(path.name + ".narration-audit.json")
+    if not sidecar.is_file():
+        return _check(True, "no narration audit sidecar (legacy artifact)")
+    try:
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return _check(False, f"narration audit unreadable: {exc}")
+    if not isinstance(data, dict):
+        return _check(False, "narration audit is not a JSON object")
+    try:
+        tokens = int(data.get("spoken_url_tokens", 0))
+    except (TypeError, ValueError):
+        return _check(False, "narration audit has a non-numeric spoken_url_tokens")
+    if tokens > 0:
+        return _check(False, f"spoken_url_tokens={tokens} (addresses are read aloud)")
+    return _check(True, "spoken_url_tokens=0")
+
+
 def check_audio(path: Path) -> dict[str, dict[str, Any]]:
     checks: dict[str, dict[str, Any]] = {}
     size = path.stat().st_size
@@ -211,6 +240,7 @@ def check_audio(path: Path) -> dict[str, dict[str, Any]]:
             duration > MIN_AUDIOBOOK_DURATION,
             f"format.duration={duration:.3f}s (need > {MIN_AUDIOBOOK_DURATION}s)",
         )
+    checks["narration_audit"] = _check_narration_audit(path)
     return checks
 
 
@@ -315,6 +345,20 @@ def check_audiobook(path: Path) -> dict[str, dict[str, Any]]:
         checks["magic"] = _check(
             False, f"unexpected magic={magic.hex()}; expected ID3, MPEG frame sync, or PK"
         )
+    # An mp3 renamed to .zip (or a zip renamed to .mp3) still takes the branch
+    # above, so without this the "wrong payload for the suffix" defect (#901)
+    # passed as green.
+    suffix = path.suffix.lower()
+    detected = (
+        "zip"
+        if magic.startswith(b"PK\x03\x04")
+        else ("mp3" if (magic.startswith(b"ID3") or is_frame_sync) else "unknown")
+    )
+    checks["extension_matches_content"] = _check(
+        suffix in (".mp3", ".zip") and detected == suffix.lstrip("."),
+        f"suffix={suffix} content={detected}",
+    )
+    checks["narration_audit"] = _check_narration_audit(path)
     return checks
 
 
@@ -338,6 +382,42 @@ def _fps(value: Any) -> float:
         return 0.0
 
 
+def _check_render_audit(path: Path) -> dict[str, Any]:
+    """Prove the video pixels came from rendered content, not template source.
+
+    The sidecar is written by the video pipeline at render time (issue #895).
+    Structural checks alone cannot tell a real scene from a frame full of
+    unrendered Jinja source.
+    """
+    sidecar = path.with_name(path.name + ".render-audit.json")
+    if not sidecar.is_file():
+        return _check(
+            False, "render audit sidecar missing (cannot prove rendered content)"
+        )
+    try:
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return _check(False, f"render audit unreadable: {exc}")
+    if not isinstance(data, dict):
+        return _check(False, "render audit is not a JSON object")
+    try:
+        tokens = int(data.get("unresolved_template_tokens", 0))
+        text_chars = int(data.get("text_chars", 0))
+    except (TypeError, ValueError):
+        return _check(False, "render audit has non-numeric counters")
+    if tokens > 0:
+        return _check(
+            False, f"unresolved_template_tokens={tokens} (unrendered template source)"
+        )
+    if text_chars < MIN_VIDEO_TEXT_CHARS:
+        return _check(
+            False, f"text_chars={text_chars} (need >= {MIN_VIDEO_TEXT_CHARS})"
+        )
+    scenes = data.get("scenes")
+    scene_count = len(scenes) if isinstance(scenes, list) else 0
+    return _check(True, f"unresolved=0 text_chars={text_chars} scenes={scene_count}")
+
+
 def check_video(path: Path) -> dict[str, dict[str, Any]]:
     checks: dict[str, dict[str, Any]] = {}
     size = path.stat().st_size
@@ -348,6 +428,8 @@ def check_video(path: Path) -> dict[str, dict[str, Any]]:
     probe, error = _run_ffprobe(path)
     if probe is None:
         checks["ffprobe"] = _check(False, error)
+        checks["render_audit"] = _check_render_audit(path)
+        checks["narration_audit"] = _check_narration_audit(path)
         return checks
 
     streams = probe.get("streams") or []
@@ -355,6 +437,8 @@ def check_video(path: Path) -> dict[str, dict[str, Any]]:
     checks["ffprobe"] = _check(True, f"{len(video_streams)} video stream(s)")
     checks["video_stream"] = _check(bool(video_streams), f"video streams={len(video_streams)}")
     if not video_streams:
+        checks["render_audit"] = _check_render_audit(path)
+        checks["narration_audit"] = _check_narration_audit(path)
         return checks
     stream = video_streams[0]
 
@@ -380,6 +464,8 @@ def check_video(path: Path) -> dict[str, dict[str, Any]]:
     checks["pix_fmt"] = _check(
         pix_fmt in ALLOWED_PIX_FMTS, f"pix_fmt={pix_fmt!r} (allowed {sorted(ALLOWED_PIX_FMTS)})"
     )
+    checks["render_audit"] = _check_render_audit(path)
+    checks["narration_audit"] = _check_narration_audit(path)
     return checks
 
 

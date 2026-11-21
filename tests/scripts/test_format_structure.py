@@ -180,6 +180,23 @@ def test_negative_non_chaptered_zip_audiobook(
     assert "CHAP" in _details(result)
 
 
+def test_negative_mp3_payload_named_zip_fails(tmp_path: Path) -> None:
+    """An mp3 renamed to .zip is the #901 defect: the extension lies."""
+    path = tmp_path / "fake_audiobook.zip"
+    path.write_bytes(_EMPTY_ID3 + _mp3_seconds(30.0))
+    result = fs.check_audiobook(path)
+    assert result["extension_matches_content"]["passed"] is False
+    assert "content=mp3" in result["extension_matches_content"]["detail"]
+
+
+def test_positive_zip_bundle_named_zip_passes(tmp_path: Path) -> None:
+    path = tmp_path / "real_audiobook.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("chapter_000.mp3", _id3_with_title("Chapter 1") + _mp3_seconds(6.0))
+    result = fs.check_audiobook(path)
+    assert result["extension_matches_content"]["passed"] is True
+
+
 def test_negative_markdown_todo(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "draft.md"
     path.write_text("# Draft\n\nTODO finish the report\nhttps://example.com\n", encoding="utf-8")
@@ -327,6 +344,95 @@ def test_negative_audio_smaller_than_size_floor(
     assert "need > 51200" in _details(result)
 
 
+# ---------------------------------------------------------------------------
+# Render audit sidecar (issue #895)
+# ---------------------------------------------------------------------------
+
+
+def _synthesize_video(tmp_path: Path) -> Path:
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg/ffprobe not installed; cannot synthesize a video")
+    path = tmp_path / "audited.mp4"
+    completed = subprocess.run(
+        [
+            shutil.which("ffmpeg") or "ffmpeg",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=64x64:r=10",
+            "-t",
+            "2",
+            "-c:v",
+            "mpeg4",
+            "-pix_fmt",
+            "yuv420p",
+            "-y",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if completed.returncode != 0:
+        pytest.skip(f"ffmpeg could not synthesize a video: {completed.stderr[-200:]}")
+    return path
+
+
+def _write_render_audit(path: Path, **payload: Any) -> None:
+    audit: dict[str, Any] = {
+        "scenes": [
+            {
+                "index": 1,
+                "layout": "hero",
+                "unresolved_template_tokens": 0,
+                "text_chars": 1000,
+            }
+        ],
+        "unresolved_template_tokens": 0,
+        "text_chars": 1000,
+        "generated_at": "2026-11-20T00:00:00+00:00",
+    }
+    audit.update(payload)
+    path.with_name(path.name + ".render-audit.json").write_text(
+        json.dumps(audit), encoding="utf-8"
+    )
+
+
+def test_render_audit_passes_with_clean_sidecar(tmp_path: Path) -> None:
+    path = _synthesize_video(tmp_path)
+    _write_render_audit(path)
+    check = fs.check_video(path)["render_audit"]
+    assert check["passed"] is True, check
+    assert "unresolved=0" in check["detail"]
+    assert "text_chars=1000" in check["detail"]
+
+
+def test_render_audit_rejects_missing_sidecar(tmp_path: Path) -> None:
+    path = _synthesize_video(tmp_path)
+    check = fs.check_video(path)["render_audit"]
+    assert check["passed"] is False
+    assert "sidecar missing" in check["detail"]
+
+
+def test_render_audit_rejects_unresolved_tokens(tmp_path: Path) -> None:
+    path = _synthesize_video(tmp_path)
+    _write_render_audit(path, unresolved_template_tokens=1)
+    check = fs.check_video(path)["render_audit"]
+    assert check["passed"] is False
+    assert "unresolved_template_tokens=1" in check["detail"]
+
+
+def test_render_audit_rejects_too_little_text(tmp_path: Path) -> None:
+    path = _synthesize_video(tmp_path)
+    _write_render_audit(path, text_chars=10)
+    check = fs.check_video(path)["render_audit"]
+    assert check["passed"] is False
+    assert "text_chars=10" in check["detail"]
+
+
 def test_negative_video_shorter_than_three_seconds(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -421,3 +527,64 @@ def test_real_zip_audiobook_member_is_parsed(
     assert exit_code == 0
     assert result["passed"] is True, result
     assert any(name.startswith("member_") for name in result["checks"])
+
+
+def test_audio_without_narration_audit_is_a_pass(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Legacy artifacts predate the audit; a missing sidecar is not a failure (#900)."""
+
+    path = tmp_path / "legacy.mp3"
+    path.write_bytes(_id3_with_title("Legacy") + _mp3_seconds(6.0))
+
+    _exit_code, result = _run_json(capsys, path)
+
+    # This test owns the narration-audit semantics only: the fixture is a
+    # synthetic minimal MP3, so the ffprobe/mutagen based checks can differ
+    # between CI and a developer machine.  Assert the audit check itself and
+    # that it never becomes the reason a legacy artifact fails.
+    check = result["checks"]["narration_audit"]
+    assert check["passed"] is True, result
+    assert "legacy artifact" in check["detail"]
+    assert result["checks"]["size"]["passed"] is True, result
+
+
+def test_audio_narration_audit_with_spoken_urls_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A non-zero token count means an address reached the listener (#900)."""
+
+    path = tmp_path / "spoken.mp3"
+    path.write_bytes(_id3_with_title("Spoken") + _mp3_seconds(6.0))
+    Path(str(path) + ".narration-audit.json").write_text(
+        json.dumps({"spoken_url_tokens": 3, "text_chars": 120, "sample_head": "x"}),
+        encoding="utf-8",
+    )
+
+    exit_code, result = _run_json(capsys, path)
+
+    assert exit_code == 1
+    check = result["checks"]["narration_audit"]
+    assert check["passed"] is False
+    assert "spoken_url_tokens=3" in check["detail"]
+
+
+def test_audio_narration_audit_with_zero_tokens_passes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A clean audit proves the address was never spoken (#900)."""
+
+    path = tmp_path / "clean.mp3"
+    path.write_bytes(_id3_with_title("Clean") + _mp3_seconds(6.0))
+    Path(str(path) + ".narration-audit.json").write_text(
+        json.dumps({"spoken_url_tokens": 0, "text_chars": 120, "sample_head": "x"}),
+        encoding="utf-8",
+    )
+
+    _exit_code, result = _run_json(capsys, path)
+
+    # Same reasoning as test_audio_without_narration_audit_is_a_pass: a clean
+    # audit must not add a failure of its own.
+    audit = result["checks"]["narration_audit"]
+    assert audit["passed"] is True, result
+    assert audit["detail"].startswith("spoken_url_tokens=0"), result

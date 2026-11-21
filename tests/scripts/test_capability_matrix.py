@@ -7,6 +7,7 @@ depend on heavy artifacts or on ``format_structure.py`` internals.
 
 from __future__ import annotations
 
+import base64
 import json
 import sys
 from pathlib import Path
@@ -317,6 +318,54 @@ def test_missing_browser_is_an_honest_block_not_a_failure() -> None:
     assert cm._is_missing_browser_error(RuntimeError("template render exploded")) is False
 
 
+def test_401_substring_in_render_error_is_not_an_auth_error() -> None:
+    """A bare "401" inside render text must not look like an auth failure (#870)."""
+
+    exc = RuntimeError(
+        "Render failed: ERR_CONNECTION_RESET at token 0x401abc; "
+        "cannot read properties of null"
+    )
+
+    assert cm._is_auth_error(exc) is False
+
+
+def test_real_401_unauthorized_is_still_an_auth_error() -> None:
+    """Tightening the heuristic must keep genuine 401 responses detectable."""
+
+    assert cm._is_auth_error(RuntimeError("litellm request failed: HTTP 401 Unauthorized"))
+
+
+def test_render_error_is_classified_as_generation_error_not_no_llm_key(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Render failures win over the auth heuristic even when "401" appears (#870)."""
+
+    def factory(ctx: Any) -> Any:
+        def _boom(**kwargs: Any) -> Any:
+            raise RuntimeError(
+                "Render failed: sub_timeline_script_failure 401; "
+                "Cannot read properties of null"
+            )
+
+        return cm.GenerationCall(_boom, {}, False)
+
+    monkeypatch.setitem(cm.ROUTES, "report", cm.Route(factory, needs_template=False))
+    combo = cm.Combination(product="report", format="video", gated=False)
+
+    row = cm.generate_cell(
+        combo,
+        domain="language-learning",
+        topic="",
+        artifact_root=tmp_path,
+        force=False,
+        keyed="keyed",
+        llm_available=True,
+    )
+
+    assert row["reached"] == "blocked-generation-error"
+    assert row["reached"] != "blocked-no-llm-key"
+
+
 def test_stale_sources_is_an_honest_block_not_a_failure() -> None:
     """The digest freshness gate refusing stale entries is correct behaviour."""
 
@@ -338,3 +387,86 @@ def test_repo_relative_keeps_published_paths_portable() -> None:
 
     outside = Path("/tmp/elsewhere/x.md")
     assert cm.repo_relative(outside) == "/tmp/elsewhere/x.md"
+
+
+def test_write_video_carries_the_render_audit_sidecar(tmp_path: Path) -> None:
+    """The video artifact must not lose the render audit on its way to outputs (#895)."""
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"fake mp4")
+    audit = Path(str(source) + ".render-audit.json")
+    audit.write_text(json.dumps({"rendered_frames": 3}), encoding="utf-8")
+
+    target = cm.write_artifact(
+        artifact_root=tmp_path / "artifacts",
+        domain="demo",
+        product="report",
+        fmt="video",
+        content=json.dumps({"status": "success", "video_path": str(source)}),
+        force=False,
+    )
+
+    assert target.is_file()
+    sidecar = Path(str(target) + ".render-audit.json")
+    assert sidecar.is_file()
+    assert json.loads(sidecar.read_text(encoding="utf-8")) == {"rendered_frames": 3}
+
+
+def test_write_video_without_a_sidecar_still_copies_the_mp4(tmp_path: Path) -> None:
+    """A missing sidecar is the gate's call, never an exception here (#895)."""
+
+    source = tmp_path / "bare.mp4"
+    source.write_bytes(b"fake mp4")
+
+    target = cm.write_artifact(
+        artifact_root=tmp_path / "artifacts",
+        domain="demo",
+        product="report",
+        fmt="video",
+        content=json.dumps({"status": "success", "video_path": str(source)}),
+        force=False,
+    )
+
+    assert target.read_bytes() == b"fake mp4"
+    assert not Path(str(target) + ".render-audit.json").exists()
+
+
+def test_write_audio_carries_the_narration_audit_sidecar(tmp_path: Path) -> None:
+    """The narration audit travels with audio artifacts (#900)."""
+
+    content = base64.b64encode(b"ID3" + b"\x00" * 32).decode("ascii")
+    audit = {"spoken_url_tokens": 0, "text_chars": 42, "sample_head": "hello"}
+
+    target = cm.write_artifact(
+        artifact_root=tmp_path / "artifacts",
+        domain="demo",
+        product="digest",
+        fmt="audio",
+        content=content,
+        force=False,
+        narration_audit=audit,
+    )
+
+    sidecar = Path(str(target) + ".narration-audit.json")
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert payload["spoken_url_tokens"] == 0
+    assert payload["text_chars"] == 42
+    assert payload["sample_head"] == "hello"
+    assert isinstance(payload["generated_at"], str) and payload["generated_at"]
+
+
+def test_write_audio_without_an_audit_writes_no_sidecar(tmp_path: Path) -> None:
+    """No audit means no sidecar — the matrix never fabricates one (#900)."""
+
+    content = base64.b64encode(b"ID3" + b"\x00" * 32).decode("ascii")
+
+    target = cm.write_artifact(
+        artifact_root=tmp_path / "artifacts",
+        domain="demo",
+        product="digest",
+        fmt="audio",
+        content=content,
+        force=False,
+    )
+
+    assert not Path(str(target) + ".narration-audit.json").exists()

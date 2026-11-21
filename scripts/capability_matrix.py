@@ -16,7 +16,10 @@ Layers are cumulative and monotone:
   L2 structural pass *is* the acceptance; for documents L3 additionally requires
   a non-empty artifact.  In practice both collapse to ``L2 and size > 0``; a
   row may never report L3 when L1 or L2 failed (``compute_layers`` is the single
-  enforcement point).
+  enforcement point).  For video, L3 additionally requires
+  ``<artifact>.render-audit.json`` proving the frames are rendered content —
+  a structurally valid artifact whose pixels are unrendered template source
+  cannot reach L3.
 
 Retry policy (this driver's own — the generators expose no override, and T17
 owns that public-API decision): **one attempt per cell, one retry only for
@@ -32,8 +35,10 @@ from __future__ import annotations
 import argparse
 import base64
 import importlib.util
+import inspect
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -384,7 +389,28 @@ def _is_auth_error(exc: BaseException) -> bool:
     except ImportError:
         pass
     text = str(exc).lower()
-    return "401" in text or "unauthorized" in text or "authentication" in text
+    # A bare substring match on "401" misclassifies render failures whose stack
+    # traces / hashes merely contain the digits (issue #870). Require a real
+    # status token instead.
+    return bool(re.search(r"\b401\b", text)) or "unauthorized" in text or "authentication" in text
+
+
+_RENDER_ERROR_MARKERS = (
+    "render failed",
+    "sub_timeline_script_failure",
+    "gsap",
+    "cannot read properties of null",
+)
+
+
+def _is_render_error(exc: BaseException) -> bool:
+    """True when the failure came from the rendering pipeline, not auth.
+
+    Checked before the auth heuristic so an incidental "401" inside a render
+    trace cannot masquerade as a missing LLM key (#870).
+    """
+    text = str(exc).lower()
+    return any(marker in text for marker in _RENDER_ERROR_MARKERS)
 
 
 def _is_missing_browser_error(exc: BaseException) -> bool:
@@ -528,6 +554,11 @@ def _decode_video(content: str, target: Path) -> None:
         video_path = blob.get("video_path")
         if isinstance(video_path, str) and os.path.isfile(video_path):
             shutil.copy2(video_path, target)
+            # The render audit travels with the artifact; its absence is judged by
+            # the gate, not raised here (AutoInfo#895).
+            sidecar = Path(str(video_path) + ".render-audit.json")
+            if sidecar.is_file():
+                shutil.copy2(sidecar, Path(str(target) + ".render-audit.json"))
             return
         raise VideoUnavailableError(
             f"video generator returned no usable video_path (status={blob.get('status')!r})"
@@ -543,6 +574,7 @@ def write_artifact(
     fmt: str,
     content: str,
     force: bool,
+    narration_audit: dict[str, Any] | None = None,
 ) -> Path:
     """Persist the generated *content* under *artifact_root* (never silently overwrite)."""
     if fmt not in EXT_BY_FORMAT:
@@ -568,12 +600,31 @@ def write_artifact(
         _decode_video(content, target)
     else:
         target.write_text(str(content), encoding="utf-8")
+
+    # The narration audit travels with the artifact (issue #900).  It is only
+    # written when the producer actually supplied one — never fabricated.
+    if narration_audit and fmt in ("audio", "audiobook", "video"):
+        payload = dict(narration_audit)
+        payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+        Path(str(target) + ".narration-audit.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     return target
 
 
 # ---------------------------------------------------------------------------
 # One cell
 # ---------------------------------------------------------------------------
+
+
+def _accepts_narration_audit(call: GenerationCall) -> bool:
+    """Whether the generator takes the optional ``narration_audit_out`` sink."""
+    try:
+        parameters = inspect.signature(call.generator).parameters
+    except (TypeError, ValueError):
+        return False
+    return "narration_audit_out" in parameters
 
 
 def _invoke(call: GenerationCall) -> tuple[Any, int]:
@@ -708,8 +759,15 @@ def generate_cell(
     import autoinfo.output as output_hub
 
     output_hub.reset_llm_provenance()
+    narration_audit: dict[str, Any] = {}
     try:
         call = route(ctx)
+        if combo.format in ("audio", "audiobook", "video") and _accepts_narration_audit(call):
+            call = GenerationCall(
+                call.generator,
+                {**call.kwargs, "narration_audit_out": narration_audit},
+                call.uses_product_template,
+            )
         result, attempts = _invoke(call)
     except Exception as exc:  # noqa: BLE001 - classified below, never swallowed
         if _is_tts_error(exc, combo.format):
@@ -718,6 +776,8 @@ def generate_cell(
             reason = "blocked-no-browser"
         elif _is_stale_source_error(exc):
             reason = "blocked-stale-sources"
+        elif _is_render_error(exc):
+            reason = "blocked-generation-error"
         elif _is_auth_error(exc):
             reason = "blocked-no-llm-key"
         else:
@@ -775,6 +835,7 @@ def generate_cell(
             fmt=combo.format,
             content=content,
             force=force,
+            narration_audit=narration_audit or None,
         )
     except VideoUnavailableError as exc:
         return _blocked(

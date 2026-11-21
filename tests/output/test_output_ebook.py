@@ -150,16 +150,28 @@ def test_render_audiobook_chapters(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["format"] == "audiobook"
     assert result["chapter_count"] == 2
 
+    from mutagen.id3 import ID3
+
     with zipfile.ZipFile(
         io.BytesIO(base64.b64decode(result["zip_b64"]))
     ) as zf:
         assert zf.namelist() == ["chapter_000.mp3", "chapter_001.mp3"]
-        assert zf.read("chapter_000.mp3") == fake_mp3
-        assert zf.read("chapter_001.mp3") == fake_mp3
+        members = [
+            (zf.read("chapter_000.mp3"), "Chapter One", "1/2"),
+            (zf.read("chapter_001.mp3"), "第二章", "2/2"),
+        ]
+    # issue #920: each bundled chapter mp3 carries ID3v2 TIT2/TRCK tags.
+    for data, title, track in members:
+        assert data.startswith(b"ID3")
+        assert data.endswith(b"fake")
+        tags = ID3(io.BytesIO(data))
+        assert str(tags["TIT2"]) == title
+        assert str(tags["TRCK"]) == track
 
-    # Chaptered MP3 falls back to plain concatenation when tagging fails
-    # (fake bytes are not parseable MPEG frames).
-    assert base64.b64decode(result["data_b64"]) == fake_mp3 * 2
+    # Chaptered MP3 falls back to plain concatenation when CHAP/CTOC tagging
+    # fails (fake bytes are not parseable MPEG frames); the concatenated
+    # chapters still carry their per-chapter ID3 tags.
+    assert base64.b64decode(result["data_b64"]) == members[0][0] + members[1][0]
 
 
 def test_render_audiobook_empty_chapters() -> None:

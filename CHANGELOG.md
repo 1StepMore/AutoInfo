@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.7](https://github.com/1StepMore/AutoInfo/compare/v1.35.6...v1.35.7) (2026-11-21)
+
+
+### Bug Fixes
+
+* **audio:** raise Azure TTS output to 48kHz/192kbps ([#926](https://github.com/1StepMore/AutoInfo/issues/926)) ([#927](https://github.com/1StepMore/AutoInfo/issues/927)) ([72f7d28](https://github.com/1StepMore/AutoInfo/commit/72f7d28c9a5ed3e7532c1203f1fd87311dfb4706))
+
 ## [1.35.6](https://github.com/1StepMore/AutoInfo/compare/v1.35.5...v1.35.6) (2026-11-21)
 
 

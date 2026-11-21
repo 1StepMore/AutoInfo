@@ -75,7 +75,7 @@ DEFAULT_LOCAL_TTS_VOICE = "en-US-JennyNeural"
 
 # Default Azure Speech voice and output format (issue #647).
 DEFAULT_AZURE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
-AZURE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3"
+AZURE_TTS_OUTPUT_FORMAT = "audio-48khz-192kbitrate-mono-mp3"
 # Required by the Azure Speech REST contract: User-Agent (< 255 chars) and
 # the SSML 1.0 namespace on <speak>.
 AZURE_TTS_USER_AGENT = "AutoInfo-TTS/1.0"

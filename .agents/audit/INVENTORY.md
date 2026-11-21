@@ -13,16 +13,16 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 154 |
-| Total lines | 41126 |
-| Active files | 122 |
+| Total files | 159 |
+| Total lines | 41444 |
+| Active files | 127 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
-| Category — validation-reports | 33 files / 6559 lines |
+| Category — validation-reports | 38 files / 6877 lines |
 | Category — docs/dev | 45 files / 11689 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
@@ -139,6 +139,11 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-reports/acceptance-1.14.0-2026-09-29.md` | 565 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/README.md` | 55 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/evidence-pack.md` | 336 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/issue-928-retail-verify/digest-markdown-20261121-075508-410592.md` | 238 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/issue-928-retail-verify/digest-markdown-20261121-075508-410592.md.provenance.json` | 6 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/issue-928-retail-verify/matrix.json` | 32 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/issue-928-retail-verify/matrix.md` | 16 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/issue-928-retail-verify/verdict.md` | 26 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/l0-l1-baseline.md` | 58 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/README.md` | 14 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/artifact-residue-cleanup-2026-11-20.md` | 87 | validation-reports | active | — |

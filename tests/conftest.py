@@ -503,3 +503,43 @@ def mock_litellm_response() -> MagicMock:
         ],
     )
     return m
+
+
+# ---------------------------------------------------------------------------
+# Issue #849: hermetic LLM network gate
+# ---------------------------------------------------------------------------
+# With a key present in the process environment (the harness reality since
+# #841), tests that implicitly assume "no key configured" walk into the real
+# LLM network path and hang on dead endpoints — the Windows full-suite hang:
+# the connection to a dead endpoint held 300s+, pytest-timeout killed the
+# test but the asyncio IOCP loop never recovered and the suite died at 36%.
+# Block at the litellm module boundary — the single shared module object
+# behind LLMExtractor._get_litellm and autoinfo.embeddings — so the failure
+# is loud and immediate instead of a hang.  real_api-marked tests are exempt.
+
+_HERMETIC_LLM_BLOCK_MSG = (
+    "real LLM network call blocked in a non-real_api test "
+    "(issue #849 hermetic gate) — patch call_with_fallback / litellm, or "
+    "mark the test @pytest.mark.real_api"
+)
+
+
+def _raise_hermetic_llm_block(*_args: object, **_kwargs: object) -> None:
+    raise RuntimeError(_HERMETIC_LLM_BLOCK_MSG)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_llm_network_gate(
+    request: pytest.FixtureRequest,
+) -> Generator[None, None, None]:
+    if request.node.get_closest_marker("real_api"):
+        yield
+        return
+    import litellm  # noqa: PLC0415 — deferred; the shared module object
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(litellm, "completion", _raise_hermetic_llm_block)
+    mp.setattr(litellm, "acompletion", _raise_hermetic_llm_block)
+    mp.setattr(litellm, "embedding", _raise_hermetic_llm_block)
+    yield
+    mp.undo()

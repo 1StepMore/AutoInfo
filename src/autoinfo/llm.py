@@ -1281,6 +1281,13 @@ def call_with_fallback(
     if max_tokens is None:
         max_tokens = config.llm.max_tokens or 2000
 
+    if timeout is None:
+        # Issue #849: timeout=None reaches litellm and lets a dead endpoint
+        # hang the connection for its own 600s default — the amplifier of the
+        # Windows full-suite hang.  Always resolve an explicit budget:
+        # config.llm.timeout first, else the historical default.
+        timeout = float(config.llm.timeout or DEFAULT_LLM_TIMEOUT)
+
     provider = config.llm.provider or DEFAULT_PROVIDER
     # Issue #791: normalize once at candidate construction — see
     # :func:`_litellm_model_name`.

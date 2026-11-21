@@ -420,13 +420,9 @@ _URL_RE = re.compile(r"https?://\S+")
 # said/announced/according to/报道/表示).  This is the #445 grounding pattern
 # reused for year claims — the source really does say "2027".
 _MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
-_SOURCE_LABEL_RE = re.compile(
-    r"(?:source\s*:|来源\s*[:：]|source_url)", re.IGNORECASE
-)
+_SOURCE_LABEL_RE = re.compile(r"(?:source\s*:|来源\s*[:：]|source_url)", re.IGNORECASE)
 _QUOTE_SPAN_RE = re.compile(r"“[^”]*”|\"[^\"]*\"|「[^」]*」|『[^』]*』")
-_ATTRIBUTION_RE = re.compile(
-    r"(?:said|announced|according\s+to|报道|表示)", re.IGNORECASE
-)
+_ATTRIBUTION_RE = re.compile(r"(?:said|announced|according\s+to|报道|表示)", re.IGNORECASE)
 # #351 V4 + #41 — a FUTURE year is only a hallucination when it is asserted as
 # a completed fact.  Forward-looking projections ("Revenue to double by 2030",
 # "targeting 2027", "2025-2030 runway") are legitimate financial prose, and
@@ -444,13 +440,24 @@ _FORWARD_LOOKING_RE = re.compile(
     r"upcoming|could|strateg(?:y|ies)?)\b",
     re.IGNORECASE,
 )
+# Chinese forward-looking / deadline markers (#851): mixed-corpus domains
+# (e.g. tech-ai-developer) produce Chinese-language products whose future
+# years sit in legitimate forward/deadline contexts — compliance deadlines
+# ("请在 2027 年 1 月 31 日前完成合规验证"), roadmap mentions
+# ("预计/将于/截至").  Deliberately EXCLUDED: 可能 (an unquoted prediction
+# stays strict; a QUOTED prediction is #864's source-grounding path, which
+# must report informational rather than being silently exempted).
+_FORWARD_LOOKING_ZH_RE = re.compile(
+    r"计划|预计|将于|将在|将推出|将发布|截至|截止|预测|预期|目标|日前|之前"
+)
 # "by 2030" / "by the year 2027" / "by July 2027" — strong forward markers
 # (bare "by" as a preposition is too common to be one, so it must directly
 # precede a year, optionally via a month name).
 _BY_YEAR_RE = re.compile(
     r"\bby\s+(?:the\s+)?(?:calendar\s+)?(?:year\s+)?"
     r"(?:(?:January|February|March|April|May|June|July|August|September|"
-    r"October|November|December)\s+)?(?:18|19|20)\d{2}\b",
+    r"October|November|December)\s+(?:\d{1,2}(?:st|nd|rd|th)?,?\s+)?)?"
+    r"(?:18|19|20)\d{2}\b",
     re.IGNORECASE,
 )
 # A year range "2025-2030" / "2027–2030" / short form "2026-27" is inherently
@@ -573,9 +580,7 @@ _VIEW_SOURCE_RE = re.compile(r"\[View Source\]\(([^)]*)\)")
 # #677 — any ``scheme://`` is a legitimate identifier (http(s), the internal
 # ``draft://`` / ``kb://`` schemes, ...), plus the bare citation schemes.
 # Bare prose with no identifier token still fails.
-_REF_URL_TOKEN = re.compile(
-    r"[a-z][a-z0-9+.\-]*://|doi:|pmid:|arxiv:|isbn:", re.IGNORECASE
-)
+_REF_URL_TOKEN = re.compile(r"[a-z][a-z0-9+.\-]*://|doi:|pmid:|arxiv:|isbn:", re.IGNORECASE)
 # Cross-domain noise markers (issue #319) / financial dilution markers.
 _AI_COMMERCIAL_NOISE = (
     "贝达药业",
@@ -1021,8 +1026,7 @@ def _no_year_hallucination(text: str, domain: str, product: str) -> AssertionRes
             raw_line = _original_line(raw_body, body, m)
             if _is_source_grounded(raw_line, m.group(0)):
                 informational.append(
-                    "informational (source-grounded, not a failure): "
-                    f"future year {year}"
+                    f"informational (source-grounded, not a failure): future year {year}"
                 )
             else:
                 failures.append(f"future year {year}")
@@ -1098,7 +1102,7 @@ def _is_source_grounded(raw_line: str, token: str) -> bool:
             return True
     idx = raw_line.find(token)
     if idx != -1:
-        tail = raw_line[idx + len(token) :].lstrip(" \t\"”’」』,，.。:：-—")
+        tail = raw_line[idx + len(token) :].lstrip(' \t"”’」』,，.。:：-—')
         if _ATTRIBUTION_RE.match(tail):
             return True
         head = raw_line[:idx]
@@ -1111,8 +1115,9 @@ def _is_forward_looking(text: str, m: re.Match[str]) -> bool:
     """True when the matched year sits in a forward-looking context: the line
     carries a projection marker (``target`` / ``forecast`` / ``projected`` /
     ``expected`` / ``fiscal`` / ``by 2030`` / ``set to`` / ``delayed to`` /
-    ``from 2028`` / …) or the year is part of a year-range like
-    ``2025-2030``."""
+    ``from 2028`` / …), a Chinese forward/deadline marker (计划 / 预计 / 将于 /
+    截至 / 预测 / 可能 / 日前 / … — #851 mixed-corpus products), or the year is
+    part of a year-range like ``2025-2030``."""
     line_start = text.rfind("\n", 0, m.start()) + 1
     line_end = text.find("\n", m.end())
     if line_end == -1:
@@ -1123,6 +1128,7 @@ def _is_forward_looking(text: str, m: re.Match[str]) -> bool:
     return bool(
         _BY_YEAR_RE.search(line)
         or _FORWARD_LOOKING_RE.search(line)
+        or _FORWARD_LOOKING_ZH_RE.search(line)
         or _SET_TO_RE.search(line)
         or _FROM_YEAR_RE.search(line)
         or _FOR_YEAR_RE.search(line)

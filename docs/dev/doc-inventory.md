@@ -13,16 +13,16 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 160 |
-| Total lines | 41488 |
-| Active files | 128 |
+| Total files | 161 |
+| Total lines | 41547 |
+| Active files | 129 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
-| Category — validation-reports | 39 files / 6921 lines |
+| Category — validation-reports | 40 files / 6980 lines |
 | Category — docs/dev | 45 files / 11689 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
@@ -152,6 +152,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-reports/capability-27x3/logs/collect-delta-2026-10-27.md` | 46 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/kb-purge-2026-10-27.md` | 58 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/kb-purge-2026-11-20.md` | 59 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/logs/kb-purge-2026-11-21.md` | 59 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/l1-battery-ai-commercial-2026-11-20.json` | 88 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/l1-battery-language-learning-2026-11-20.json` | 72 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/l1-battery-medical-research-2026-11-20.json` | 66 | validation-reports | active | — |

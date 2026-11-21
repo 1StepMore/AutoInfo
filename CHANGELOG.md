@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.6](https://github.com/1StepMore/AutoInfo/compare/v1.35.5...v1.35.6) (2026-11-21)
+
+
+### Bug Fixes
+
+* **output:** tag each audiobook ZIP chapter mp3 with ID3 TIT2/TRCK ([#920](https://github.com/1StepMore/AutoInfo/issues/920)) ([#922](https://github.com/1StepMore/AutoInfo/issues/922)) ([975ca43](https://github.com/1StepMore/AutoInfo/commit/975ca43641132923bc8daac074c3919b8646cc22))
+* **video:** audit narration spoken text for video artifacts ([#914](https://github.com/1StepMore/AutoInfo/issues/914)) ([#925](https://github.com/1StepMore/AutoInfo/issues/925)) ([f7e5867](https://github.com/1StepMore/AutoInfo/commit/f7e58673ea5f7f0e2a3ea54d3d7611405edf366d))
+
 ## [1.35.5](https://github.com/1StepMore/AutoInfo/compare/v1.35.4...v1.35.5) (2026-11-21)
 
 

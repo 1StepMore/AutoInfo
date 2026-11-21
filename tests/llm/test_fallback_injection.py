@@ -167,6 +167,7 @@ class TestFallbackInjection:
         assert resp.choices[0].message.content == "ok"
 
 
+@pytest.mark.real_api
 @pytest.mark.skipif(
     not (os.environ.get("AUTOINFO_LLM_API_KEY") and CONFIG_PATH.is_file()),
     reason=(

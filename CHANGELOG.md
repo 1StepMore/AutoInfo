@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.5](https://github.com/1StepMore/AutoInfo/compare/v1.35.4...v1.35.5) (2026-11-21)
+
+
+### Bug Fixes
+
+* **audio:** strip bare URLs before TTS and audit narration ([#900](https://github.com/1StepMore/AutoInfo/issues/900)) ([#904](https://github.com/1StepMore/AutoInfo/issues/904)) ([de62869](https://github.com/1StepMore/AutoInfo/commit/de6286947fe42331ddab09602f86f22e8ef2eb1e))
+
 ## [1.35.4](https://github.com/1StepMore/AutoInfo/compare/v1.35.3...v1.35.4) (2026-11-21)
 
 

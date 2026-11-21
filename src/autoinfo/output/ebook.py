@@ -328,6 +328,8 @@ def render_audiobook(
     chapters: list[tuple[str, str]],
     voice: str = "alloy",
     engine: str | None = None,
+    *,
+    audit_out: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Render a chaptered MP3 audiobook from Markdown chapters.
 
@@ -349,12 +351,16 @@ def render_audiobook(
     engine:
         TTS engine passed through to :func:`autoinfo.output._render_audio`
         (``None`` resolves from config, default ``"openai"``).
+    audit_out:
+        Optional dict that receives the aggregated per-chapter narration
+        audit (issue #900); the same aggregate is always returned under
+        ``narration_audit``.
 
     Returns
     -------
     dict
         ``{"format": "audiobook", "data_b64": ..., "zip_b64": ...,
-        "chapter_count": n}``.
+        "chapter_count": n, "narration_audit": {...}}``.
 
     Raises
     ------
@@ -389,8 +395,22 @@ def render_audiobook(
     tmp_dir.mkdir(parents=True, exist_ok=True)
     try:
         mp3_paths: list[Path] = []
+        narration_audit: dict[str, Any] = {
+            "spoken_url_tokens": 0,
+            "text_chars": 0,
+            "sample_head": "",
+        }
         for idx, (heading, body) in enumerate(chapters):
-            audio_bytes = _render_audio(body, voice=voice, engine=engine)
+            chapter_audit: dict[str, Any] = {}
+            audio_bytes = _render_audio(
+                body, voice=voice, engine=engine, audit_out=chapter_audit
+            )
+            narration_audit["spoken_url_tokens"] += int(
+                chapter_audit.get("spoken_url_tokens", 0)
+            )
+            narration_audit["text_chars"] += int(chapter_audit.get("text_chars", 0))
+            if idx == 0:
+                narration_audit["sample_head"] = str(chapter_audit.get("sample_head", ""))
             chapter_path = tmp_dir / f"chapter_{idx:03d}.mp3"
             chapter_path.write_bytes(audio_bytes)
             mp3_paths.append(chapter_path)
@@ -405,11 +425,15 @@ def render_audiobook(
         # Single chaptered MP3 (CHAP/CTOC tagged, concatenated fallback).
         tagged_bytes = _build_chaptered_mp3(mp3_paths)
 
+        if audit_out is not None:
+            audit_out.update(narration_audit)
+
         return {
             "format": "audiobook",
             "data_b64": base64.b64encode(tagged_bytes).decode("ascii"),
             "zip_b64": zip_b64,
             "chapter_count": len(chapters),
+            "narration_audit": narration_audit,
         }
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)

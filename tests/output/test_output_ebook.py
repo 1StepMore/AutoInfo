@@ -136,10 +136,12 @@ def test_render_audiobook_chapters(monkeypatch: pytest.MonkeyPatch) -> None:
     import autoinfo.output.ebook as ebook_mod
 
     fake_mp3 = b"ID3\x04\x00\x00\x00\x00\x00\x00fake"
+    # The real _render_audio takes the optional issue-#900 audit sink; the
+    # fake mirrors that signature so render_audiobook can forward it.
     monkeypatch.setattr(
         ebook_mod,
         "_render_audio",
-        lambda text, voice="alloy", engine=None: fake_mp3,
+        lambda text, voice="alloy", engine=None, audit_out=None: fake_mp3,
     )
 
     result = render_audiobook(
@@ -180,3 +182,37 @@ def test_render_mobi_no_calibre() -> None:
     )
     with pytest.raises(RuntimeError, match="calibre"):
         render_mobi(epub_result["data_b64"])
+
+
+def test_render_audiobook_aggregates_chapter_narration_audit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chapter audits are summed; the first chapter supplies sample_head (#900)."""
+    import autoinfo.output.ebook as ebook_mod
+
+    fake_mp3 = b"ID3\x04\x00\x00\x00\x00\x00\x00fake"
+
+    def fake_render(text, voice="alloy", engine=None, audit_out=None):
+        if audit_out is not None:
+            audit_out.update(
+                {
+                    "spoken_url_tokens": 0,
+                    "text_chars": len(text),
+                    "sample_head": text[:200],
+                }
+            )
+        return fake_mp3
+
+    monkeypatch.setattr(ebook_mod, "_render_audio", fake_render)
+
+    sink: dict[str, object] = {}
+    result = render_audiobook(
+        chapters=[("One", "first body"), ("Two", "second body longer")],
+        audit_out=sink,
+    )
+
+    audit = result["narration_audit"]
+    assert audit["spoken_url_tokens"] == 0
+    assert audit["text_chars"] == len("first body") + len("second body longer")
+    assert audit["sample_head"] == "first body"
+    assert sink == audit

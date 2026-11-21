@@ -7,6 +7,7 @@ depend on heavy artifacts or on ``format_structure.py`` internals.
 
 from __future__ import annotations
 
+import base64
 import json
 import sys
 from pathlib import Path
@@ -428,3 +429,44 @@ def test_write_video_without_a_sidecar_still_copies_the_mp4(tmp_path: Path) -> N
 
     assert target.read_bytes() == b"fake mp4"
     assert not Path(str(target) + ".render-audit.json").exists()
+
+
+def test_write_audio_carries_the_narration_audit_sidecar(tmp_path: Path) -> None:
+    """The narration audit travels with audio artifacts (#900)."""
+
+    content = base64.b64encode(b"ID3" + b"\x00" * 32).decode("ascii")
+    audit = {"spoken_url_tokens": 0, "text_chars": 42, "sample_head": "hello"}
+
+    target = cm.write_artifact(
+        artifact_root=tmp_path / "artifacts",
+        domain="demo",
+        product="digest",
+        fmt="audio",
+        content=content,
+        force=False,
+        narration_audit=audit,
+    )
+
+    sidecar = Path(str(target) + ".narration-audit.json")
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert payload["spoken_url_tokens"] == 0
+    assert payload["text_chars"] == 42
+    assert payload["sample_head"] == "hello"
+    assert isinstance(payload["generated_at"], str) and payload["generated_at"]
+
+
+def test_write_audio_without_an_audit_writes_no_sidecar(tmp_path: Path) -> None:
+    """No audit means no sidecar — the matrix never fabricates one (#900)."""
+
+    content = base64.b64encode(b"ID3" + b"\x00" * 32).decode("ascii")
+
+    target = cm.write_artifact(
+        artifact_root=tmp_path / "artifacts",
+        domain="demo",
+        product="digest",
+        fmt="audio",
+        content=content,
+        force=False,
+    )
+
+    assert not Path(str(target) + ".narration-audit.json").exists()

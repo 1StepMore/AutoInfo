@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import base64
 import importlib.util
+import inspect
 import json
 import os
 import re
@@ -573,6 +574,7 @@ def write_artifact(
     fmt: str,
     content: str,
     force: bool,
+    narration_audit: dict[str, Any] | None = None,
 ) -> Path:
     """Persist the generated *content* under *artifact_root* (never silently overwrite)."""
     if fmt not in EXT_BY_FORMAT:
@@ -598,12 +600,31 @@ def write_artifact(
         _decode_video(content, target)
     else:
         target.write_text(str(content), encoding="utf-8")
+
+    # The narration audit travels with the artifact (issue #900).  It is only
+    # written when the producer actually supplied one — never fabricated.
+    if narration_audit and fmt in ("audio", "audiobook"):
+        payload = dict(narration_audit)
+        payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+        Path(str(target) + ".narration-audit.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     return target
 
 
 # ---------------------------------------------------------------------------
 # One cell
 # ---------------------------------------------------------------------------
+
+
+def _accepts_narration_audit(call: GenerationCall) -> bool:
+    """Whether the generator takes the optional ``narration_audit_out`` sink."""
+    try:
+        parameters = inspect.signature(call.generator).parameters
+    except (TypeError, ValueError):
+        return False
+    return "narration_audit_out" in parameters
 
 
 def _invoke(call: GenerationCall) -> tuple[Any, int]:
@@ -738,8 +759,15 @@ def generate_cell(
     import autoinfo.output as output_hub
 
     output_hub.reset_llm_provenance()
+    narration_audit: dict[str, Any] = {}
     try:
         call = route(ctx)
+        if combo.format in ("audio", "audiobook") and _accepts_narration_audit(call):
+            call = GenerationCall(
+                call.generator,
+                {**call.kwargs, "narration_audit_out": narration_audit},
+                call.uses_product_template,
+            )
         result, attempts = _invoke(call)
     except Exception as exc:  # noqa: BLE001 - classified below, never swallowed
         if _is_tts_error(exc, combo.format):
@@ -807,6 +835,7 @@ def generate_cell(
             fmt=combo.format,
             content=content,
             force=force,
+            narration_audit=narration_audit or None,
         )
     except VideoUnavailableError as exc:
         return _blocked(

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.4](https://github.com/1StepMore/AutoInfo/compare/v1.35.3...v1.35.4) (2026-11-21)
+
+
+### Bug Fixes
+
+* **validation:** accept day-qualified deadlines and Chinese forward markers ([#910](https://github.com/1StepMore/AutoInfo/issues/910)) ([599fb47](https://github.com/1StepMore/AutoInfo/commit/599fb475cba5d057e66a1c5645df919c7ddaad29)), closes [#851](https://github.com/1StepMore/AutoInfo/issues/851)
+
 ## [1.35.3](https://github.com/1StepMore/AutoInfo/compare/v1.35.2...v1.35.3) (2026-11-20)
 
 

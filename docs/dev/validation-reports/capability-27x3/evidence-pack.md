@@ -321,7 +321,7 @@ does not hide either one behind the cell counts.
 | Class | Rows | Cells | Why it is honest (or not) | Registered |
 |---|---:|---|---|---|
 | `blocked-no-llm-key` | 36 | the 36 gated cells across the 3 domains | Honest block: the cell was never invoked because the LLM prerequisite is provably absent. It is neither a failure nor a pass. | no |
-| `blocked-no-browser` | 3 | `report:video` in each of the 3 domains | Honest block: `RuntimeError: HyperFrames render failed (quality=draft): ... Chrome cannot launch`. This host has no Chrome, only `~/.cache/puppeteer/chrome-headless-shell` remnants. | yes |
+| `blocked-no-browser` | 3 | `report:video` in each of the 3 domains | Honest block as recorded on 2026-10-27 — **but the root cause was misdiagnosed**; corrected 2026-11-14 by #817: Chrome IS available on this host (Chrome for Testing 151.0.7922.34 via ms-playwright and hyperframes caches, `ldd` clean, `_hyperframes_chrome_launchable()` → True; the `~/.local/bin/google-chrome` wrapper exec'ing `/mnt/c/.../chrome.exe` always fails with `Invalid argument` inside WSL and must not be read as "no Chrome"). The real blocker is `edge-tts==7.2.8` → `WSServerHandshakeError: 403`; see the correction note below. | yes |
 | `blocked-stale-sources` | 7 | the 7 ai-commercial digest cells | Honest block: the freshness gate raised `StaleSourceError` because all 5 ai-commercial KB entries are older than the threshold. The 58 freshly collected items cannot refresh the KB without processing, and processing needs the key. Cause chain, not a generation bug. | yes |
 | H3 bullet serialization glue in unkeyed Markdown | 14 files | 14 flagged Markdown renders (12 medical-research, 2 language-learning) | Not a block and not a pass: it is a real L0 defect. The artifacts still pass L2/L3 structural checks, so both facts are published together. | yes (section B of the register) |
 | Absence of keyed L3 evidence | 81 cells | all 81 cells | Not honest as coverage: it is a gap in evidence, not a product block. The 35 L3 rows prove unkeyed structure only, and no keyed path was exercised. | no |
@@ -334,3 +334,21 @@ This run produced two new classes: `blocked-no-browser` and
 register entries name the 3 video cells and the 7 ai-commercial digest cells,
 and both entries say plainly that these are unverified cells, not product
 defects to be silenced.
+
+### Correction (2026-11-14, #817)
+
+The `blocked-no-browser` classification of the 3 `report:video` cells was a
+misdiagnosis. The per-row records above are kept verbatim as the historical
+record of what the 2026-10-27 run printed, but the conclusion "this host has
+no Chrome" is wrong: Chrome for Testing 151.0.7922.34 is installed and
+launchable (both the ms-playwright chromium cache and the hyperframes
+chrome-headless-shell cache pass `--version` with zero missing `ldd`
+libraries; `tests/output/test_video_integration.py::_hyperframes_chrome_launchable()`
+returns True). The 2026-11-14 rerun
+(`scripts/capability_matrix.py --only report:video --force`) shows all three
+domains failing at TTS instead — `WSServerHandshakeError: 403` from
+`edge-tts==7.2.8`, whose handshake contract Microsoft has since changed; the
+same machine, same network, edge-tts 7.3.1 synthesizes successfully (17856
+bytes). Fix tracked in #817: raise the `tts` extra to `edge-tts>=7.3.1` and
+re-run the 3 video cells; reclassify from fresh evidence if rendering still
+fails — never back into `blocked-no-browser`.

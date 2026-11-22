@@ -10,6 +10,7 @@ import re
 import shutil
 import threading
 from datetime import datetime, timezone
+from importlib import metadata
 from typing import Any, cast
 
 import httpx
@@ -617,6 +618,33 @@ def _run_coro_in_new_thread(coro: Any) -> Any:
     return result["value"]
 
 
+def _edge_tts_version() -> str:
+    """Installed edge-tts dist version, for diagnosable error messages (#817)."""
+    try:
+        return metadata.version("edge-tts")
+    except metadata.PackageNotFoundError:
+        return "unknown"
+
+
+def _tts_upstream_error(exc: Exception) -> str:
+    """Build a diagnosable message for upstream edge-tts rejections (#817).
+
+    A bare ``WSServerHandshakeError: 403`` names neither the vendor nor the
+    installed version, so matrix/capability detail used to show nothing but
+    a URL. The wrapped message must point at the TTS vendor and version.
+    """
+    base = f"Local TTS (edge-tts {_edge_tts_version()}) failed: {type(exc).__name__}: {exc}"
+    status = getattr(exc, "status", None)
+    if status == 403 or "403" in str(exc):
+        return (
+            f"{base} — Microsoft's speech endpoint rejected the handshake (403); "
+            "with edge-tts this almost always means the installed version is outdated "
+            "for the current endpoint contract — upgrade the 'tts' extra "
+            '(pip install -e ".[tts]")'
+        )
+    return f"{base} — upstream TTS vendor error; check network/vendor status"
+
+
 def _render_audio_edge_tts(
     text: str,
     voice: str = DEFAULT_LOCAL_TTS_VOICE,
@@ -638,7 +666,9 @@ def _render_audio_edge_tts(
     ImportError
         If ``edge_tts`` is not installed.
     RuntimeError
-        If the TTS synthesis fails.
+        If the TTS synthesis fails. Upstream provider errors (e.g. a 403
+        handshake rejection) are re-raised as ``RuntimeError`` carrying the
+        TTS vendor, installed version and an upgrade hint (#817).
     """
     import asyncio  # noqa: PLC0415
 
@@ -675,6 +705,10 @@ def _render_audio_edge_tts(
             mp3_bytes = asyncio.run(asyncio.wait_for(_synthesize(), timeout=timeout))
     except asyncio.TimeoutError:
         raise RuntimeError(f"Local TTS (edge-tts) timed out after {timeout:.0f}s") from None
+    except RuntimeError:
+        raise  # our own errors (empty audio, engine dispatch) already carry full context
+    except Exception as exc:  # noqa: BLE001 - upstream TTS rejections must stay diagnosable
+        raise RuntimeError(_tts_upstream_error(exc)) from exc
 
     logger.info(
         "Generated audio (local/edge-tts): %d chars text → %d bytes MP3 (voice=%s)",

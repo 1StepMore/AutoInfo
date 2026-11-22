@@ -105,7 +105,7 @@ pdf = [
     "weasyprint>=62.0",
 ]
 tts = [
-    "edge-tts>=6.1",
+    "edge-tts>=7.3.1",
 ]
 video = [
     "pillow>=10.0",

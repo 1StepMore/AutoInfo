@@ -322,6 +322,7 @@ from autoinfo.grounding import HONEST_HEDGE_RE, grounding_corpus, split_sentence
 from autoinfo.kb import KBStore as KBStore
 from autoinfo.kb import PromotionRejected
 from autoinfo.llm import call_with_fallback as call_with_fallback
+from autoinfo.llm import looks_truncated_json as _looks_truncated_json
 
 # Free-tier gate seam (todo 12) — re-exported for tests/callers.
 from autoinfo.output.free_tier import (  # noqa: E402  (import at module top)
@@ -1766,45 +1767,9 @@ _DIGEST_SYNTHESIS_ESCALATION_MAX_TOKENS = 16000
 # parse_error) instead of degrading silently.
 _llm_failure_record: dict[str, Any] = {}
 
-
-def _looks_truncated_json(content: str | None) -> bool:
-    """Return True when *content* looks like a JSON object cut off mid-stream.
-
-    Heuristic for an LLM response whose generation stopped before the JSON
-    closed: an unterminated string, an unbalanced brace/bracket, or a
-    dangling escape at the end.  Prose before the opening brace is skipped.
-    Non-JSON content (no brace at all) is not truncation.
-    """
-    if not content:
-        return False
-    start = content.find("{")
-    if start == -1:
-        return False
-    in_string = False
-    escaped = False
-    depth_obj = 0
-    depth_arr = 0
-    for ch in content[start:]:
-        if escaped:
-            escaped = False
-            continue
-        if in_string:
-            if ch == "\\":
-                escaped = True
-            elif ch == '"':
-                in_string = False
-            continue
-        if ch == '"':
-            in_string = True
-        elif ch == "{":
-            depth_obj += 1
-        elif ch == "}":
-            depth_obj -= 1
-        elif ch == "[":
-            depth_arr += 1
-        elif ch == "]":
-            depth_arr -= 1
-    return in_string or escaped or depth_obj > 0 or depth_arr > 0
+# NOTE(#934): the truncation heuristic moved to :func:`autoinfo.llm.looks_truncated_json`
+# (single shared implementation with the extraction pipeline); imported at
+# module top as ``_looks_truncated_json`` so every call site here keeps its name.
 
 
 def _record_llm_failure(

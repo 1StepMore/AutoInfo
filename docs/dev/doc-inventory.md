@@ -13,16 +13,16 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 161 |
-| Total lines | 41577 |
-| Active files | 129 |
+| Total files | 163 |
+| Total lines | 41650 |
+| Active files | 131 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
-| Category — validation-reports | 40 files / 6998 lines |
+| Category — validation-reports | 42 files / 7071 lines |
 | Category — docs/dev | 45 files / 11701 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
@@ -145,6 +145,8 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-reports/capability-27x3/issue-928-retail-verify/matrix.json` | 32 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/issue-928-retail-verify/matrix.md` | 16 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/issue-928-retail-verify/verdict.md` | 26 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/issue-934-extraction-truncation/evidence-run-2026-11-22.json` | 40 | validation-reports | active | — |
+| `dev/validation-reports/capability-27x3/issue-934-extraction-truncation/verdict.md` | 33 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/l0-l1-baseline.md` | 58 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/README.md` | 14 | validation-reports | active | — |
 | `dev/validation-reports/capability-27x3/logs/artifact-residue-cleanup-2026-11-20.md` | 87 | validation-reports | active | — |

@@ -82,6 +82,16 @@ cd <repo>
 
 ## 【活区】当前差距矩阵（2026-10-02 夜间循环）
 <!-- LEDGER:BEGIN gap_snapshot -->
+### 2026-11-22 夜间复跑（在最新 main `38aea9c9` 上）
+
+批跑（02:00，systemd `nightly-gap.service`，网关进程树外）：`.venv/bin/python scripts/nightly_gap.py` **exit 1 —— 7 / 21 个域未达标**（`nightly/gap.json`：`gap_units 7` / `passing_units 14` / `total_units 21`）；同轮 `ai-collect` **ok**（3468s），`ai-process` **exit 1**（17 域执行 / 2 域失败 `spanish-learning`、`tech-ai-developer` exit 2 / 4 域 `dynamic_below` 跳过）。
+
+- **7 个未达标域的缺项全是「真产物」，语料不缺**：`english-learning`（语料 262）、`financial-intelligence`（293）、`financial-news`（99）、`general-news`（230）、`language-learning`（123）、`online-education`（215）、`online-video`（638）；这 7 个域 `outputs/<domain>/` 当前产物文件数为 0。
+- **根因（可归因）**：2026-11-11 `eaaab2b5`（#754 引入 `scripts/archive_stale_outputs.py`）按日期 cutoff 归档了 73 个陈旧产物（manifest：`outputs-archive/manifest-20261111T094214Z.json`，覆盖上述 7 域），**其后跑批没有再生出这 7 域的产物** ⇒ 不是产物丢失，是「归档之后缺少产物重生成步」。是否给跑批加该步属判据/流程取舍，交 owner 裁。
+- 断言：19 项 / 扫描 60 个文件 / 失败 1（P1 `_so_what_substantive`：`outputs/capability-matrix/ai-commercial/premium-briefing-markdown-20261028-045039-666494.md`，takeaway 2 actions is weak）。
+- 产出轴：近 7 天新增 2310 条（入库 2467 条）；FALSE_FRESH 域 0、LATE_COLLECT 域 0。
+- **最终裁决仍由 owner 保留**（见【冻结区】）——本文件只记录机器判据的结果，不代表「计划完成」。
+
 ### 2026-10-21 夜间复跑（在最新 main `abf948fb` 上）
 
 批跑（02:00，systemd `nightly-gap.service`，网关进程树外）：`.venv/bin/python scripts/nightly_gap.py` **exit 0 —— 差距归零（21 / 21 域达标）**（`nightly/gap.json`：`gap_units 0`、`gap: []`）；同轮采集步 `ai-collect` **ok**（691s）。
@@ -182,6 +192,7 @@ cd <repo>
 
 - 2026-10-02：17/21 域达标（见上表）；korean-learning 换源 #442/PR #443。
 - 2026-10-10：**21/21 域达标（差距归零）**，10-02 遗留的 4 个缺口全部闭合；`nightly_gap.py` exit 0。
+- 2026-11-22：**差距不再为零 —— 7/21 域缺「真产物」**（根因见上方 2026-11-22 复跑小节：11-11 的归档步之后没有重生成）。下一步若要收口，需 owner 先定「跑批是否加产物重生成步」。
 <!-- LEDGER:END next_queue -->
 
 ---

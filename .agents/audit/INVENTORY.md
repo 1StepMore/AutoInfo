@@ -14,7 +14,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 161 |
-| Total lines | 41548 |
+| Total lines | 41559 |
 | Active files | 129 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
 | Category — validation-reports | 40 files / 6980 lines |
-| Category — docs/dev | 45 files / 11690 lines |
+| Category — docs/dev | 45 files / 11701 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -107,7 +107,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/mcp-usage-examples.md` | 324 | docs/dev | active | — |
 | `dev/new-domain-guide.md` | 942 | docs/dev | active | — |
 | `dev/plans/2026-08-30-AutoInfo-GraphEngineering落地实施方案-修正版.md` | 153 | docs/dev | active | — |
-| `dev/plans/NIGHTLY.md` | 216 | docs/dev | active | — |
+| `dev/plans/NIGHTLY.md` | 227 | docs/dev | active | — |
 | `dev/plans/README.md` | 65 | docs/dev | active | plan-index |
 | `dev/plans/agent-infra-remediation-2026-10-30.md` | 172 | docs/dev | active | — |
 | `dev/plans/agent-oriented-gap-register.md` | 608 | docs/dev | active | plan |

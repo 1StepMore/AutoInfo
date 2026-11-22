@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.11](https://github.com/1StepMore/AutoInfo/compare/v1.35.10...v1.35.11) (2026-11-22)
+
+
+### Bug Fixes
+
+* **llm:** escalate extraction retry on truncated responses instead of ingesting an empty summary ([#934](https://github.com/1StepMore/AutoInfo/issues/934)) ([#941](https://github.com/1StepMore/AutoInfo/issues/941)) ([1fe7d91](https://github.com/1StepMore/AutoInfo/commit/1fe7d910e837bfe5eac0ffb81098d2b247a08af1))
+* **output:** raise edge-tts floor to &gt;=7.3.1 and make upstream TTS 403s diagnosable ([#817](https://github.com/1StepMore/AutoInfo/issues/817)) ([#820](https://github.com/1StepMore/AutoInfo/issues/820)) ([0be59f0](https://github.com/1StepMore/AutoInfo/commit/0be59f01cad8b4e81954a29707b875877287c3cf))
+
 ## [1.35.10](https://github.com/1StepMore/AutoInfo/compare/v1.35.9...v1.35.10) (2026-11-22)
 
 

@@ -2,6 +2,18 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.10](https://github.com/1StepMore/AutoInfo/compare/v1.35.9...v1.35.10) (2026-11-22)
+
+
+### Documentation
+
+* **nightly:** 记录 2026-11-22 夜间复跑（活区台账 + ledger 事件） ([#939](https://github.com/1StepMore/AutoInfo/issues/939)) ([98c0c7a](https://github.com/1StepMore/AutoInfo/commit/98c0c7a95347f3f8321934c0becde7b3fa49e525))
+
+
+### Miscellaneous Chores
+
+* **agent:** gate 接受 owner 授意即放行（--authorized 自动立租约） ([#855](https://github.com/1StepMore/AutoInfo/issues/855)) ([169805b](https://github.com/1StepMore/AutoInfo/commit/169805be01314856e9cc323d5e763e3242802eb3))
+
 ## [1.35.9](https://github.com/1StepMore/AutoInfo/compare/v1.35.8...v1.35.9) (2026-11-21)
 
 

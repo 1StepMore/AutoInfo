@@ -1,0 +1,40 @@
+{
+  "captured_at": "2026-11-22T11:32:55+08:00",
+  "purpose": "Real-model evidence for the #934 extraction-truncation fix (PR supplements #934; llm.py extraction path only)",
+  "model": "spark-x2.6",
+  "endpoint": "openai-compatible machine endpoint (xf-yun maas), keyed via AUTOINFO_LLM_API_KEY env reference (BYOK; key never stored)",
+  "config": ".autoinfo/config.yaml llm.* unchanged",
+  "runs": [
+    {
+      "run": "baseline",
+      "forced_truncation_budget": null,
+      "tl_dr_nonempty": true,
+      "tl_dr": "A randomized controlled trial involving 1,200 IVF patients demonstrated that time-lapse embryo imaging combined with morphological selection significantly impro",
+      "key_points_n": 4,
+      "relevance_score": 98.0,
+      "usage": {
+        "prompt_tokens": 296,
+        "completion_tokens": 289,
+        "total_tokens": 585
+      },
+      "escalation_warning_seen": false
+    },
+    {
+      "run": "forced-truncation",
+      "forced_truncation_budget": 12,
+      "tl_dr_nonempty": true,
+      "tl_dr": "A randomized controlled trial involving 1,200 IVF patients demonstrated that combining time-lapse embryo imaging with morphological selection significantly impr",
+      "key_points_n": 4,
+      "relevance_score": 98.0,
+      "usage": {
+        "prompt_tokens": 296,
+        "completion_tokens": 302,
+        "total_tokens": 598
+      },
+      "escalation_warning_seen": true,
+      "note": "attempt 1 really truncated at max_tokens=12 (finish_reason=length); escalated retry at 8000 re-ran on the real model and parsed successfully — the escalated path is proven end to end"
+    }
+  ],
+  "fake_model_used": false,
+  "confidence": "real"
+}

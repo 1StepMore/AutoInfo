@@ -37,23 +37,31 @@ def mock_litellm() -> MagicMock:
     """
     m = MagicMock()
     m.completion.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content=json.dumps({
-            "tl_dr": (
-                "Time-lapse embryo imaging significantly improves live birth "
-                "rates (48.2% vs 39.5%) compared to standard morphological "
-                "assessment in a large RCT of 1,200 IVF patients."
-            ),
-            "key_points": [
-                "Multicenter RCT with 1,200 IVF patients",
-                "Live birth rate: 48.2% vs 39.5%, RR 1.22, p=0.006",
-                "Non-invasive method improves embryo selection",
-            ],
-            "entities": [
-                {"name": "Time-lapse embryo imaging", "type": "technology"},
-                {"name": "IVF", "type": "procedure"},
-            ],
-            "relevance_score": 92,
-        })))]
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps(
+                        {
+                            "tl_dr": (
+                                "Time-lapse embryo imaging significantly improves live birth "
+                                "rates (48.2% vs 39.5%) compared to standard morphological "
+                                "assessment in a large RCT of 1,200 IVF patients."
+                            ),
+                            "key_points": [
+                                "Multicenter RCT with 1,200 IVF patients",
+                                "Live birth rate: 48.2% vs 39.5%, RR 1.22, p=0.006",
+                                "Non-invasive method improves embryo selection",
+                            ],
+                            "entities": [
+                                {"name": "Time-lapse embryo imaging", "type": "technology"},
+                                {"name": "IVF", "type": "procedure"},
+                            ],
+                            "relevance_score": 92,
+                        }
+                    )
+                )
+            )
+        ]
     )
     return m
 
@@ -105,9 +113,7 @@ class TestExtract:
         assert result.key_points == []
         assert result.relevance_score == 0.0
 
-    def test_litellm_not_available(
-        self, sample_item: Item, extractor: LLMExtractor
-    ) -> None:
+    def test_litellm_not_available(self, sample_item: Item, extractor: LLMExtractor) -> None:
         """extract() handles missing litellm gracefully."""
         with patch.object(LLMExtractor, "_get_litellm", return_value=None):
             result = extractor.extract(sample_item)
@@ -116,19 +122,25 @@ class TestExtract:
         assert result.tl_dr == ""
         assert result.relevance_score == 0.0
 
-    def test_relevance_score_clamped(
-        self, sample_item: Item, extractor: LLMExtractor
-    ) -> None:
+    def test_relevance_score_clamped(self, sample_item: Item, extractor: LLMExtractor) -> None:
         """relevance_score is clamped to [0, 100]."""
         for raw_score in [-10, 50, 150]:
             mock_lm = MagicMock()
             mock_lm.completion.return_value = MagicMock(
-                choices=[MagicMock(message=MagicMock(content=json.dumps({
-                    "tl_dr": "test",
-                    "key_points": ["point"],
-                    "entities": [],
-                    "relevance_score": raw_score,
-                })))]
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content=json.dumps(
+                                {
+                                    "tl_dr": "test",
+                                    "key_points": ["point"],
+                                    "entities": [],
+                                    "relevance_score": raw_score,
+                                }
+                            )
+                        )
+                    )
+                ]
             )
 
             with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
@@ -154,17 +166,13 @@ class TestDryRun:
         assert "AutoInfo" in prompt
         assert sample_item.title in prompt
 
-    def test_dry_run_no_llm_call(
-        self, sample_item: Item, extractor: LLMExtractor
-    ) -> None:
+    def test_dry_run_no_llm_call(self, sample_item: Item, extractor: LLMExtractor) -> None:
         """Verify no ``litellm.completion`` is called during dry_run."""
         with patch.object(LLMExtractor, "_get_litellm") as mock_get:
             extractor.dry_run(sample_item)
             mock_get.assert_not_called()
 
-    def test_dry_run_custom_schema(
-        self, sample_item: Item, extractor: LLMExtractor
-    ) -> None:
+    def test_dry_run_custom_schema(self, sample_item: Item, extractor: LLMExtractor) -> None:
         """Custom schema fields appear in the dry-run prompt."""
         prompt = extractor.dry_run(sample_item, schema=["tl_dr", "custom_field"])
         assert "tl_dr" in prompt
@@ -214,9 +222,7 @@ class TestExtractWithRetry:
 
         # Should have logged 3 attempts (max_retries + 1)
         warning_count = sum(
-            1
-            for rec in caplog.records
-            if "LLM extraction attempt" in rec.getMessage()
+            1 for rec in caplog.records if "LLM extraction attempt" in rec.getMessage()
         )
         assert warning_count == 3
 
@@ -276,12 +282,20 @@ class TestExtractWithRetry:
             if "deepseek" in model:
                 raise Exception("Primary model error")
             return MagicMock(
-                choices=[MagicMock(message=MagicMock(content=json.dumps({
-                    "tl_dr": "fallback model result",
-                    "key_points": ["recovered via fallback"],
-                    "entities": [],
-                    "relevance_score": 85,
-                })))]
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content=json.dumps(
+                                {
+                                    "tl_dr": "fallback model result",
+                                    "key_points": ["recovered via fallback"],
+                                    "entities": [],
+                                    "relevance_score": 85,
+                                }
+                            )
+                        )
+                    )
+                ]
             )
 
         mock_lm.completion.side_effect = _side_effect
@@ -348,12 +362,20 @@ class TestExtractWithRetry:
             if "deepseek" in model:
                 raise Exception("Primary error")
             return MagicMock(
-                choices=[MagicMock(message=MagicMock(content=json.dumps({
-                    "tl_dr": "ok",
-                    "key_points": [],
-                    "entities": [],
-                    "relevance_score": 50,
-                })))]
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content=json.dumps(
+                                {
+                                    "tl_dr": "ok",
+                                    "key_points": [],
+                                    "entities": [],
+                                    "relevance_score": 50,
+                                }
+                            )
+                        )
+                    )
+                ]
             )
 
         mock_lm.completion.side_effect = _side_effect
@@ -363,9 +385,7 @@ class TestExtractWithRetry:
 
         # Should see a fallback warning with model name
         fallback_logs = [
-            rec.getMessage()
-            for rec in caplog.records
-            if "Fallback" in rec.getMessage()
+            rec.getMessage() for rec in caplog.records if "Fallback" in rec.getMessage()
         ]
         assert any("openai/gpt-4o" in msg for msg in fallback_logs)
         assert any("succeeded" in msg for msg in fallback_logs)
@@ -499,9 +519,7 @@ class TestCallWithFallback:
     def _mock_litellm(self) -> MagicMock:
         return MagicMock()
 
-    def test_primary_failure_falls_back(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_primary_failure_falls_back(self, caplog: pytest.LogCaptureFixture) -> None:
         """Primary fails → fallback model is tried and its response returned."""
         import logging
 
@@ -524,9 +542,7 @@ class TestCallWithFallback:
 
         assert resp is fallback_resp
         assert mock_lm.completion.call_count == 2
-        models_called = [
-            str(c.kwargs["model"]) for c in mock_lm.completion.call_args_list
-        ]
+        models_called = [str(c.kwargs["model"]) for c in mock_lm.completion.call_args_list]
         assert "deepseek/deepseek-chat" in models_called
         assert "openai/gpt-4o" in models_called
         assert "Fallback to openai/gpt-4o succeeded" in caplog.text
@@ -546,9 +562,7 @@ class TestCallWithFallback:
 
     def test_no_fallback_single_attempt(self) -> None:
         """Without a configured fallback the primary is attempted once."""
-        cfg = Config(
-            llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key="")
-        )
+        cfg = Config(llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key=""))
         mock_lm = self._mock_litellm()
         resp = MagicMock(choices=[MagicMock(message=MagicMock(content="ok"))])
         mock_lm.completion.return_value = resp
@@ -570,9 +584,7 @@ class TestCallWithFallback:
 
     def test_json_mode_passes_response_format(self) -> None:
         """json_mode=True adds response_format json_object to the call."""
-        cfg = Config(
-            llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key="")
-        )
+        cfg = Config(llm=LLMConfig(provider="openai", model="gpt-4o-mini", api_key=""))
         mock_lm = self._mock_litellm()
         mock_lm.completion.return_value = MagicMock(
             choices=[MagicMock(message=MagicMock(content="{}"))]
@@ -602,3 +614,109 @@ class TestCallWithFallback:
 
         assert result is resp
         assert mock_lm.completion.call_count == 1
+
+
+# ===================================================================
+# Truncated extraction responses — escalated retry (#934)
+# ===================================================================
+
+
+class TestTruncationEscalation:
+    """Truncated extraction responses escalate one retry (#934).
+
+    A reasoning model can exhaust the extraction budget
+    (``finish_reason=length``) and cut the JSON off mid-object; the
+    historical contract swallowed the parse failure into an empty
+    result, silently ingesting an empty summary.  The fix: detect
+    truncation and escalate the retry budget once — mirroring the
+    digest-synthesis rescue (#931).  Non-truncation failures keep the
+    historical single attempt at the base budget.
+    """
+
+    @staticmethod
+    def _response(content: str | None, finish_reason: str | None) -> MagicMock:
+        choice = MagicMock()
+        choice.message.content = content
+        choice.finish_reason = finish_reason
+        return MagicMock(choices=[choice])
+
+    @staticmethod
+    def _valid_extraction() -> str:
+        return json.dumps(
+            {
+                "tl_dr": "Time-lapse imaging improves live birth rates.",
+                "key_points": ["RCT with 1,200 patients"],
+                "entities": [{"name": "IVF", "type": "procedure"}],
+                "relevance_score": 88,
+            }
+        )
+
+    def test_truncated_response_escalates_max_tokens_and_succeeds(
+        self, sample_item: Item, extractor: LLMExtractor
+    ) -> None:
+        """finish_reason=length on attempt 1 → escalated retry succeeds."""
+        mock_lm = MagicMock()
+        truncated = '{"tl_dr": "Time-lapse imaging improves live birth rates (48.2% vs'
+        mock_lm.completion.side_effect = [
+            self._response(truncated, "length"),
+            self._response(self._valid_extraction(), "stop"),
+        ]
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            result = extractor.extract(sample_item)
+
+        assert result.tl_dr != ""
+        assert mock_lm.completion.call_count == 2
+        budgets = [call.kwargs["max_tokens"] for call in mock_lm.completion.call_args_list]
+        assert budgets == [4000, 8000]
+
+    def test_unclosed_brace_escalates_without_finish_reason(
+        self, sample_item: Item, extractor: LLMExtractor
+    ) -> None:
+        """JSON cut off mid-object escalates even when finish_reason is None."""
+        mock_lm = MagicMock()
+        mock_lm.completion.side_effect = [
+            self._response('{"tl_dr": "partial", "key_points": [', None),
+            self._response(self._valid_extraction(), "stop"),
+        ]
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            result = extractor.extract(sample_item)
+
+        assert result.tl_dr != ""
+        budgets = [call.kwargs["max_tokens"] for call in mock_lm.completion.call_args_list]
+        assert budgets == [4000, 8000]
+
+    def test_non_truncated_parse_failure_keeps_budget_no_retry(
+        self, sample_item: Item, extractor: LLMExtractor
+    ) -> None:
+        """A parse failure that is not truncation stays single-attempt."""
+        mock_lm = MagicMock()
+        mock_lm.completion.return_value = self._response("no json payload here", "stop")
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            result = extractor.extract(sample_item)
+
+        assert result.tl_dr == ""
+        assert mock_lm.completion.call_count == 1
+        assert mock_lm.completion.call_args.kwargs["max_tokens"] == 4000
+
+    def test_double_truncation_returns_empty_without_exception(
+        self, sample_item: Item, extractor: LLMExtractor
+    ) -> None:
+        """Both attempts truncated → escalated budget used, lenient empty result."""
+        mock_lm = MagicMock()
+        truncated = '{"tl_dr": "cut off mid'
+        mock_lm.completion.side_effect = [
+            self._response(truncated, "length"),
+            self._response(truncated, "length"),
+        ]
+
+        with patch.object(LLMExtractor, "_get_litellm", return_value=mock_lm):
+            result = extractor.extract(sample_item)
+
+        assert isinstance(result, ExtractionResult)
+        assert result.tl_dr == ""
+        assert mock_lm.completion.call_count == 2
+        budgets = [call.kwargs["max_tokens"] for call in mock_lm.completion.call_args_list]
+        assert budgets == [4000, 8000]

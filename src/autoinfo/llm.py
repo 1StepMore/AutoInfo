@@ -559,33 +559,70 @@ class LLMExtractor:
         every LLM call path).  Raises :class:`RuntimeError` only after
         **all** models have failed; the caller (``extract`` /
         ``extract_with_retry``) decides how to handle that final failure.
+
+        Issue #934: a truncated response (``finish_reason=length`` or JSON
+        cut off mid-object) gets **one** escalated retry
+        (:data:`_EXTRACTION_MAX_TOKENS` → :data:`_EXTRACTION_ESCALATION_MAX_TOKENS`)
+        instead of silently ingesting the empty parse.  A non-truncation
+        parse failure keeps the historical single-attempt behaviour at the
+        base budget.
         """
         system, user_prompt = self._build_prompt(item, schema)
 
-        response = call_with_fallback(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_prompt},
-            ],
-            base_url=self._base_url,
-            max_tokens=4000,
-            temperature=0.1,
-            json_mode=self._should_use_json_mode(),
-            reasoning_model=self._reasoning_model,
-            timeout=self._timeout,
-            config=self._config,
-        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_prompt},
+        ]
+        json_mode = self._should_use_json_mode()
 
+        parsed: dict[str, Any] = {}
         usage: dict[str, Any] = {}
-        if hasattr(response, "usage") and response.usage is not None:
-            usage = {
-                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
-                "completion_tokens": getattr(response.usage, "completion_tokens", 0),
-                "total_tokens": getattr(response.usage, "total_tokens", 0),
-            }
+        for attempt in range(2):
+            effective_max_tokens = (
+                _EXTRACTION_ESCALATION_MAX_TOKENS if attempt > 0 else _EXTRACTION_MAX_TOKENS
+            )
+            response = call_with_fallback(
+                messages=messages,
+                base_url=self._base_url,
+                max_tokens=effective_max_tokens,
+                temperature=0.1,
+                json_mode=json_mode,
+                reasoning_model=self._reasoning_model,
+                timeout=self._timeout,
+                config=self._config,
+            )
 
-        content: str = response.choices[0].message.content
-        parsed = self._parse_response(content)
+            if hasattr(response, "usage") and response.usage is not None:
+                usage = {
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                    "total_tokens": getattr(response.usage, "total_tokens", 0),
+                }
+
+            choice = response.choices[0]
+            content: str = choice.message.content
+            parse_errors: list[str] = []
+            parsed = self._parse_response(content, errors=parse_errors)
+            if parsed:
+                break
+
+            finish_reason = getattr(choice, "finish_reason", None)
+            if not isinstance(finish_reason, str):
+                finish_reason = None
+            truncated = finish_reason == "length" or looks_truncated_json(content)
+            if not truncated:
+                # Historical behaviour: a non-truncation parse failure is a
+                # single attempt at the base budget (no retry to re-roll).
+                break
+            if attempt == 0:
+                logger.warning(
+                    "LLM extraction response truncated (finish_reason=%s) — "
+                    "retrying once with escalated max_tokens=%d",
+                    finish_reason,
+                    _EXTRACTION_ESCALATION_MAX_TOKENS,
+                )
+            # attempt 1 truncated too: fall through with the empty parse —
+            # the lenient contract below still applies, now visibly.
 
         custom_field_names: list[str] = []
         if schema is not None:
@@ -608,24 +645,36 @@ class LLMExtractor:
         )
 
     @staticmethod
-    def _parse_response(content: str | None) -> dict[str, Any]:
+    def _parse_response(
+        content: str | None,
+        errors: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Parse the LLM response as JSON via :func:`parse_json_response`.
 
         Returns an empty dict when all strategies fail or content is ``None``
         — the historical lenient contract for extraction.  The raising
-        contract lives in the public :func:`parse_json_response`.
+        contract lives in the public :func:`parse_json_response`.  When
+        *errors* is a list, one message per failure mode is appended so the
+        caller can tell an unparseable (possibly truncated) response apart
+        from a legitimately empty one (issue #934).
         """
         if content is None:
             logger.warning("LLM returned None content — empty response")
+            if errors is not None:
+                errors.append("LLM returned None content")
             return {}
         try:
             parsed = parse_json_response(content)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             logger.warning("Failed to parse LLM response as JSON: %.200s", content or "")
+            if errors is not None:
+                errors.append(f"JSONDecodeError: {exc.msg}")
             return {}
         if isinstance(parsed, dict):
             return parsed
         logger.warning("LLM response parsed but is not a JSON object: %.200s", content or "")
+        if errors is not None:
+            errors.append("parsed JSON is not an object")
         return {}
 
 
@@ -777,6 +826,62 @@ def parse_json_response(content: str | None) -> Any:
                 continue
 
     raise json.JSONDecodeError("Failed to parse LLM response as JSON", content, 0)
+
+
+# ---------------------------------------------------------------------------
+# Truncation detection (issue #934)
+# ---------------------------------------------------------------------------
+
+#: Base extraction completion budget (the historical literal ``4000``).
+_EXTRACTION_MAX_TOKENS = 4000
+
+#: Escalated budget for a retry after a truncated response — the same ×2
+#: step the digest-synthesis rescue uses (#931: 8000 → 16000).
+_EXTRACTION_ESCALATION_MAX_TOKENS = 8000
+
+
+def looks_truncated_json(content: str | None) -> bool:
+    """Return True when *content* looks like a JSON object cut off mid-stream.
+
+    Heuristic for an LLM response whose generation stopped before the JSON
+    closed: an unterminated string, an unbalanced brace/bracket, or a
+    dangling escape at the end.  Prose before the opening brace is skipped.
+    Non-JSON content (no brace at all) is not truncation.
+
+    Single shared implementation for every call path (#934): the extraction
+    pipeline (:class:`LLMExtractor`) and the output layer (digest synthesis,
+    issue #931) must agree on what counts as truncation.
+    """
+    if not content:
+        return False
+    start = content.find("{")
+    if start == -1:
+        return False
+    in_string = False
+    escaped = False
+    depth_obj = 0
+    depth_arr = 0
+    for ch in content[start:]:
+        if escaped:
+            escaped = False
+            continue
+        if in_string:
+            if ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth_obj += 1
+        elif ch == "}":
+            depth_obj -= 1
+        elif ch == "[":
+            depth_arr += 1
+        elif ch == "]":
+            depth_arr -= 1
+    return in_string or escaped or depth_obj > 0 or depth_arr > 0
 
 
 # ---------------------------------------------------------------------------

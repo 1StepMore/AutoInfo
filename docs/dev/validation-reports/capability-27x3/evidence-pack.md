@@ -29,7 +29,7 @@ no row is a carried-forward assert-only verdict. Details are trimmed to about
 120 characters; the untrimmed text stays in `matrix.md`, and every verdict is
 regenerated from `matrix.json`.
 
-Counts: rows=81 · L3=81 · blocked-no-llm-key=0 · blocked-no-browser=0 · blocked-stale-sources=0 · gated=36 · non-gated=45 · keyed=80 · unkeyed=1
+Counts: rows=81 · L3=81 · blocked-no-llm-key=0 · blocked-no-browser=0 · blocked-stale-sources=0 · gated=36 · non-gated=45 · keyed=81 · unkeyed=0
 
 | Domain | Cell | Gated | Keyed | Reached | L1 | L2 | L3 | Duration (s) | Detail |
 |---|---|---|---|---|---|---|---|---|---|

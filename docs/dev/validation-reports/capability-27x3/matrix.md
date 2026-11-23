@@ -1,11 +1,11 @@
 # Capability matrix (product x format x domain)
 
-- Generated: 2026-11-19T18:08:00+00:00
-- Domains: ai-commercial
+- Generated: 2026-11-23T17:18:49+00:00
+- Domains: language-learning
 - Spec: docs/dev/specs/end-user-matrix.yaml
-- Keyed/unkeyed split: keyed=80, unkeyed=1 (run key state: keyed)
+- Keyed/unkeyed split: keyed=81, unkeyed=0 (run key state: keyed)
 - Gated/non-gated split: gated=36, non-gated=45
-- Command: `'D:\贯维\AutoInfo\.venv\Scripts\python.exe' 'D:\贯维\AutoInfo\scripts\capability_matrix.py' --domains ai-commercial --only tutorial:markdown --force --out docs/dev/validation-reports/capability-27x3`
+- Command: `.venv/bin/python scripts/capability_matrix.py --only report:video --domains language-learning --force --out docs/dev/validation-reports/capability-27x3 --json`
 
 Layers are cumulative and monotone: L2 implies L1, L3 implies L2.
 A cell never reports L3 when L1 or L2 failed.
@@ -64,7 +64,7 @@ L3 means the model actually generated the artifact: a KB-derived fallback (LLM f
 | language-learning | report:html | no | keyed | L3 | pass | pass | pass | llm | 62.73 | outputs/capability-matrix/language-learning/report-html-20261118-175229-957976.html | bytes=29150; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | language-learning | report:json | no | keyed | L3 | pass | pass | pass | llm | 60.127 | outputs/capability-matrix/language-learning/report-json-20261118-175330-089262.json | bytes=17501; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | language-learning | report:markdown | no | keyed | L3 | pass | pass | pass | llm | 64.05 | outputs/capability-matrix/language-learning/report-markdown-20261118-175434-137408.md | bytes=22792; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
-| language-learning | report:video | no | unkeyed | L3 | pass | pass | pass | llm | 733.659 | outputs/capability-matrix/language-learning/report-video-20261119-105304-692595.mp4 | bytes=8972094; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
+| language-learning | report:video | no | keyed | L3 | pass | pass | pass | llm | 564.151 | outputs/capability-matrix/language-learning/report-video-20261123-171849-482794.mp4 | bytes=16566391; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | language-learning | tutorial:agent | yes | keyed | L3 | pass | pass | pass | llm | 62.87 | outputs/capability-matrix/language-learning/tutorial-agent-20261118-183713-296388.json | bytes=24155; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | language-learning | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | llm | 63.046 | outputs/capability-matrix/language-learning/tutorial-markdown-20261118-182350-663461.md | bytes=28486; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |
 | medical-research | column:markdown | yes | keyed | L3 | pass | pass | pass | llm | 87.763 | outputs/capability-matrix/medical-research/column-markdown-20261118-193050-486024.md | bytes=15835; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1 |

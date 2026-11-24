@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.13](https://github.com/1StepMore/AutoInfo/compare/v1.35.12...v1.35.13) (2026-11-24)
+
+
+### Documentation
+
+* **nightly:** 记录 2026-11-23 夜间复跑（活区台账 + ledger 事件） ([#944](https://github.com/1StepMore/AutoInfo/issues/944)) ([771e838](https://github.com/1StepMore/AutoInfo/commit/771e8384e9567531d6107618bee1fc4231d31b19))
+
 ## [1.35.12](https://github.com/1StepMore/AutoInfo/compare/v1.35.11...v1.35.12) (2026-11-23)
 
 

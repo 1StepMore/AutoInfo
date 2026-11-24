@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.14](https://github.com/1StepMore/AutoInfo/compare/v1.35.13...v1.35.14) (2026-11-24)
+
+
+### Miscellaneous Chores
+
+* **validation:** matrix fully keyed — regenerate language-learning/report:video with a live key (81/81) ([#950](https://github.com/1StepMore/AutoInfo/issues/950)) ([f707531](https://github.com/1StepMore/AutoInfo/commit/f7075311ebaa623856ba22a1ba9a84c322a44e37))
+
 ## [1.35.13](https://github.com/1StepMore/AutoInfo/compare/v1.35.12...v1.35.13) (2026-11-24)
 
 

@@ -24,12 +24,13 @@ verdict" caveat above is obsolete as of #881.
 Text rows are keyed results regenerated from `matrix.json` (2026-11-19 runs).
 Audio/video rows come from the 2026-11-19 12:26 AV re-run (15 cells, Azure TTS) plus the
 same-day re-run of language-learning/report:video after the gsap vendor and
-render-failure-classification fixes. All 81 rows now carry an artifact from a real run --
+render-failure-classification fixes, then a keyed re-run on 2026-11-24 (key=spark-x2.6,
+Azure TTS) so the last unkeyed cell is gone. All 81 rows now carry an artifact from a real run --
 no row is a carried-forward assert-only verdict. Details are trimmed to about
 120 characters; the untrimmed text stays in `matrix.md`, and every verdict is
 regenerated from `matrix.json`.
 
-Counts: rows=81 · L3=81 · blocked-no-llm-key=0 · blocked-no-browser=0 · blocked-stale-sources=0 · gated=36 · non-gated=45 · keyed=80 · unkeyed=1
+Counts: rows=81 · L3=81 · blocked-no-llm-key=0 · blocked-no-browser=0 · blocked-stale-sources=0 · gated=36 · non-gated=45 · keyed=81 · unkeyed=0
 
 | Domain | Cell | Gated | Keyed | Reached | L1 | L2 | L3 | Duration (s) | Detail |
 |---|---|---|---|---|---|---|---|---|---|
@@ -84,7 +85,7 @@ Counts: rows=81 · L3=81 · blocked-no-llm-key=0 · blocked-no-browser=0 · bloc
 | language-learning | report:html | no | keyed | L3 | pass | pass | pass | 62.73 | bytes=29150; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
 | language-learning | report:json | no | keyed | L3 | pass | pass | pass | 60.127 | bytes=17501; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
 | language-learning | report:markdown | no | keyed | L3 | pass | pass | pass | 64.05 | bytes=22792; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
-| language-learning | report:video | no | unkeyed | L3 | pass | pass | pass | 733.659 | bytes=8972094; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
+| language-learning | report:video | no | keyed | L3 | pass | pass | pass | 1189.068 | bytes=17422424; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry onl... |
 | language-learning | tutorial:agent | yes | keyed | L3 | pass | pass | pass | 62.87 | bytes=24155; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
 | language-learning | tutorial:markdown | yes | keyed | L3 | pass | pass | pass | 63.046 | bytes=28486; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |
 | medical-research | column:markdown | yes | keyed | L3 | pass | pass | pass | 87.763 | bytes=15835; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only ... |

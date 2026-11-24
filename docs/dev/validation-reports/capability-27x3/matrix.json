@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-11-19T18:08:00+00:00",
-  "command": "'D:\\贯维\\AutoInfo\\.venv\\Scripts\\python.exe' 'D:\\贯维\\AutoInfo\\scripts\\capability_matrix.py' --domains ai-commercial --only tutorial:markdown --force --out docs/dev/validation-reports/capability-27x3",
+  "generated_at": "2026-11-24T14:13:40+00:00",
+  "command": ".venv/bin/python scripts/capability_matrix.py --domains language-learning --only report:video --force",
   "spec": "docs/dev/specs/end-user-matrix.yaml",
   "domains": [
-    "ai-commercial"
+    "language-learning"
   ],
   "keyed": "keyed",
   "only": [
-    "tutorial:markdown"
+    "report:video"
   ],
   "only_assert": false,
   "rows": [
@@ -883,14 +883,14 @@
       "product": "report",
       "format": "video",
       "gated": false,
-      "keyed": "unkeyed",
-      "artifact": "outputs/capability-matrix/language-learning/report-video-20261119-105304-692595.mp4",
+      "keyed": "keyed",
+      "artifact": "outputs/capability-matrix/language-learning/report-video-20261124-141339-548644.mp4",
       "reached": "L3",
       "l1": true,
       "l2": true,
       "l3": true,
-      "detail": "bytes=8972094; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1",
-      "duration_s": 733.659,
+      "detail": "bytes=17422424; l2=pass; retry_policy=single-attempt, transient-only retry, never auth (1 attempt per cell; one retry only for transient/timeout errors); attempts=1",
+      "duration_s": 1189.068,
       "llm_generated": true,
       "llm_status": "llm",
       "provenance": ""

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.16](https://github.com/1StepMore/AutoInfo/compare/v1.35.15...v1.35.16) (2026-11-25)
+
+
+### Bug Fixes
+
+* **audio:** render TTS at 48 kHz / 192 kbps instead of 24 kHz / 48 kbps ([#926](https://github.com/1StepMore/AutoInfo/issues/926)) ([#954](https://github.com/1StepMore/AutoInfo/issues/954)) ([2595667](https://github.com/1StepMore/AutoInfo/commit/2595667f547f316d43d131950dcc63d2decfa008))
+
 ## [1.35.15](https://github.com/1StepMore/AutoInfo/compare/v1.35.14...v1.35.15) (2026-11-25)
 
 

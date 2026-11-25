@@ -326,8 +326,8 @@ The agent can:
 
 But only you can:
 
-- Run `autoinfo kb delete --purge <entry-id>` -- physically removes data
-- Run `delete_user_data(user_id, scope)` -- GDPR compliance deletion
+- Permanent deletion via MCP `soft_delete_entry(purge=True)` / REST `DELETE /api/v1/entries/{id}` -- physically removes data (not a CLI verb)
+- Call `delete_user_data(user_id, scope)` (MCP/function interface, not a CLI verb) -- GDPR compliance deletion
 - Approve auto-cleanup of expired entries older than 30 days
 
 See `docs/dev/specs/expectations.md` F47.
@@ -717,11 +717,11 @@ The agent should adapt to your feedback immediately.
 
 These are operations the agent cannot perform. If needed, the agent will tell you the exact command:
 
-| Operation | CLI Command | When Needed |
+| Operation | Entry point | When Needed |
 |-----------|-------------|-------------|
 | Promote Draft to Wiki | `autoinfo kb promote <entry-id>` | Optional manual path — normally the agent promotes via `promote_kb_draft()` (no human gate). The CLI command exists for direct CLI users. |
-| Permanent deletion | `autoinfo kb delete --purge <entry-id>` | For irreversible removal |
-| GDPR data export | `autoinfo enduser export <user-id>` | Compliance requests |
+| Permanent deletion | MCP `soft_delete_entry` (purge=True) / `DELETE /api/v1/entries/{id}` (not a CLI verb) | For irreversible removal |
+| GDPR data export | MCP `export_user_data` (not a CLI verb) | Compliance requests |
 | Init project | `autoinfo init --demo <domain>` | First-time setup |
 | Edit config | Edit `.autoinfo/config.yaml` directly | Advanced configuration |
 | Set API keys | `export AUTOINFO_LLM_API_KEY="sk-..."` | LLM provider configuration |

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.15](https://github.com/1StepMore/AutoInfo/compare/v1.35.14...v1.35.15) (2026-11-25)
+
+
+### Bug Fixes
+
+* **validation:** only call a formulaic opener weak when it has no concrete object ([#947](https://github.com/1StepMore/AutoInfo/issues/947)) ([#952](https://github.com/1StepMore/AutoInfo/issues/952)) ([eeaacdc](https://github.com/1StepMore/AutoInfo/commit/eeaacdc13bf48a5c753e80ba1f12522a61b3910b))
+
 ## [1.35.14](https://github.com/1StepMore/AutoInfo/compare/v1.35.13...v1.35.14) (2026-11-24)
 
 

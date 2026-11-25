@@ -10,7 +10,9 @@ permissions:                        # 只读 + Copilot 推理额度（组织计�
   copilot-requests: write            # engine: copilot 的官方免 PAT 路径
   issues: read
   pull-requests: read
-engine: copilot
+engine:
+  id: copilot
+  model: gpt-4.1        # 显式模型名：'auto' 别名依赖 catalog 解析，无 Copilot 授权时解析失败
 safe-outputs:
   add-comment:                       # 唯一写入出口：固定 JSON 裁决
     max: 1

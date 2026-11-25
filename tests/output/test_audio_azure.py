@@ -248,9 +248,7 @@ class TestAzureOutputFormatTier:
         assert int(match.group("sample_rate_khz")) * 1000 == 48000
         assert int(match.group("bitrate_kbps")) * 1000 == 192000
 
-    def test_request_payload_uses_module_constant(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_request_payload_uses_module_constant(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The real request path must carry ``AZURE_TTS_OUTPUT_FORMAT`` verbatim,
         so a hard-coded low tier cannot sneak back into ``_render_audio_azure``."""
         monkeypatch.setenv("AZURE_SPEECH_KEY", "azure-test-key")
@@ -264,3 +262,80 @@ class TestAzureOutputFormatTier:
         headers = mock_post.call_args.kwargs["headers"]
         assert headers["X-Microsoft-OutputFormat"] == AZURE_TTS_OUTPUT_FORMAT
         assert headers["X-Microsoft-OutputFormat"] == "audio-48khz-192kbitrate-mono-mp3"
+
+
+class TestAudioProbeRecordedInAudit:
+    """#926 第 2 步（owner 2026-11-25 裁定）：阈值不动，改为把实测码率记进 sidecar。"""
+
+    def test_probe_reports_real_mp3_properties(self, tmp_path) -> None:
+        import shutil
+        import subprocess
+
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("ffmpeg not installed")
+        mp3 = tmp_path / "sample.mp3"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "quiet",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=0.3",
+                "-b:a",
+                "192k",
+                "-ar",
+                "48000",
+                "-ac",
+                "1",
+                str(mp3),
+            ],
+            check=True,
+        )
+        probe = audio_module.probe_audio_bytes(mp3.read_bytes())
+        assert probe["probe"] == "ok", probe
+        assert probe["codec_name"] == "mp3"
+        assert int(probe["sample_rate"]) == 48000
+        assert int(probe["bit_rate"]) >= 128000
+        assert probe["bytes"] == mp3.stat().st_size
+
+    def test_probe_degrades_without_raising(self, monkeypatch) -> None:
+        monkeypatch.setattr(audio_module.shutil, "which", lambda name: None)
+        probe = audio_module.probe_audio_bytes(b"not really mp3")
+        assert probe == {"probe": "unavailable", "reason": "ffprobe not on PATH"}
+
+    def test_empty_payload_is_reported_not_raised(self) -> None:
+        assert audio_module.probe_audio_bytes(b"")["probe"] == "empty"
+
+    def test_render_audio_writes_probe_into_audit(self, monkeypatch, tmp_path) -> None:
+        # 用真实 mp3 字节，确保 probe 走通；引擎本身被替身，不碰网络。
+        import shutil
+        import subprocess
+
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("ffmpeg not installed")
+        path = str(tmp_path / "probe-src.mp3")
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-v",
+                "quiet",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=0.2",
+                "-b:a",
+                "192k",
+                path,
+            ],
+            check=True,
+        )
+        payload = open(path, "rb").read()
+        monkeypatch.setattr(audio_module, "_render_audio_openai", lambda *a, **k: payload)
+        audit: dict = {}
+        out = _render_audio("hello world", engine="openai", audit_out=audit)
+        assert out == payload
+        assert audit["audio_probe"]["probe"] == "ok"
+        assert int(audit["audio_probe"]["bit_rate"]) >= 128000

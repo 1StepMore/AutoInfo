@@ -5,11 +5,8 @@
 on:
   pull_request:
     types: [opened, synchronize]
-permissions:                        # 只读 + Copilot 推理额度（组织计费，无需 PAT）
-  contents: read
-  copilot-requests: write            # engine: copilot 的官方免 PAT 路径
-  issues: read
-  pull-requests: read
+permissions: read-all              # 只读；推理凭据走 COPILOT_GITHUB_TOKEN（见 #917 评论）
+
 engine:
   id: copilot
   model: gpt-4.1        # 显式模型名：'auto' 别名依赖 catalog 解析，无 Copilot 授权时解析失败

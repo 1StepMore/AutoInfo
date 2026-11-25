@@ -76,6 +76,12 @@ DEFAULT_LOCAL_TTS_VOICE = "en-US-JennyNeural"
 
 # Default Azure Speech voice and output format (issue #647).
 DEFAULT_AZURE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
+# 48 kHz / 192 kbps on purpose (issue #926 step 1): the format-structure gate
+# genuinely cannot tell 48 kbps from 192 kbps (it only asserts bitrate > 0),
+# so the product must not rely on the gate to catch low audio quality — the
+# quality has to be right at the source.  Raising the gate threshold is
+# issue #926 step 2 and needs the owner's decision; do not lower this tier
+# without it.  Same remedy as AutoMedia#603/#604.
 AZURE_TTS_OUTPUT_FORMAT = "audio-48khz-192kbitrate-mono-mp3"
 # Required by the Azure Speech REST contract: User-Agent (< 255 chars) and
 # the SSML 1.0 namespace on <speak>.

@@ -5,6 +5,7 @@ All tests mock ``httpx.post``; no real network call is made.
 
 from __future__ import annotations
 
+import re
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -224,3 +225,42 @@ class TestAzureConfig:
         assert tts.engine == "azure"
         assert tts.azure_voice == "en-US-JennyNeural"
         assert tts.azure_region == "westus"
+
+
+class TestAzureOutputFormatTier:
+    """Guard: all Azure audio ships at the 48 kHz / 192 kbps tier (#926 step 1).
+
+    The format-structure gate only asserts ``bitrate > 0``, so it cannot
+    tell 48 kbps from 192 kbps — these tests are the only automated
+    protection against silently reintroducing the old 24 kHz / 48 kbps tier.
+    """
+
+    _FORMAT_PATTERN = re.compile(
+        r"^audio-(?P<sample_rate_khz>\d+)khz-(?P<bitrate_kbps>\d+)kbitrate-mono-mp3$"
+    )
+
+    def test_constant_is_the_high_tier(self) -> None:
+        assert AZURE_TTS_OUTPUT_FORMAT == "audio-48khz-192kbitrate-mono-mp3"
+
+    def test_format_string_parses_to_48khz_192kbps(self) -> None:
+        match = self._FORMAT_PATTERN.match(AZURE_TTS_OUTPUT_FORMAT)
+        assert match is not None, f"unparseable format: {AZURE_TTS_OUTPUT_FORMAT!r}"
+        assert int(match.group("sample_rate_khz")) * 1000 == 48000
+        assert int(match.group("bitrate_kbps")) * 1000 == 192000
+
+    def test_request_payload_uses_module_constant(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The real request path must carry ``AZURE_TTS_OUTPUT_FORMAT`` verbatim,
+        so a hard-coded low tier cannot sneak back into ``_render_audio_azure``."""
+        monkeypatch.setenv("AZURE_SPEECH_KEY", "azure-test-key")
+        monkeypatch.setenv("AZURE_SPEECH_REGION", "eastasia")
+        monkeypatch.setattr("autoinfo.output.get_config_path", lambda: None)
+
+        with patch("autoinfo.output.audio.httpx.post") as mock_post:
+            mock_post.return_value = _ok_response()
+            _render_audio_azure("Hello")
+
+        headers = mock_post.call_args.kwargs["headers"]
+        assert headers["X-Microsoft-OutputFormat"] == AZURE_TTS_OUTPUT_FORMAT
+        assert headers["X-Microsoft-OutputFormat"] == "audio-48khz-192kbitrate-mono-mp3"

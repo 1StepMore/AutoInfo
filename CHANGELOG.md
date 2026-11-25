@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.17](https://github.com/1StepMore/AutoInfo/compare/v1.35.16...v1.35.17) (2026-11-25)
+
+
+### Bug Fixes
+
+* **audio:** record measured codec/sample-rate/bitrate in narration audit ([#926](https://github.com/1StepMore/AutoInfo/issues/926)) ([#956](https://github.com/1StepMore/AutoInfo/issues/956)) ([2bf7272](https://github.com/1StepMore/AutoInfo/commit/2bf7272e04ff3ac0b02a90025926e694789dfedb))
+
 ## [1.35.16](https://github.com/1StepMore/AutoInfo/compare/v1.35.15...v1.35.16) (2026-11-25)
 
 

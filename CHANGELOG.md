@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.18](https://github.com/1StepMore/AutoInfo/compare/v1.35.17...v1.35.18) (2026-11-25)
+
+
+### Miscellaneous Chores
+
+* **ci:** retire the tester-acceptance workflow ([#963](https://github.com/1StepMore/AutoInfo/issues/963)) ([0a527d3](https://github.com/1StepMore/AutoInfo/commit/0a527d32bd0af8d77b84ee864ee555afe2263027))
+
 ## [1.35.17](https://github.com/1StepMore/AutoInfo/compare/v1.35.16...v1.35.17) (2026-11-25)
 
 

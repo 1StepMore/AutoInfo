@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.19](https://github.com/1StepMore/AutoInfo/compare/v1.35.18...v1.35.19) (2026-11-25)
+
+
+### Documentation
+
+* fix nonexistent CLI commands in director-user-guide.md ([#965](https://github.com/1StepMore/AutoInfo/issues/965)) ([#966](https://github.com/1StepMore/AutoInfo/issues/966)) ([413754f](https://github.com/1StepMore/AutoInfo/commit/413754faf443e62f67ba799299dab388d1f9e78a))
+
 ## [1.35.18](https://github.com/1StepMore/AutoInfo/compare/v1.35.17...v1.35.18) (2026-11-25)
 
 

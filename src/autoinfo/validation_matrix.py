@@ -1329,6 +1329,9 @@ _FORMULAIC_PREFIXES = (
     "track ",
     "uncertain trajectory for",
 )
+# quote characters that count as a concrete anchor (#947): straight/curly
+# double quotes and curly single quotes
+_QUOTE_ANCHOR_CHARS = ('"', "“", "”", "‘", "’")
 
 
 # --- #357 shared helpers --------------------------------------------------
@@ -1377,11 +1380,41 @@ def _takeaway_field(lines: list[str], field_re: re.Pattern[str]) -> str:
     return ""
 
 
+def _has_concrete_anchor(text: str) -> bool:
+    """True when *text* carries a concrete anchor: a digit, a URL or
+    ``[Source:`` citation marker, a quoted term (``"..."`` / ``‘...’``), or a
+    capitalised word that is not the sentence's first token (a proper noun
+    such as ``Anthropic``)."""
+    if any(ch.isdigit() for ch in text):
+        return True
+    lowered = text.lower()
+    if "http://" in lowered or "https://" in lowered or "[source:" in lowered:
+        return True
+    if any(ch in _QUOTE_ANCHOR_CHARS for ch in text):
+        return True
+    for token in text.split()[1:]:
+        first_alpha = next((c for c in token if c.isalpha()), "")
+        if first_alpha.isupper():
+            return True
+    return False
+
+
+def _is_formulaic_fallback(text: str) -> bool:
+    """A formulaic no-LLM fallback opener only makes the field weak when the
+    sentence carries no concrete object; concrete entities, numbers or
+    citations mean a real analysis (#947)."""
+    if not text.lower().startswith(_FORMULAIC_PREFIXES):
+        return False
+    return not _has_concrete_anchor(text)
+
+
 def _is_weak_analysis(field: str) -> bool:
     """True when a premium per-takeaway analysis field is weak: empty,
     a template ``_No ..._`` placeholder, ``< 40`` chars, or a deterministic
-    no-LLM formulaic fallback (``Monitor developments around …``,
-    ``Track …``, ``Uncertain trajectory for …``)."""
+    no-LLM formulaic fallback opener (``Monitor developments around …``,
+    ``Track …``, ``Uncertain trajectory for …``) that carries no concrete
+    object — concrete entities, numbers or citations mean a real analysis
+    (#947)."""
     stripped = field.strip()
     if not stripped:
         return True
@@ -1389,7 +1422,7 @@ def _is_weak_analysis(field: str) -> bool:
         return True
     if len(stripped) < 40:
         return True
-    return stripped.lower().startswith(_FORMULAIC_PREFIXES)
+    return _is_formulaic_fallback(stripped)
 
 
 def _section_text(text: str, section_name: str) -> str:

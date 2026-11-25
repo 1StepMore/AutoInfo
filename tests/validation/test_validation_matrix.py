@@ -16,6 +16,11 @@ import pytest
 import yaml
 
 from autoinfo.mcp import validation as v
+from autoinfo.validation_matrix import (
+    _is_formulaic_fallback,
+    _is_weak_analysis,
+    _so_what_substantive,
+)
 
 MATRIX_YAML = """\
 name: matrix-scenario
@@ -335,3 +340,102 @@ class TestListScenariosMatrix:
         summary = {s["name"]: s for s in v.list_scenarios(sd)["scenarios"]}
         assert summary["mat-scenario"]["matrix_domains"] == ["b2b"]
         assert summary["plain-scenario"]["matrix_domains"] == []
+
+
+# ---------------------------------------------------------------------------
+# #947 — formulaic-fallback verdict requires prefix AND no concrete anchor.
+# A formulaic opener only makes the field weak when the sentence carries no
+# concrete object; concrete entities, numbers or citations mean a real
+# analysis.
+# ---------------------------------------------------------------------------
+
+ISSUE_SENTENCE = (
+    "Track Anthropic's quarterly public reporting regarding its compute "
+    "commitments and infrastructure reliance on partners like Amazon and "
+    "Google to gauge the long-term sustainability of its financing approach."
+)
+
+
+class TestIsWeakAnalysisFormulaicAnchor:
+    """``_is_weak_analysis`` fourth rule: formulaic prefix alone is not weak
+    when the sentence carries a concrete anchor (#947)."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Track developments in this domain over the coming quarters.",
+            "Monitor developments around this space and keep an eye on how it evolves.",
+            "Uncertain trajectory for this segment and its near-term outlook.",
+        ],
+    )
+    def test_formulaic_without_anchor_stays_weak(self, text: str) -> None:
+        """Formulaic openers with no digit/URL/citation/proper noun remain
+        weak."""
+        assert len(text) >= 40
+        assert _is_weak_analysis(text)
+        assert _is_formulaic_fallback(text)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # the exact sentence from the issue (proper-noun anchor)
+            ISSUE_SENTENCE,
+            # digit anchor
+            "Track the 2027 renewal date in the contract.",
+            # citation anchor
+            "Monitor developments around the EU AI Act per [Source: commission release].",
+            # URL anchor
+            "Track the model changelog published at https://example.com/changelog each week.",
+        ],
+    )
+    def test_formulaic_with_anchor_is_not_weak(self, text: str) -> None:
+        assert len(text) >= 40
+        assert not _is_weak_analysis(text)
+        assert not _is_formulaic_fallback(text)
+
+    def test_non_formulaic_prefix_unaffected(self) -> None:
+        """The first three rules (empty/placeholder/<40) are unchanged."""
+        assert _is_weak_analysis("")
+        assert _is_weak_analysis("_No actions available._")
+        assert _is_weak_analysis("too short")
+        # a substantive non-formulaic sentence passes
+        assert not _is_weak_analysis(
+            "Anthropic's financing relies on partner compute commitments, "
+            "which shapes its long-term sustainability."
+        )
+
+
+def _premium_briefing_markdown(actions: str) -> str:
+    return (
+        "# Premium Briefing\n\n"
+        "## Key Takeaways\n\n"
+        "### 1. Anthropic financing model\n\n"
+        "> **So what**: Anthropic relies on partner-provided compute, which "
+        "shapes its long-term financing sustainability.\n\n"
+        "**Risk / Opportunity:** Financing concentration risk — dependence "
+        "on partner compute commitments.\n\n"
+        f"**Actions:** {actions}\n\n"
+        "## References\n\n"
+        "- [Source: example](https://example.com)\n"
+    )
+
+
+class TestSoWhatSubstantiveEndToEnd947:
+    """``_so_what_substantive`` end-to-end on a synthetic premium-briefing
+    with the #947 sentence (must pass) vs a bare formulaic action (must
+    fail)."""
+
+    def test_issue_sentence_passes(self) -> None:
+        result = _so_what_substantive(
+            _premium_briefing_markdown(ISSUE_SENTENCE), "ai-commercial", "premium-briefing"
+        )
+        assert result.passed is True, result.details
+
+    def test_bare_formulaic_action_fails(self) -> None:
+        result = _so_what_substantive(
+            _premium_briefing_markdown("Track developments in this domain over the coming quarters."),
+            "ai-commercial",
+            "premium-briefing",
+        )
+        assert result.passed is False
+        assert "takeaway 1 actions is weak" in result.details

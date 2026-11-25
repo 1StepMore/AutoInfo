@@ -8,6 +8,8 @@ import logging
 import os
 import re
 import shutil
+import subprocess
+import tempfile
 import threading
 from datetime import datetime, timezone
 from importlib import metadata
@@ -176,6 +178,78 @@ def audit_speech_text(text: str) -> dict[str, Any]:
     }
 
 
+_MP3_PROBE_SUFFIX = ".mp3"
+
+
+def _probe_streams(stdout: str) -> dict[str, Any]:
+    """Turn ffprobe's ``-show_streams`` JSON into the audit fields we keep.
+
+    Split out as a pure function so the parse path is covered on machines
+    without ffprobe (CI) — the interesting branch is the parsing, not the spawn.
+    """
+    streams = (json.loads(stdout or "{}").get("streams") or [{}])[0]
+    out: dict[str, Any] = {"probe": "ok"}
+    for key in ("codec_name", "sample_rate", "channels", "bit_rate"):
+        if streams.get(key) not in (None, ""):
+            out[key] = streams[key]
+    return out
+
+
+def probe_audio_bytes(data: bytes) -> dict[str, Any]:
+    """Measure what the TTS engine actually produced (#926, decision: record, don't gate).
+
+    The audio gate only asserts "a bitrate exists", which cannot tell 48 kbps
+    from 192 kbps — so the honest fix is to *record* the measured values next
+    to the artifact instead of tightening a threshold that would red every
+    historical product.  Never raises: a missing ffprobe degrades to
+    ``{"probe": "unavailable"}``.
+    """
+    ffprobe = shutil.which("ffprobe")
+    if not data:
+        return {"probe": "empty"}
+    if ffprobe is None:
+        return {"probe": "unavailable", "reason": "ffprobe not on PATH"}
+    fd, path = tempfile.mkstemp(suffix=_MP3_PROBE_SUFFIX)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        proc = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "quiet",
+                "-select_streams",
+                "a:0",
+                "-show_streams",
+                "-of",
+                "json",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            return {"probe": "failed", "reason": (proc.stderr or "")[:120]}
+        out = _probe_streams(proc.stdout)
+        out["bytes"] = len(data)
+        return out
+    except Exception as exc:  # probe must never break synthesis
+        return {"probe": "failed", "reason": f"{type(exc).__name__}: {exc}"[:120]}
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def _finish_audio(data: bytes, audit_out: dict[str, Any] | None) -> bytes:
+    """Attach the measured audio properties to *audit_out* and return *data* (#926)."""
+    if audit_out is not None:
+        audit_out["audio_probe"] = probe_audio_bytes(data)
+    return data
+
+
 def _render_audio(
     text: str,
     voice: str = DEFAULT_TTS_VOICE,
@@ -269,7 +343,9 @@ def _render_audio(
     # --- Local engine (edge-tts) ---
     if resolved_engine == "local":
         try:
-            return _render_audio_edge_tts(text, voice=local_voice, timeout=timeout)
+            return _finish_audio(
+                _render_audio_edge_tts(text, voice=local_voice, timeout=timeout), audit_out
+            )
         except ImportError:
             logger.warning(
                 "edge-tts is not installed — falling back to OpenAI TTS. "
@@ -290,17 +366,22 @@ def _render_audio(
         # Explicit engine: never silently fall back to OpenAI (mirrors
         # "local" above) — a missing credential must surface as an
         # actionable RuntimeError, not a misleading network failure.
-        return _render_audio_azure(
-            text,
-            voice=azure_voice,
-            timeout=timeout,
-            region=azure_region,
+        return _finish_audio(
+            _render_audio_azure(
+                text,
+                voice=azure_voice,
+                timeout=timeout,
+                region=azure_region,
+            ),
+            audit_out,
         )
 
     # --- Whisper engine (OpenAI Whisper model via TTS API) ---
     if resolved_engine == "whisper":
         try:
-            return _render_audio_whisper(text, voice=voice, timeout=timeout)
+            return _finish_audio(
+                _render_audio_whisper(text, voice=voice, timeout=timeout), audit_out
+            )
         except Exception:
             logger.warning(
                 "Whisper TTS failed — falling back to OpenAI TTS.",
@@ -308,7 +389,7 @@ def _render_audio(
             )
 
     # --- OpenAI TTS path (explicit or fallback) ---
-    return _render_audio_openai(text, voice=voice, timeout=timeout)
+    return _finish_audio(_render_audio_openai(text, voice=voice, timeout=timeout), audit_out)
 
 
 def _render_video_scaffold(

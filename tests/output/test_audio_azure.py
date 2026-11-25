@@ -248,9 +248,7 @@ class TestAzureOutputFormatTier:
         assert int(match.group("sample_rate_khz")) * 1000 == 48000
         assert int(match.group("bitrate_kbps")) * 1000 == 192000
 
-    def test_request_payload_uses_module_constant(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_request_payload_uses_module_constant(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The real request path must carry ``AZURE_TTS_OUTPUT_FORMAT`` verbatim,
         so a hard-coded low tier cannot sneak back into ``_render_audio_azure``."""
         monkeypatch.setenv("AZURE_SPEECH_KEY", "azure-test-key")
@@ -264,3 +262,198 @@ class TestAzureOutputFormatTier:
         headers = mock_post.call_args.kwargs["headers"]
         assert headers["X-Microsoft-OutputFormat"] == AZURE_TTS_OUTPUT_FORMAT
         assert headers["X-Microsoft-OutputFormat"] == "audio-48khz-192kbitrate-mono-mp3"
+
+
+class TestAudioProbeRecordedInAudit:
+    """#926 第 2 步（owner 2026-11-25 裁定）：阈值不动，改为把实测码率记进 sidecar。"""
+
+    def test_probe_reports_real_mp3_properties(self, tmp_path) -> None:
+        import shutil
+        import subprocess
+
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("ffmpeg not installed")
+        mp3 = tmp_path / "sample.mp3"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "quiet",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=0.3",
+                "-b:a",
+                "192k",
+                "-ar",
+                "48000",
+                "-ac",
+                "1",
+                str(mp3),
+            ],
+            check=True,
+        )
+        probe = audio_module.probe_audio_bytes(mp3.read_bytes())
+        assert probe["probe"] == "ok", probe
+        assert probe["codec_name"] == "mp3"
+        assert int(probe["sample_rate"]) == 48000
+        assert int(probe["bit_rate"]) >= 128000
+        assert probe["bytes"] == mp3.stat().st_size
+
+    def test_probe_degrades_without_raising(self, monkeypatch) -> None:
+        monkeypatch.setattr(audio_module.shutil, "which", lambda name: None)
+        probe = audio_module.probe_audio_bytes(b"not really mp3")
+        assert probe == {"probe": "unavailable", "reason": "ffprobe not on PATH"}
+
+    def test_empty_payload_is_reported_not_raised(self) -> None:
+        assert audio_module.probe_audio_bytes(b"")["probe"] == "empty"
+
+    def test_render_audio_writes_probe_into_audit(self, monkeypatch, tmp_path) -> None:
+        # 用真实 mp3 字节，确保 probe 走通；引擎本身被替身，不碰网络。
+        import shutil
+        import subprocess
+
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("ffmpeg not installed")
+        path = str(tmp_path / "probe-src.mp3")
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-v",
+                "quiet",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=0.2",
+                "-b:a",
+                "192k",
+                path,
+            ],
+            check=True,
+        )
+        payload = open(path, "rb").read()
+        monkeypatch.setattr(audio_module, "_render_audio_openai", lambda *a, **k: payload)
+        audit: dict = {}
+        out = _render_audio("hello world", engine="openai", audit_out=audit)
+        assert out == payload
+        assert audit["audio_probe"]["probe"] == "ok"
+        assert int(audit["audio_probe"]["bit_rate"]) >= 128000
+
+
+class TestProbeParsingWithoutFfprobe:
+    """CI 上没有 ffmpeg —— 解析路径必须能脱离二进制被覆盖，否则覆盖率门必红。"""
+
+    _REAL_FFPROBE = (
+        '{"streams": [{"codec_name": "mp3", "sample_rate": "48000", "channels": 1, '
+        '"bit_rate": "192000"}]}'
+    )
+
+    def test_parses_real_ffprobe_payload(self) -> None:
+        out = audio_module._probe_streams(self._REAL_FFPROBE)
+        assert out == {
+            "probe": "ok",
+            "codec_name": "mp3",
+            "sample_rate": "48000",
+            "channels": 1,
+            "bit_rate": "192000",
+        }
+
+    def test_missing_streams_yields_bare_ok(self) -> None:
+        assert audio_module._probe_streams("{}") == {"probe": "ok"}
+        assert audio_module._probe_streams("") == {"probe": "ok"}
+
+    def test_empty_field_is_omitted(self) -> None:
+        out = audio_module._probe_streams('{"streams": [{"codec_name": "mp3", "bit_rate": ""}]}')
+        assert out == {"probe": "ok", "codec_name": "mp3"}
+
+    def test_failed_probe_reports_reason_instead_of_raising(self, monkeypatch) -> None:
+        class _Proc:
+            returncode = 1
+            stdout = ""
+            stderr = "Invalid data found when processing input"
+
+        monkeypatch.setattr(audio_module.shutil, "which", lambda name: "/usr/bin/ffprobe")
+        monkeypatch.setattr(audio_module.subprocess, "run", lambda *a, **k: _Proc())
+        probe = audio_module.probe_audio_bytes(b"broken")
+        assert probe["probe"] == "failed"
+        assert "Invalid data" in probe["reason"]
+
+    def test_unparseable_output_degrades_to_failed(self, monkeypatch) -> None:
+        class _Proc:
+            returncode = 0
+            stdout = "not json at all"
+            stderr = ""
+
+        monkeypatch.setattr(audio_module.shutil, "which", lambda name: "/usr/bin/ffprobe")
+        monkeypatch.setattr(audio_module.subprocess, "run", lambda *a, **k: _Proc())
+        probe = audio_module.probe_audio_bytes(b"whatever")
+        assert probe["probe"] == "failed"
+
+    def test_finish_audio_without_audit_is_a_passthrough(self) -> None:
+        assert audio_module._finish_audio(b"abc", None) == b"abc"
+
+    def test_finish_audio_records_even_when_ffprobe_missing(self, monkeypatch) -> None:
+        monkeypatch.setattr(audio_module.shutil, "which", lambda name: None)
+        audit: dict = {}
+        assert audio_module._finish_audio(b"abc", audit) == b"abc"
+        assert audit["audio_probe"]["probe"] == "unavailable"
+
+
+class TestAudioProbeBranchesWithoutBinaries:
+    """把 probe 的成功/异常分支也用替身覆盖，CI 无 ffprobe 时音频模块覆盖率才不掉。"""
+
+    _PAYLOAD = (
+        '{"streams": [{"codec_name": "mp3", "sample_rate": "48000", "channels": 1, '
+        '"bit_rate": "192000"}]}'
+    )
+
+    def test_probe_ok_path_with_fake_ffprobe(self, monkeypatch) -> None:
+        class _Proc:
+            returncode = 0
+            stdout = self._PAYLOAD
+            stderr = ""
+
+        monkeypatch.setattr(audio_module.shutil, "which", lambda name: "/usr/bin/ffprobe")
+        monkeypatch.setattr(audio_module.subprocess, "run", lambda *a, **k: _Proc())
+        probe = audio_module.probe_audio_bytes(b"x" * 16)
+        assert probe["probe"] == "ok"
+        assert probe["bit_rate"] == "192000"
+        assert probe["bytes"] == 16
+
+    def test_probe_spawn_error_is_caught(self, monkeypatch) -> None:
+        def _boom(*a, **k):
+            raise OSError("ffprobe exploded")
+
+        monkeypatch.setattr(audio_module.shutil, "which", lambda name: "/usr/bin/ffprobe")
+        monkeypatch.setattr(audio_module.subprocess, "run", _boom)
+        probe = audio_module.probe_audio_bytes(b"x")
+        assert probe["probe"] == "failed"
+        assert "OSError" in probe["reason"]
+
+    def test_unlink_failure_is_swallowed(self, monkeypatch) -> None:
+        class _Proc:
+            returncode = 0
+            stdout = '{"streams": [{"codec_name": "mp3"}]}'
+            stderr = ""
+
+        def _no_unlink(path):
+            raise OSError("busy")
+
+        monkeypatch.setattr(audio_module.shutil, "which", lambda name: "/usr/bin/ffprobe")
+        monkeypatch.setattr(audio_module.subprocess, "run", lambda *a, **k: _Proc())
+        monkeypatch.setattr(audio_module.os, "unlink", _no_unlink)
+        assert audio_module.probe_audio_bytes(b"x")["probe"] == "ok"
+
+    def test_edge_and_whisper_branches_attach_probe(self, monkeypatch) -> None:
+        monkeypatch.setattr(audio_module.shutil, "which", lambda name: None)
+        monkeypatch.setattr(audio_module, "_render_audio_edge_tts", lambda *a, **k: b"edge-bytes")
+        monkeypatch.setattr(audio_module, "_render_audio_whisper", lambda *a, **k: b"whisper-bytes")
+
+        audit_edge: dict = {}
+        assert _render_audio("hi", engine="local", audit_out=audit_edge) == b"edge-bytes"
+        assert audit_edge["audio_probe"]["probe"] == "unavailable"
+
+        audit_whisper: dict = {}
+        assert _render_audio("hi", engine="whisper", audit_out=audit_whisper) == b"whisper-bytes"
+        assert audit_whisper["audio_probe"]["probe"] == "unavailable"

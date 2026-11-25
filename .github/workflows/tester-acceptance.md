@@ -5,7 +5,11 @@
 on:
   pull_request:
     types: [opened, synchronize]
-permissions: read-all                # 只读 by default
+permissions:                        # 只读 + Copilot 推理额度（组织计费，无需 PAT）
+  contents: read
+  copilot-requests: write            # engine: copilot 的官方免 PAT 路径
+  issues: read
+  pull-requests: read
 engine: copilot
 safe-outputs:
   add-comment:                       # 唯一写入出口：固定 JSON 裁决

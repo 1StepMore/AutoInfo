@@ -181,6 +181,20 @@ def audit_speech_text(text: str) -> dict[str, Any]:
 _MP3_PROBE_SUFFIX = ".mp3"
 
 
+def _probe_streams(stdout: str) -> dict[str, Any]:
+    """Turn ffprobe's ``-show_streams`` JSON into the audit fields we keep.
+
+    Split out as a pure function so the parse path is covered on machines
+    without ffprobe (CI) — the interesting branch is the parsing, not the spawn.
+    """
+    streams = (json.loads(stdout or "{}").get("streams") or [{}])[0]
+    out: dict[str, Any] = {"probe": "ok"}
+    for key in ("codec_name", "sample_rate", "channels", "bit_rate"):
+        if streams.get(key) not in (None, ""):
+            out[key] = streams[key]
+    return out
+
+
 def probe_audio_bytes(data: bytes) -> dict[str, Any]:
     """Measure what the TTS engine actually produced (#926, decision: record, don't gate).
 
@@ -217,11 +231,7 @@ def probe_audio_bytes(data: bytes) -> dict[str, Any]:
         )
         if proc.returncode != 0:
             return {"probe": "failed", "reason": (proc.stderr or "")[:120]}
-        streams = (json.loads(proc.stdout or "{}").get("streams") or [{}])[0]
-        out: dict[str, Any] = {"probe": "ok"}
-        for key in ("codec_name", "sample_rate", "channels", "bit_rate"):
-            if streams.get(key) not in (None, ""):
-                out[key] = streams[key]
+        out = _probe_streams(proc.stdout)
         out["bytes"] = len(data)
         return out
     except Exception as exc:  # probe must never break synthesis

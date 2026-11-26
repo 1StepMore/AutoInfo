@@ -19,7 +19,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 - **Product generation** — 8 product families (incl. premium-briefing, enterprise-briefing, magazine-digest) across Markdown/HTML/JSON/PDF/Audio/Agent/EPUB/MOBI/Audiobook/Video; digest, report, tutorial, presentation, export.
 - **Delivery & end users** — 13 delivery channels (SMTP, webhook, REST, file export, Discord, Telegram, WeChat Work/OA, DingTalk, FeiShu, RSS, social publish, push) with retry/fallback, cron schedules, per-user lifecycle/subscription, portal, and delivery logs.
 - **Cost, audit & observability** — per-domain/per-user cost metering and allocation, budget alerts, append-only audit log, per-item trace IDs, structured pipeline logs, Prometheus metrics, and `doctor` diagnostics.
-- **Agent-native surfaces** — 151 MCP tools across 35 categories, 31 CLI groups, REST API (port 8741), read-only MCP mode (4-tool subset), and 189 validation scenarios (86 functional + 103 regression) that execute real MCP/CLI/REST calls with per-step traces.
+- **Agent-native surfaces** — 151 MCP tools across 35 categories, 30 CLI groups, REST API (port 8741), read-only MCP mode (4-tool subset), and 189 validation scenarios (86 functional + 103 regression) that execute real MCP/CLI/REST calls with per-step traces.
 - **Data lifecycle & compliance** — source ToS classification/tier controls, soft-delete + restore + 30-day cleanup, tier-based retention, GDPR export/delete, and append-only knowledge lifecycle (TTL/freshness/decay, versioned re-collection).
 - **BYOK & LLM governance** — multi-provider via LiteLLM, per-task model routing, fallback chains, per-provider concurrency limiting with 429/5xx backoff, and a single documented default (`openrouter` + `deepseek/deepseek-chat`).
 
@@ -30,7 +30,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | Component | Status |
 |-----------|--------|
 | Config system | ✅ LLM task config, per-task model, fallback chains, schema versioning |
-| CLI | ✅ 31 command groups (doctor, collect, process, status, summaries, sources, topics, topic-group, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace, import-kb, query-collected, alert-rules, agent-callback, validate, validation, serve, mvp) |
+| CLI | ✅ 30 command groups (doctor, collect, process, status, summaries, sources, topics, topic-group, domain, audit, kb, output, cron, knowledge, cefr, email, keywords, clean, cost, billing, enduser, portal, trace, import-kb, query-collected, alert-rules, agent-callback, validate, validation, serve, mvp) |
 | Collection | ✅ 30 collector handlers (PubMed, Semantic Scholar, DBLP, OpenAlex, USPTO, NYT, Yahoo Finance, Quandl, RSS, Web, webhook, email, PDF, Reddit, Spotify, YouTube, Bilibili, Apple Podcasts, plus paid AP API and Reuters MCP, plus SSRN, GDELT, HuggingFace/Kaggle, Unpaywall/CORE, HackerNews, AKShare, SEC EDGAR, edX sitemap), scheduled via crond; `fetch_depth: fulltext` threading (unpaywall/rss/youtube/gdelt, 8000-char cap) |
 | LLM extraction | ✅ Custom extraction fields, TL;DR, key points, entities, G4 factual consistency, token usage tracking |
 | Translation QA pipeline | ✅ 5 lite quality gates, back-translation verification, terminology guardrails, composite scoring, translator-qa-skill |
@@ -278,7 +278,7 @@ Sources (RSS/API/Web)
 | Layer | Technology |
 |-------|-----------|
 | Language | Python ≥ 3.11 |
-| CLI | typer (31 command groups) |
+| CLI | typer (30 command groups) |
 | REST API | FastAPI + uvicorn (port 8741) |
 | MCP server | mcp (Model Context Protocol) — 151 tools over stdio |
 | LLM layer | LiteLLM — multi-provider (OpenRouter, OpenAI-compatible, Ollama, Azure) via BYOK |

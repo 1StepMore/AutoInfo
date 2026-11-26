@@ -12,7 +12,12 @@ import typer
 app = typer.Typer(
     name="serve",
     help="Run the AutoInfo MCP server (stdio transport)",
-    no_args_is_help=True,
+    # ``no_args_is_help=True`` short-circuits a bare ``autoinfo serve`` into
+    # printing help, so the callback below never ran and the server never
+    # started (MCP clients saw a process that exits immediately, #972).
+    # The callback is the default action: bare invocation serves; ``--help``
+    # still shows help.
+    no_args_is_help=False,
 )
 
 

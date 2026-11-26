@@ -44,10 +44,12 @@ from autoinfo.schema import get_schema_version as _get_schema_version
 def run_doctor(*, probe_llm: bool = False) -> dict[str, Any]:
     """Run a comprehensive system health check.
 
-    *probe_llm* sends one real request per configured LLM fallback entry
-    (issue #605) and adds a ``fallback_probe`` list to the report.  It is
-    off by default so a normal ``doctor`` run performs no LLM calls and
-    keeps its historical output and exit behavior.
+    *probe_llm* sends one real request to the **primary** LLM entry
+    (issue #968) and, when a fallback chain is configured, one per fallback
+    entry (issue #605).  Results land in ``llm_probe`` (primary) and
+    ``fallback_probe`` (chain).  It is off by default so a normal ``doctor``
+    run performs no LLM calls and keeps its historical output and exit
+    behavior.
 
     Returns
     -------
@@ -60,6 +62,12 @@ def run_doctor(*, probe_llm: bool = False) -> dict[str, Any]:
                            "errors": [str, ...]},
                 "llm": {"status": "ok" | "error", "provider": str,
                         "model": str, "key_configured": bool},
+                "llm_probe": {"target": "primary", "model": str, "ok": bool,
+                              "error": str | None, "latency_ms": float},
+                "fallback_probe": [
+                    {"index": int, "model": str, "ok": bool,
+                     "error": str | None, "latency_ms": float},
+                ],  # present only with --probe-llm
                 "sources": [
                     {"name": str, "status": "ok" | "error" | "skipped",
                      "latency_ms": float},
@@ -140,24 +148,40 @@ def run_doctor(*, probe_llm: bool = False) -> dict[str, Any]:
             pass
     results["fallback_health"] = fallback_health
 
-    # -- LLM fallback-chain live probe (opt-in, issue #605) ------------------
+    # -- LLM live probe (opt-in, #605 + #968) ---------------------------------
+    # #968: the probe must cover the PRIMARY entry — with an empty fallback
+    # list the old code probed nothing yet still exited 0, so "✅ LLM" could
+    # describe a key that cannot authenticate.  Primary first, then each
+    # configured fallback.
     if probe_llm:
+        from autoinfo.config import probe_primary_llm
+
+        llm_probe: dict[str, Any] = {
+            "target": "primary",
+            "model": "",
+            "ok": False,
+            "status": "error",
+            "error": None,
+            "latency_ms": 0.0,
+        }
         probe_results: list[dict[str, Any]] = []
         if config_path:
             try:
                 cfg = load_config(config_path)
+                llm_probe = probe_primary_llm(cfg)
                 probe_results = probe_fallbacks(cfg)
             except Exception as exc:
-                probe_results = [
-                    {
-                        "index": -1,
-                        "model": "?",
-                        "ok": False,
-                        "status": "error",
-                        "error": f"fallback probe failed: {exc}",
-                        "latency_ms": 0.0,
-                    }
-                ]
+                llm_probe = {
+                    "target": "primary",
+                    "model": "",
+                    "ok": False,
+                    "status": "error",
+                    "error": f"primary probe failed: {exc}",
+                    "latency_ms": 0.0,
+                }
+        else:
+            llm_probe["error"] = "no configuration file found"
+        results["llm_probe"] = llm_probe
         results["fallback_probe"] = probe_results
 
     # -- Source reachability checks -----------------------------------------

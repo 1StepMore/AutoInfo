@@ -25,16 +25,40 @@ def search(
     domain: str = typer.Option("", "--domain", help="Domain to search in"),
     limit: int = typer.Option(20, "--limit", min=1, help="Max results"),
     offset: int = typer.Option(0, "--offset", help="Result offset"),
+    include_archived: bool = typer.Option(
+        False,
+        "--include-archived",
+        help="Also return entries archived/deprecated via custom_fields.status",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
-    """Search the knowledge base using FTS5 full-text search."""
+    """Search the knowledge base using FTS5 full-text search.
+
+    Archived/deprecated entries are excluded by default but counted into
+    ``excluded_archived`` so nothing silently disappears (#969).
+    """
     from autoinfo.kb import KBStore
 
     store = KBStore()
-    result = store.search_knowledge_base(query=query, domain=domain, limit=limit, offset=offset)
+    result = store.search_knowledge_base(
+        query=query,
+        domain=domain,
+        limit=limit,
+        offset=offset,
+        include_archived=include_archived,
+    )
     if emit_if_global(result):
         return
     typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    if not json_output and not include_archived:
+        hidden = result.get("excluded_archived", 0)
+        if hidden:
+            # Human-facing hint on stderr — stdout stays parseable JSON.
+            typer.echo(
+                f"(另有 {hidden} 条命中但已归档，未显示；"
+                f"用 --include-archived 或 kb list --tier 01-Raw 查看)",
+                err=True,
+            )
 
 
 @app.command(name="list")
@@ -134,6 +158,7 @@ def list_tiers(
     tier_info = []
     for tier in tiers:
         entry_count = store.count_entries_by_tier(domain=domain, tier=tier)
+        status_counts = store.count_entries_by_tier_status(domain=domain, tier=tier)
         tier_info.append(
             {
                 "tier": tier,
@@ -143,6 +168,8 @@ def list_tiers(
                     "03-Wiki": "Admission-gated agent-promoted curated entries (append-only)",
                 }.get(tier, ""),
                 "entry_count": entry_count,
+                "active": status_counts["active"],
+                "archived": status_counts["archived"],
             }
         )
 
@@ -159,7 +186,10 @@ def list_tiers(
     typer.echo("")
     for t in tier_info:
         desc = t["description"]
-        typer.echo(f"  {t['tier']:<12} ({t['entry_count']:>4} entries)  {desc}")
+        typer.echo(
+            f"  {t['tier']:<12} ({t['entry_count']:>4} entries: "
+            f"{t['active']} active / {t['archived']} archived)  {desc}"
+        )
 
 
 @app.command(name="wiki-links")

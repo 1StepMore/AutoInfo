@@ -308,7 +308,8 @@ Optional extras: `pip install "autoinfo[web]"` (Playwright),
 ```bash
 autoinfo init --name <project>      # Initialize project
 autoinfo init --demo <domain>       # Initialize with demo domain
-autoinfo doctor                      # System health check
+autoinfo doctor                      # System health check (config checks only — LLM key presence is NOT connectivity)
+autoinfo doctor --probe-llm          # Verify LLM connectivity: one real request to the primary + each fallback (sends network traffic, may cost tokens)
 autoinfo collect --domain <d> ...   # Collect from sources
 autoinfo process --domain <d> ...   # LLM extraction + storage (--since-days N / --newest-first)
 autoinfo status                      # Collection stats
@@ -318,7 +319,7 @@ autoinfo topics add|list|remove     # Topic management
 autoinfo topic-group add|remove     # Topic grouping (MCP topic_group_add/remove parity)
 autoinfo domain add|list|show|remove|activate|deactivate|import|init <name> [--seed]  # Domain management (import --from-demo supports all 21 demo domains; init --seed writes extract_fields into the seeded sources.yaml)
 autoinfo audit query                # Query immutable audit log
-autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex
+autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex  # search excludes archived/deprecated entries by default — hidden hits are counted in `excluded_archived` (--include-archived to see them; `kb list-tiers` shows per-tier active/archived counts)
 autoinfo output digest|report|tutorial|presentation|export|translate|list-templates  # digest/report accept --product; report accepts --type --domains
 autoinfo cron run|list-schedules|add-schedule|remove-schedule|install|uninstall|health  # health = heartbeat + missed-schedule detection
 autoinfo cefr classify|batch        # CEFR text classification

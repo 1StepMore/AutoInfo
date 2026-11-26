@@ -114,7 +114,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | LLM fallback chain | ✅ Shared `llm.call_with_fallback` — every LLM call site (extraction + 17 standalone) walks `[primary] + config.llm.fallback`; an empty `provider` inherits the primary provider, an empty `api_key` inherits the primary key only on the same gateway (a cross-endpoint fallback needs its own explicit `${ENV}` key); first successful model wins; per-provider shared rate limiting (`AUTOINFO_LLM_MAX_CONCURRENCY`, default 4) + jittered 429/5xx backoff on every chain entry and all fan-out paths |
 | Dead-source detection | ✅ Semantic Scholar 429 → `SourceFailure` (fail-fast); arXiv rss/bio → rss/q-bio fix |
 | CLI module entry | ✅ `python -m autoinfo.cli` runs the same Typer app; `collect` live per-source progress printer |
-| Test suite | ✅ ~7253 tests collected + 38 governance tests (tests/gov/) (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate) + #351 year-assertion tuning / #356 real-product scanner + release-scope gate (#406); order-dependency fixes landed 2026-08-12) |
+| Test suite | ✅ ~7273 tests collected + 38 governance tests (tests/gov/) (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate) + #351 year-assertion tuning / #356 real-product scanner + release-scope gate (#406); order-dependency fixes landed 2026-08-12) |
 
 ## Quick Start
 
@@ -308,7 +308,8 @@ Optional extras: `pip install "autoinfo[web]"` (Playwright),
 ```bash
 autoinfo init --name <project>      # Initialize project
 autoinfo init --demo <domain>       # Initialize with demo domain
-autoinfo doctor                      # System health check
+autoinfo doctor                      # System health check (config checks only — LLM key presence is NOT connectivity)
+autoinfo doctor --probe-llm          # Verify LLM connectivity: one real request to the primary + each fallback (sends network traffic, may cost tokens)
 autoinfo collect --domain <d> ...   # Collect from sources
 autoinfo process --domain <d> ...   # LLM extraction + storage (--since-days N / --newest-first)
 autoinfo status                      # Collection stats
@@ -318,7 +319,7 @@ autoinfo topics add|list|remove     # Topic management
 autoinfo topic-group add|remove     # Topic grouping (MCP topic_group_add/remove parity)
 autoinfo domain add|list|show|remove|activate|deactivate|import|init <name> [--seed]  # Domain management (import --from-demo supports all 21 demo domains; init --seed writes extract_fields into the seeded sources.yaml)
 autoinfo audit query                # Query immutable audit log
-autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex
+autoinfo kb search|create-draft|promote|reject-draft|list-tiers|reindex  # search excludes archived/deprecated entries by default — hidden hits are counted in `excluded_archived` (--include-archived to see them; `kb list-tiers` shows per-tier active/archived counts)
 autoinfo output digest|report|tutorial|presentation|export|translate|list-templates  # digest/report accept --product; report accepts --type --domains
 autoinfo cron run|list-schedules|add-schedule|remove-schedule|install|uninstall|health  # health = heartbeat + missed-schedule detection
 autoinfo cefr classify|batch        # CEFR text classification

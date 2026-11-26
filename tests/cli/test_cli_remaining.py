@@ -213,6 +213,7 @@ class TestKbListTiers:
         ):
             instance = mock_store.return_value
             instance.count_entries_by_tier.return_value = 0
+            instance.count_entries_by_tier_status.return_value = {"active": 0, "archived": 0}
 
             result = cli_runner.invoke(
                 app,
@@ -236,6 +237,7 @@ class TestKbListTiers:
         ):
             instance = mock_store.return_value
             instance.count_entries_by_tier.return_value = 0
+            instance.count_entries_by_tier_status.return_value = {"active": 0, "archived": 0}
 
             result = cli_runner.invoke(
                 app,

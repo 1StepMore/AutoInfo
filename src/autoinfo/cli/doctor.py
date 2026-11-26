@@ -29,7 +29,10 @@ def doctor(
     probe_llm: bool = typer.Option(
         False,
         "--probe-llm",
-        help="Send one real request per LLM fallback entry; exit non-zero if any fails",
+        help=(
+            "Send one real request to the primary LLM and each fallback entry; "
+            "exit non-zero if any fails (real network traffic, may cost tokens)"
+        ),
     ),
 ) -> None:
     """Check system health and configuration."""
@@ -50,6 +53,8 @@ def doctor(
             raise typer.Exit(code=1)
         if result.get("config", {}).get("status") == "error":
             raise typer.Exit(code=1)
+        if result.get("llm_probe") and not result["llm_probe"].get("ok"):
+            raise typer.Exit(code=1)
         if any(not entry.get("ok") for entry in result.get("fallback_probe", [])):
             raise typer.Exit(code=1)
         return
@@ -65,6 +70,8 @@ def doctor(
     if result.get("python", {}).get("status") == "error":
         raise typer.Exit(code=1)
     if result.get("config", {}).get("status") == "error":
+        raise typer.Exit(code=1)
+    if result.get("llm_probe") and not result["llm_probe"].get("ok"):
         raise typer.Exit(code=1)
     if any(not entry.get("ok") for entry in result.get("fallback_probe", [])):
         raise typer.Exit(code=1)
@@ -90,9 +97,12 @@ def _print_human(result: dict[str, Any]) -> None:
     # --- LLM ---
     llm = result.get("llm", {})
     if llm.get("status") == "ok":
+        # #968: ✅ here means "configuration complete", NOT "connectivity
+        # verified" — a key that is present but rejected still printed ✅.
+        # Say so, and point at the real probe.
         typer.echo(
             f"  ✅ LLM: {llm.get('provider', '?')} / {llm.get('model', '?')} "
-            f"(key {'✓' if llm.get('key_configured') else '✗'})"
+            f"(key present — not verified; run doctor --probe-llm)"
         )
     else:
         typer.echo(
@@ -156,16 +166,25 @@ def _print_human(result: dict[str, Any]) -> None:
                 f"{primary.get('model', '?')}{flag_str}"
             )
 
-    # --- LLM fallback live probe (opt-in, issue #605) ---
-    probe = result.get("fallback_probe")
-    if probe is not None:
-        typer.echo("  LLM fallback probe:")
+    # --- LLM live probe (opt-in, #605 + #968) ---
+    llm_probe = result.get("llm_probe")
+    if llm_probe is not None:
+        typer.echo("  LLM probe:")
+        icon = "✅" if llm_probe.get("ok") else "❌"
+        line = (
+            f"    {icon} primary {llm_probe.get('model', '?')} "
+            f"({llm_probe.get('latency_ms', 0):.0f}ms)"
+        )
+        if llm_probe.get("error"):
+            line += f" — {llm_probe['error']}"
+        typer.echo(line)
+        probe = result.get("fallback_probe")
         if not probe:
             typer.echo("       (no fallback entries configured)")
-        for entry in probe:
+        for entry in probe or []:
             icon = "✅" if entry.get("ok") else "❌"
             line = (
-                f"    {icon} [{entry.get('index', '?')}] "
+                f"    {icon} fallback [{entry.get('index', '?')}] "
                 f"{entry.get('model', '?')} ({entry.get('latency_ms', 0):.0f}ms)"
             )
             if entry.get("error"):

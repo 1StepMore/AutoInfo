@@ -77,6 +77,21 @@ TIER_SCORE_BOOST: dict[str, float] = {
     "01-Raw": 1.0,
 }
 
+# Entry-status filters over ``custom_fields`` (#969).  ``archived`` /
+# ``deprecated`` rows are stored but not discoverable via search; the
+# active condition is appended to every search SELECT unless
+# ``include_archived`` is set, and the archived condition powers the
+# real ``excluded_archived`` count so callers can say what was hidden.
+_STATUS_ACTIVE_COND = (
+    "(json_type({p}.custom_fields, '$.status') IS NULL "
+    "OR CAST(json_extract({p}.custom_fields, '$.status') "
+    "AS TEXT) NOT IN ('archived', 'deprecated'))"
+)
+_STATUS_ARCHIVED_COND = (
+    "CAST(json_extract({p}.custom_fields, '$.status') "
+    "AS TEXT) IN ('archived', 'deprecated')"
+)
+
 
 class PromotionRejected(Exception):  # noqa: N818 — mandated name (plan T2/T5/T9 use PromotionRejected), not a generic Error
     """Raised when a 02-Draft entry fails the promotion admission gate.
@@ -1054,6 +1069,31 @@ class SQLiteIndex:
             ).fetchone()
             return row[0] if row else 0
 
+    def count_entries_by_tier_status(self, domain: str, tier: str) -> dict[str, int]:
+        """Return active/archived counts for *domain* and *tier* (#969).
+
+        ``active`` counts rows whose ``custom_fields`` status is absent or
+        not ``archived``/``deprecated`` (i.e. discoverable via search);
+        ``archived`` counts the rest.  The two always sum to
+        :meth:`count_entries_by_tier`.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT
+                     SUM(CASE WHEN json_type(custom_fields, '$.status') IS NULL
+                               OR CAST(json_extract(custom_fields, '$.status') AS TEXT)
+                                  NOT IN ('archived', 'deprecated')
+                              THEN 1 ELSE 0 END) AS active,
+                     SUM(CASE WHEN CAST(json_extract(custom_fields, '$.status') AS TEXT)
+                                  IN ('archived', 'deprecated')
+                              THEN 1 ELSE 0 END) AS archived
+                   FROM entries WHERE domain=? AND tier=?""",
+                (domain, tier),
+            ).fetchone()
+            if row is None:
+                return {"active": 0, "archived": 0}
+            return {"active": int(row["active"] or 0), "archived": int(row["archived"] or 0)}
+
     def list_all_entries(
         self,
         domain: str | None = None,
@@ -1975,13 +2015,16 @@ class SQLiteIndex:
         filter_language: str | None = None,
         filter_user_id: str | None = None,
         filter_custom_fields: dict[str, str] | None = None,
+        include_archived: bool = False,
     ) -> dict[str, Any]:
         """Search the knowledge base using FTS5 full-text search.
 
         Returns a dict with keys: ``entries`` (list of matching entry
         dicts), ``total_count`` (int), ``query``, ``domain``, ``limit``,
-        ``offset``, ``method``.  Falls back to a LIKE-based search if
-        the FTS5 query syntax is invalid.
+        ``offset``, ``method``, ``excluded_archived`` (int — rows this
+        query matched but that were hidden by the archived/deprecated
+        status filter; ``0`` when *include_archived* is True).  Falls
+        back to a LIKE-based search if the FTS5 query syntax is invalid.
 
         To keep long natural-language questions from returning 0 hits
         (FTS5 MATCH uses AND semantics, so every token must match), the
@@ -2033,6 +2076,12 @@ class SQLiteIndex:
             non-empty, any other value matches entries where the
             field's JSON value equals that text.  ``None`` applies no
             custom-fields filter (default behaviour unchanged).
+        include_archived:
+            When ``False`` (default), entries whose ``custom_fields``
+            status is ``archived``/``deprecated`` are excluded from the
+            results but *counted* into ``excluded_archived`` so callers
+            can say how many hits were hidden (#969).  When ``True`` no
+            status filter is applied at all.
         """
         safe_query = _escape_fts5_query(query)
         if not safe_query:
@@ -2043,18 +2092,21 @@ class SQLiteIndex:
                 "total_count": 0,
                 "limit": limit,
                 "offset": offset,
+                "excluded_archived": 0,
             }
 
         def _build_filter_params(
             prefix: str = "e",
+            require_active: bool = True,
         ) -> tuple[list[str], list[Any]]:
             """Build filter WHERE conditions and their parameter list.
 
             Returns (conditions_list, param_values) that can be merged
             into any SELECT on the ``entries`` table (aliased by
-            *prefix*).  Always excludes entries whose ``custom_fields``
-            status is ``archived`` or ``deprecated`` — they are stored
-            but not discoverable via search.
+            *prefix*).  Unless *require_active* is False, entries whose
+            ``custom_fields`` status is ``archived`` or ``deprecated``
+            are excluded — they are stored but not discoverable via
+            search (#969 counts what this hides).
             """
             conds: list[str] = []
             params: list[Any] = []
@@ -2120,13 +2172,49 @@ class SQLiteIndex:
                         conds.append(f"CAST(json_extract({prefix}.custom_fields, ?) AS TEXT) = ?")
                         params.extend([json_path, expected])
 
-            conds.append(
-                f"(json_type({prefix}.custom_fields, '$.status') IS NULL "
-                f"OR CAST(json_extract({prefix}.custom_fields, '$.status') "
-                f"AS TEXT) NOT IN ('archived', 'deprecated'))"
-            )
+            if require_active:
+                conds.append(_STATUS_ACTIVE_COND.format(p=prefix))
 
             return conds, params
+
+        def _count_excluded_archived(
+            conn: sqlite3.Connection,
+            *,
+            match_query: str | None,
+            like_parts: list[str] | None,
+            like_match_params: list[Any],
+            base_conds: list[str],
+            base_params: list[Any],
+        ) -> int:
+            """Count rows this query matches but the status filter hides.
+
+            Mirrors the query that produced the visible rows (FTS5 MATCH
+            or LIKE) with the archived/deprecated condition swapped in
+            for the active condition (#969).  Never fabricated — a real
+            COUNT over the same predicates.
+            """
+            arch_cond = _STATUS_ARCHIVED_COND.format(p="e")
+            if like_parts is not None:
+                count_conds = [
+                    "(" + " OR ".join(like_parts) + ")",
+                    arch_cond,
+                    *base_conds,
+                ]
+                count_params: list[Any] = [*like_match_params, *base_params]
+                row = conn.execute(
+                    f"SELECT COUNT(*) FROM entries e WHERE {' AND '.join(count_conds)}",
+                    count_params,
+                ).fetchone()
+            else:
+                count_conds = ["entries_fts5 MATCH ?", arch_cond, *base_conds]
+                row = conn.execute(
+                    f"""SELECT COUNT(*)
+                        FROM entries_fts5 f
+                        JOIN entries e ON e.rowid = f.rowid
+                        WHERE {' AND '.join(count_conds)}""",
+                    [match_query, *base_params],
+                ).fetchone()
+            return int(row[0]) if row else 0
 
         with self._connect() as conn:
 
@@ -2135,7 +2223,9 @@ class SQLiteIndex:
                 fts_conds = ["entries_fts5 MATCH ?"]
                 fts_params: list[Any] = [match_query]
 
-                extra_conds, extra_params = _build_filter_params("e")
+                extra_conds, extra_params = _build_filter_params(
+                    "e", require_active=not include_archived
+                )
                 fts_conds.extend(extra_conds)
                 fts_params.extend(extra_params)
 
@@ -2153,6 +2243,7 @@ class SQLiteIndex:
                 ).fetchall()
 
             method = "fts5"
+            match_used = safe_query
             fts5_syntax_error = False
             try:
                 rows = _fts5_rows(safe_query)
@@ -2187,6 +2278,8 @@ class SQLiteIndex:
                     method = "or"
                     try:
                         rows = _fts5_rows(or_query)
+                        if rows:
+                            match_used = or_query
                     except sqlite3.OperationalError:
                         rows = []
 
@@ -2195,20 +2288,29 @@ class SQLiteIndex:
                 method = "like"
                 like_terms = meaningful if is_multiword else _split_search_terms(query)
                 like_parts: list[str] = []
-                like_params: list[Any] = []
+                like_match_params: list[Any] = []
                 for term in like_terms:
                     like_parts.append("(e.title LIKE ? OR e.summary LIKE ? OR e.tags LIKE ?)")
                     pattern = f"%{term}%"
-                    like_params.extend([pattern, pattern, pattern])
+                    like_match_params.extend([pattern, pattern, pattern])
 
                 if not like_parts:
                     like_parts = ["(e.title LIKE ? OR e.summary LIKE ?)"]
-                    like_params = [f"%{query}%", f"%{query}%"]
+                    like_match_params = [f"%{query}%", f"%{query}%"]
+
+                # Filters for the visible rows (active condition kept
+                # unless include_archived) and for the excluded count
+                # (active condition swapped for the archived one).
+                visible_conds_l, visible_params_l = _build_filter_params(
+                    "e", require_active=not include_archived
+                )
+                base_conds_l, base_params_l = _build_filter_params(
+                    "e", require_active=False
+                )
 
                 like_conds = ["(" + " OR ".join(like_parts) + ")"]
-                extra_conds_l, extra_params_l = _build_filter_params("e")
-                like_conds.extend(extra_conds_l)
-                like_params.extend(extra_params_l)
+                like_conds.extend(visible_conds_l)
+                like_params: list[Any] = [*like_match_params, *visible_params_l]
 
                 like_where = " AND ".join(like_conds)
 
@@ -2223,6 +2325,19 @@ class SQLiteIndex:
                 total = len(entries)
                 paged = entries[offset : offset + limit]
 
+                excluded_archived = (
+                    0
+                    if include_archived
+                    else _count_excluded_archived(
+                        conn,
+                        match_query=None,
+                        like_parts=like_parts,
+                        like_match_params=like_match_params,
+                        base_conds=base_conds_l,
+                        base_params=base_params_l,
+                    )
+                )
+
                 result: dict[str, Any] = {
                     "query": query,
                     "domain": domain,
@@ -2230,6 +2345,7 @@ class SQLiteIndex:
                     "total_count": total,
                     "limit": limit,
                     "offset": offset,
+                    "excluded_archived": excluded_archived,
                     "fts5_fallback": True,
                 }
 
@@ -2249,6 +2365,21 @@ class SQLiteIndex:
                     mode=mode,
                 )
 
+            # FTS5/OR path — count what the status filter hid (#969).
+            excluded_archived = 0
+            if not include_archived:
+                base_conds_f, base_params_f = _build_filter_params(
+                    "e", require_active=False
+                )
+                excluded_archived = _count_excluded_archived(
+                    conn,
+                    match_query=match_used,
+                    like_parts=None,
+                    like_match_params=[],
+                    base_conds=base_conds_f,
+                    base_params=base_params_f,
+                )
+
         entries = [self._resolved_row(r) for r in rows]
         total = len(entries)
         paged = entries[offset : offset + limit]
@@ -2260,6 +2391,7 @@ class SQLiteIndex:
             "total_count": total,
             "limit": limit,
             "offset": offset,
+            "excluded_archived": excluded_archived,
         }
 
         if mode == "fts5":
@@ -4449,6 +4581,14 @@ class KBStore:
         """
         return self.index.count_entries_by_tier(domain, tier)
 
+    def count_entries_by_tier_status(self, domain: str, tier: str) -> dict[str, int]:
+        """Return ``{"active": n, "archived": n}`` for *domain* and *tier* (#969).
+
+        Delegates to the underlying index; archived here means the
+        ``custom_fields`` status is ``archived`` or ``deprecated``.
+        """
+        return self.index.count_entries_by_tier_status(domain, tier)
+
     # ------------------------------------------------------------------
     # Flag for KB inclusion
     # ------------------------------------------------------------------
@@ -4689,6 +4829,7 @@ class KBStore:
         filter_user_id: str | None = None,
         include_stale: bool = False,
         filter_custom_fields: dict[str, str] | None = None,
+        include_archived: bool = False,
     ) -> dict[str, Any]:
         """Search the knowledge base.
 
@@ -4736,11 +4877,17 @@ class KBStore:
             non-empty, any other value matches entries where the
             field's JSON value equals that text.  ``None`` applies no
             custom-fields filter (default behaviour unchanged).
+        include_archived:
+            When ``False`` (default), archived/deprecated entries are
+            excluded from the results but counted into
+            ``excluded_archived`` so callers can surface how many hits
+            were hidden (#969).  ``True`` disables the status filter.
 
         Returns
         -------
         dict
-            ``{query, domain, entries, total_count, limit, offset, method}``.
+            ``{query, domain, entries, total_count, excluded_archived,
+            limit, offset, method}``.
             Each entry includes ``tier`` ("01-Raw"/"02-Draft"/"03-Wiki"),
             ``freshness_score`` and ``is_stale`` fields.
             Falls back to LIKE search if FTS5 syntax is invalid.
@@ -4760,6 +4907,7 @@ class KBStore:
             filter_language=filter_language,
             filter_user_id=filter_user_id,
             filter_custom_fields=filter_custom_fields,
+            include_archived=include_archived,
         )
 
         # Resolve domain-specific TTL and freshness threshold from the single

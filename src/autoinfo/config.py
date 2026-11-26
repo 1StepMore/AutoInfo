@@ -2046,7 +2046,7 @@ def llm_fallback_health(config: Config) -> dict[str, Any]:
     }
 
 
-_PROBE_MESSAGES: list[dict[str, str]] = [{"role": "user", "content": "只回复两个字：可用"}]
+_PROBE_MESSAGES: list[dict[str, str]] = [{"role": "user", "content": "ping"}]
 _PROBE_MAX_TOKENS = 8
 _PROBE_ERROR_MAX_CHARS = 200
 
@@ -2056,6 +2056,56 @@ def _redact_secret(text: str, secret: str) -> str:
     if secret and secret in text:
         return text.replace(secret, "***")
     return text
+
+
+def _humanize_probe_error(exc: Exception) -> str:
+    """Turn a probe failure into one readable sentence (issue #968).
+
+    The raw exception text is kept as ``detail:`` context, but a network /
+    auth class failure leads with a plain-language cause instead of dumping
+    ``str(exc)`` at the operator.
+    """
+    text = str(exc) or exc.__class__.__name__
+    lowered = text.lower()
+    name = exc.__class__.__name__
+    if "timed out" in lowered or "timeout" in lowered or "timeout" in name.lower():
+        return (
+            "request timed out — the endpoint did not respond within the "
+            f"probe budget. detail: {name}: {text}"
+        )
+    for code, cause in (
+        ("401",
+         "authentication failed (HTTP 401) — the API key is missing, "
+         "invalid, or was rejected"),
+        ("403",
+         "access denied (HTTP 403) — the key is valid but lacks permission "
+         "for this model/endpoint"),
+        ("404",
+         "model or endpoint not found (HTTP 404) — check llm.model "
+         "(incl. provider prefix) and llm.base_url"),
+        ("429",
+         "rate limited (HTTP 429) — the endpoint rejected the probe for "
+         "quota reasons"),
+    ):
+        if code in text:
+            return f"{cause}. detail: {name}: {text}"
+    if any(
+        token in lowered
+        for token in (
+            "connection refused",
+            "connection reset",
+            "connection error",
+            "name or service not known",
+            "failed to resolve",
+            "network",
+        )
+    ):
+        return (
+            "network error — could not reach the endpoint "
+            "(check llm.base_url and the machine's network). "
+            f"detail: {name}: {text}"
+        )
+    return f"{name}: {text}"
 
 
 def _probe_completion(
@@ -2174,7 +2224,7 @@ def probe_fallbacks(config: Config, timeout: float = 20) -> list[dict[str, Any]]
                 fb=fb,
             )
         except Exception as exc:
-            message = _redact_secret(str(exc), api_key) or exc.__class__.__name__
+            message = _redact_secret(_humanize_probe_error(exc), api_key)
             result["error"] = message[:_PROBE_ERROR_MAX_CHARS]
         else:
             result["ok"] = True
@@ -2183,6 +2233,64 @@ def probe_fallbacks(config: Config, timeout: float = 20) -> list[dict[str, Any]]
         results.append(result)
 
     return results
+
+
+def probe_primary_llm(config: Config, timeout: float = 20) -> dict[str, Any]:
+    """Probe the **primary** LLM entry with one real minimal request (#968).
+
+    ``--probe-llm`` used to walk only the fallback chain, so with an empty
+    fallback list nothing was probed at all and the doctor exited 0 while
+    the primary could not even authenticate.  This probes the primary
+    configuration (``llm.provider`` / ``model`` / ``api_key`` /
+    ``base_url``) through the same shared completion path as
+    :func:`probe_fallbacks`.
+
+    Returns
+    -------
+    dict
+        ``{target: "primary", model, ok, status, error, latency_ms}``.
+        Never raises; a missing key is reported as a probe failure with a
+        readable error, never as a leaked value.
+    """
+    llm = config.llm
+    provider = llm.provider or DEFAULT_PROVIDER
+    model = f"{provider}/{llm.model or _DEFAULT_MODEL}"
+    api_key = resolve_primary_api_key("", config)
+
+    result: dict[str, Any] = {
+        "target": "primary",
+        "model": model,
+        "ok": False,
+        "status": "error",
+        "error": None,
+        "latency_ms": 0.0,
+    }
+    if not api_key:
+        result["error"] = (
+            "no usable API key for the primary entry; set AUTOINFO_LLM_API_KEY "
+            "or llm.api_key (configure_llm() stores an ${ENV} reference)"
+        )
+        return result
+
+    started = time.monotonic()
+    try:
+        _probe_completion(
+            model=model,
+            provider=provider,
+            api_key=api_key,
+            base_url=llm.base_url or "",
+            timeout=timeout,
+            reasoning_model=llm.reasoning_model,
+            config=config,
+        )
+    except Exception as exc:
+        message = _redact_secret(_humanize_probe_error(exc), api_key)
+        result["error"] = message[:_PROBE_ERROR_MAX_CHARS]
+    else:
+        result["ok"] = True
+        result["status"] = "ok"
+    result["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
+    return result
 
 
 def ensure_config_exists() -> None:

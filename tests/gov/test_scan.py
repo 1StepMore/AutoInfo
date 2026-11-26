@@ -19,7 +19,7 @@ def _scan_facts(mcp_tools: int = 151) -> dict[str, object]:
     derives it fresh instead."""
     return {
         "mcp_tools": mcp_tools,
-        "cli_groups": 31,
+        "cli_groups": 30,
         "validation_scenarios": {"total": 189, "functional": 86, "regression": 103},
         "demo_domains": 21,
         "delivery_channels": 13,

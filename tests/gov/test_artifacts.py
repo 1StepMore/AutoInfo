@@ -9,7 +9,7 @@ from autoinfo.gov import artifacts as artifacts_mod
 
 FACTS: dict[str, object] = {
     "mcp_tools": 151,
-    "cli_groups": 31,
+    "cli_groups": 30,
     "validation_scenarios": {"total": 189, "functional": 86, "regression": 103},
     "tests": 6844,
     "demo_domains": 21,

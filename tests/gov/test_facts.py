@@ -18,7 +18,7 @@ def test_cli_groups_counts_registered_groups() -> None:
 
     expected = len([i.name for i in getattr(app, "registered_groups", []) if i.name])
     assert facts_mod.cli_groups() == expected
-    assert facts_mod.cli_groups() == 31
+    assert facts_mod.cli_groups() == 30
 
 
 def test_validation_scenarios_split_matches_disk() -> None:

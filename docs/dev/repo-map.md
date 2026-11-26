@@ -37,7 +37,7 @@ AutoInfo/
 │   └── skills/                     # Agent skills — deep-modules/doc-manager/maintainer-workflow/validation-runner (developing AutoInfo) + autoinfo-skill/translator-qa-skill (operator skills for agent-users of AutoInfo; moved from docs/skills/ 2026-10-30)
 ├── src/
 │   └── autoinfo/
-│       ├── cli/                     # 31 CLI command groups
+│       ├── cli/                     # 30 CLI command groups
 │       ├── mcp/                     # MCP server (151 tools); server.py = hub (app, discovery, _TOOL_DISPATCH, call_tool); context.py = shared helper tier; tools/ = per-domain schemas + handler bodies (_handle_*), one module per domain; _TOOL_DISPATCH = single name→handler dispatch table (#581)
 │       ├── api/                     # REST API (FastAPI, port 8741)
 │       ├── kb.py                    # Knowledge base pipeline (4-tier KB pipeline)

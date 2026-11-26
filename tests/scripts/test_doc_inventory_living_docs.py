@@ -18,7 +18,7 @@ def _load_inventory() -> Any:
 
 inventory = _load_inventory()
 
-EXPECTED = {"tools": 151, "scenarios": 182, "functional": 86, "regression": 96, "cli_groups": 31}
+EXPECTED = {"tools": 151, "scenarios": 182, "functional": 86, "regression": 96, "cli_groups": 30}
 
 
 def test_stale_tool_count_is_flagged() -> None:
@@ -60,6 +60,6 @@ def test_counts_ignore_line_is_skipped() -> None:
 
 
 def test_stale_cli_group_count_is_flagged() -> None:
-    assert inventory.find_count_violations("cli/ (30 groups mirroring MCP)", EXPECTED) == [
-        "line 1: CLI group count 30 != 31 (cli_groups)"
+    assert inventory.find_count_violations("cli/ (29 groups mirroring MCP)", EXPECTED) == [
+        "line 1: CLI group count 29 != 30 (cli_groups)"
     ]

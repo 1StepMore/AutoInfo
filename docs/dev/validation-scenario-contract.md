@@ -450,7 +450,7 @@ every scenario in `scenarios/regression/` must carry `regression: true` and a
   appears with a "(regression)" suffix in verdicts plus a `## Regression failures`
   report section.
 
-Coverage: 151/151 MCP tools (100%), all 31 CLI command groups, 8 REST API endpoints,
+Coverage: 151/151 MCP tools (100%), all 30 CLI command groups, 8 REST API endpoints,
 plus collector platform reachability probes (collectors-e2e) and G4/G5 gate flags
 (processing, LLM-gated). Status profile depends on BYOK keys: LLM-gated and env-gated
 scenarios (requires_env) report `unconfigured` without the keys (never silently
@@ -465,7 +465,7 @@ the aggregate regression metric.
 ## 2.1 Purpose and scope
 
 Prove, with real calls and real artifacts, that AutoInfo works across its full surface:
-**151 MCP tools (35 categories), 31 CLI command groups, 8 REST endpoints, 13 delivery
+**151 MCP tools (35 categories), 30 CLI command groups, 8 REST endpoints, 13 delivery
 channels, 30 collector handlers, and every output format**. Each proof must leave a
 verifiable artifact on disk, in the SQLite store, in the audit log, or on a network
 sink, and that artifact must be shown to the director.

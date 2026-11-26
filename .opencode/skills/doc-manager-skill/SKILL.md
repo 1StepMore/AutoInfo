@@ -57,7 +57,7 @@ When you modify code, the listed docs **must** be reviewed and updated:
 | Code change | Docs to update | What to update |
 |-------------|----------------|----------------|
 | MCP server — new tool / param / ErrorCode | `AGENTS.md`, `README.md`, `docs/dev/specs/mcp-tools.md`, `.opencode/skills/autoinfo-skill/SKILL.md`, `.opencode/skills/autoinfo-skill/onboarding-walkthrough.md`, `docs/dev/mcp-usage-examples.md`, `docs/schemas/*.json` (JSON-LD schemas — M4T35 round-trip validates against them), `CHANGELOG.md` | Tool Discovery + MCP tables, tool count, spec inventory, worked examples, JSON-LD schema pinning, scenarios per `docs/dev/validation-scenario-contract.md` |
-| CLI — group / flag / parity change | `README.md`, `AGENTS.md`, `docs/dev/cli-mcp-rest-parity.md`, `CHANGELOG.md` | CLI command table (31 groups), flag examples, parity matrix |
+| CLI — group / flag / parity change | `README.md`, `AGENTS.md`, `docs/dev/cli-mcp-rest-parity.md`, `CHANGELOG.md` | CLI command table (30 groups), flag examples, parity matrix |
 | New collector / source type | `README.md`, `CHANGELOG.md`, `docs/dev/required-api-keys.md`, `docs/known-limitations/blocked-sources.md` | Feature list, Status table (handler count), demo domains, env-var catalog, blocked-source policy (+ `docs/dev/specs/pipeline.md` if collection config changes) |
 | Quality gates (G0-G5 / D1-D3) | `docs/dev/specs/quality-gates.md`, `.opencode/skills/translator-qa-skill/SKILL.md` (translation QA pipeline — G5 gate), `AGENTS.md`, `README.md`, `CHANGELOG.md` | Gate catalog, hard/soft table, retry philosophy |
 | KB pipeline / KB schema | `AGENTS.md` (Architecture Rules), `docs/dev/specs/pipeline.md`, `docs/dev/specs/data-models.md` (consolidated data-model schemas), `README.md`, `docs/archive/kb-pipeline-reference.md` (archived — only if referenced) | 4-tier rules (01-Raw sole entry, 03-Wiki append-only), schema |
@@ -105,7 +105,7 @@ Before identifying affected docs, decide **whether this change needs an ADR**:
 
 ### Step 2 — Apply changes per doc type
 - `README.md`: Features list, Status table, Quick Start, architecture diagram,
-  CLI table (31 groups), MCP tools table (151), Demo Domains table, Known Limitations.
+  CLI table (30 groups), MCP tools table (151), Demo Domains table, Known Limitations.
 - `AGENTS.md`: Project Structure tree, Architecture Rules, Agent Constraints
   (MUST NOT), Tool Discovery table, Common Patterns, LLM Configuration,
   Status table (must match README), References.
@@ -118,11 +118,11 @@ Before identifying affected docs, decide **whether this change needs an ADR**:
 ### Step 3 — Update quantitative references
 Drift-prone facts checked by `doc_inventory.py --check`: MCP tools 151 / 35
 
-categories · CLI groups 31 · delivery channels 13 · validation scenarios 189
+categories · CLI groups 30 · delivery channels 13 · validation scenarios 189
 (86 functional + 103 regression) · demo domains 21.
 Also keep consistent wherever they appear (README, AGENTS, CHANGELOG, specs,
 skills): source types 29, collector handlers 30, output templates 8,
-LLM-required tools 16, REST port 8741, test count ~7273 tests.
+LLM-required tools 16, REST port 8741, test count ~7275 tests.
 
 ### Step 4 — Verify
 1. `python3 scripts/doc_inventory.py --check` — must exit 0 (README↔AGENTS↔skill

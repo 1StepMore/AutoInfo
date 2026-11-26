@@ -223,11 +223,13 @@ app.add_typer(
     name="agent-callback",
     help="Manage agent push callbacks — mirrors MCP set/list/remove_agent_callback",
 )
-app.add_typer(
-    serve.app,
+app.command(
     name="serve",
-    help="Run the AutoInfo MCP server over stdio ('serve --agent' = read-only 4-tool mode)",
-)
+    help=(
+        "Run the AutoInfo MCP server over stdio "
+        "('autoinfo serve --agent' = read-only 4-tool mode)"
+    ),
+)(serve.serve)
 app.add_typer(
     mvp.app,
     name="mvp",

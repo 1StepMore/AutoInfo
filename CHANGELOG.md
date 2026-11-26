@@ -2,6 +2,14 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.21](https://github.com/1StepMore/AutoInfo/compare/v1.35.20...v1.35.21) (2026-11-26)
+
+
+### Bug Fixes
+
+* **cli:** autoinfo serve 真正启动 MCP 服务器（[#972](https://github.com/1StepMore/AutoInfo/issues/972)） ([#973](https://github.com/1StepMore/AutoInfo/issues/973)) ([2fe0e09](https://github.com/1StepMore/AutoInfo/commit/2fe0e09a274f9cef25ae17ecb8d0f62af89249e9))
+* **mcp:** 补齐 6 个写/敏感工具的参数级 description（[#974](https://github.com/1StepMore/AutoInfo/issues/974)） ([#976](https://github.com/1StepMore/AutoInfo/issues/976)) ([762ec8a](https://github.com/1StepMore/AutoInfo/commit/762ec8ae444c2d4249af6572a4b4b2fc7261033e))
+
 ## [1.35.20](https://github.com/1StepMore/AutoInfo/compare/v1.35.19...v1.35.20) (2026-11-26)
 
 

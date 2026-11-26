@@ -2,6 +2,19 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.20](https://github.com/1StepMore/AutoInfo/compare/v1.35.19...v1.35.20) (2026-11-26)
+
+
+### Bug Fixes
+
+* **doctor,kb:** doctor 真探 primary；kb search/list-tiers 不再静默隐藏 archived（[#968](https://github.com/1StepMore/AutoInfo/issues/968) [#969](https://github.com/1StepMore/AutoInfo/issues/969)） ([#970](https://github.com/1StepMore/AutoInfo/issues/970)) ([f8b4e11](https://github.com/1StepMore/AutoInfo/commit/f8b4e113eb70588c512c5702db71c3c4a1079698))
+* **doctor:** probe the primary LLM entry and stop implying key presence means connectivity ([#968](https://github.com/1StepMore/AutoInfo/issues/968)) ([f8b4e11](https://github.com/1StepMore/AutoInfo/commit/f8b4e113eb70588c512c5702db71c3c4a1079698))
+
+
+### Documentation
+
+* **readme:** correct the collected-test count after adding 20 tests ([#968](https://github.com/1StepMore/AutoInfo/issues/968) [#969](https://github.com/1StepMore/AutoInfo/issues/969)) ([f8b4e11](https://github.com/1StepMore/AutoInfo/commit/f8b4e113eb70588c512c5702db71c3c4a1079698))
+
 ## [1.35.19](https://github.com/1StepMore/AutoInfo/compare/v1.35.18...v1.35.19) (2026-11-25)
 
 

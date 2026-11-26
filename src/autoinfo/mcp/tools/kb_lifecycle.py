@@ -65,7 +65,13 @@ def build_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string"},
+                    "query": {
+                        "type": "string",
+                        "description": "Free text compared against each KB entry's content+title "
+                        "(lowercased) via difflib.SequenceMatcher — literal string similarity, "
+                        "not semantic/embedding search. Pass distinctive wording from the entry "
+                        "you want to find; matches at or above threshold are ranked by similarity.",
+                    },
                     "threshold": {
                         "type": "number",
                         "description": "Minimum similarity ratio (0.0–1.0)",

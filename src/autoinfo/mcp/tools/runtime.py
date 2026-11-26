@@ -234,7 +234,12 @@ def build_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "entry_id": {"type": "string"},
+                    "entry_id": {
+                        "type": "string",
+                        "description": "KB entry ID to delete — the entry_id field returned by "
+                        "search_knowledge_base / get_kb_entry (format "
+                        "<domain>-<date>-<hash>, e.g. medical-research-2026-01-01-89cda160).",
+                    },
                     "purge": {
                         "type": "boolean",
                         "description": "If False (default), performs soft-delete (mark as deleted). If True, permanently deletes the entry from index, FTS5, and disk.",
@@ -254,7 +259,15 @@ def build_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "entry_id": {"type": "string"},
+                    "entry_id": {
+                        "type": "string",
+                        "description": "KB entry ID to mark stale, as returned by search_knowledge_base "
+                        "/ get_kb_entry. Writes status: stale into the entry's YAML frontmatter; the "
+                        "entry is never deleted. Digest generation (get_active_entries) excludes it, "
+                        "but kb search and list-tiers read the SQLite index and do not see this "
+                        "frontmatter flag, so search/tier visibility is unchanged (search demotion "
+                        "stays age-based).",
+                    },
                 },
                 "required": ["entry_id"],
             },
@@ -265,7 +278,12 @@ def build_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "entry_id": {"type": "string"},
+                    "entry_id": {
+                        "type": "string",
+                        "description": "KB entry ID to restore — must reference an entry previously "
+                        "soft-deleted with soft_delete_entry (use the entry_id from that call's "
+                        "result; restore fails with restored=false when the entry is not deleted).",
+                    },
                     "actor": {
                         "type": "string",
                         "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",
@@ -280,7 +298,12 @@ def build_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
+                    "user_id": {
+                        "type": "string",
+                        "description": "End-user profile ID (user_profiles primary key) to export — the "
+                        "same user_id stamped on KB entries and subscriptions; use "
+                        "search_knowledge_base(filter_user_id=...) to look it up.",
+                    },
                 },
                 "required": ["user_id"],
             },
@@ -291,8 +314,20 @@ def build_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string"},
-                    "purge": {"type": "boolean"},
+                    "user_id": {
+                        "type": "string",
+                        "description": "End-user profile ID (user_profiles primary key) whose data to "
+                        "delete — the same user_id stamped on KB entries and subscriptions. All "
+                        "matching entries are soft-deleted (recoverable until the retention window "
+                        "expires).",
+                    },
+                    "purge": {
+                        "type": "boolean",
+                        "description": "Safety confirmation: must be explicitly true for the call to "
+                        "proceed; absent or false returns a validation error and deletes nothing "
+                        "(default false).",
+                        "default": False,
+                    },
                     "actor": {
                         "type": "string",
                         "description": "Required. Actor requesting this destructive operation (must be passed explicitly)",

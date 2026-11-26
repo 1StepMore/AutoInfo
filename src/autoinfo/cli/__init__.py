@@ -225,7 +225,10 @@ app.add_typer(
 )
 app.command(
     name="serve",
-    help="Run the AutoInfo MCP server over stdio ('autoinfo serve --agent' = read-only 4-tool mode)",
+    help=(
+        "Run the AutoInfo MCP server over stdio "
+        "('autoinfo serve --agent' = read-only 4-tool mode)"
+    ),
 )(serve.serve)
 app.add_typer(
     mvp.app,

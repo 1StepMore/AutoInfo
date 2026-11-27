@@ -114,7 +114,7 @@ LLM-based structured extraction, summarization, and a queryable knowledge base.
 | LLM fallback chain | ✅ Shared `llm.call_with_fallback` — every LLM call site (extraction + 17 standalone) walks `[primary] + config.llm.fallback`; an empty `provider` inherits the primary provider, an empty `api_key` inherits the primary key only on the same gateway (a cross-endpoint fallback needs its own explicit `${ENV}` key); first successful model wins; per-provider shared rate limiting (`AUTOINFO_LLM_MAX_CONCURRENCY`, default 4) + jittered 429/5xx backoff on every chain entry and all fan-out paths |
 | Dead-source detection | ✅ Semantic Scholar 429 → `SourceFailure` (fail-fast); arXiv rss/bio → rss/q-bio fix |
 | CLI module entry | ✅ `python -m autoinfo.cli` runs the same Typer app; `collect` live per-source progress printer |
-| Test suite | ✅ ~7278 tests collected + 38 governance tests (tests/gov/) (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate) + #351 year-assertion tuning / #356 real-product scanner + release-scope gate (#406); order-dependency fixes landed 2026-08-12) |
+| Test suite | ✅ ~7279 tests collected + 38 governance tests (tests/gov/) (incl. validation wave E1-E9 scenarios + regression suite + #141-#164 regression guards + kb-curation wave + hermetic config-seam fixes + llm-concurrency wave + baseline-aware coverage-gate tests + security-assertion group + 2026-09-04 concierge wave + unified-envelope conformance + director-only discovery gating + recoverability wave + category×pyramid ledger / N-run history + REST/build/vendor surface parity + AX metrics gate (M-05 keyless deterministic product-token gate) + #351 year-assertion tuning / #356 real-product scanner + release-scope gate (#406); order-dependency fixes landed 2026-08-12) |
 
 ## Quick Start
 
@@ -138,6 +138,13 @@ autoinfo kb search --query "embryo" --domain medical-research
 autoinfo output digest --domain medical-research --period weekly
 autoinfo output export --domain medical-research --format json
 ```
+
+**Windows (PowerShell)**: no `make` and no `python3` by default — create/activate the venv with
+`py -m venv .venv` then `.\.venv\Scripts\Activate.ps1`, set the key with
+`$env:AUTOINFO_LLM_API_KEY = "sk-..."` (permanent: `setx`), and run the underlying commands
+directly (`pytest -v`, `ruff check src/ tests/`, `python scripts/quality_gate.py <dir>`).
+Full equivalence table, encoding notes, and known pitfalls:
+[`docs/dev/windows-setup.md`](docs/dev/windows-setup.md).
 
 ## TLDR — Agent-User / Agent-Tester (5 Seconds)
 
@@ -194,6 +201,11 @@ If you work inside a virtualenv, install into that interpreter instead:
 uv pip install -e .
 ```
 
+```powershell
+# Windows: the venv layout is different
+.venv\Scripts\pip install -e .
+```
+
 Then verify the module resolves before wiring up the editor:
 
 ```bash
@@ -213,6 +225,11 @@ process inherits it (not just your terminal session):
 
 ```bash
 export AUTOINFO_LLM_API_KEY="sk-..."
+```
+
+```powershell
+# Windows PowerShell (session): $env:AUTOINFO_LLM_API_KEY = "sk-..."
+# Windows permanent (new processes only): setx AUTOINFO_LLM_API_KEY "sk-..."
 ```
 
 AutoInfo does not load `.env` files automatically. The key has to be
@@ -241,7 +258,8 @@ whatever `python` is on PATH at launch time. If you installed `autoinfo`
 into a virtualenv, make sure that virtualenv's `python` is the one the
 editor finds. Either activate the virtualenv before launching the editor,
 or change the config to point at the absolute interpreter path (for
-example `/home/you/.venv/bin/python`).
+example `/home/you/.venv/bin/python`, or `D:\proj\AutoInfo\.venv\Scripts\python.exe`
+on Windows).
 
 ## Architecture
 

@@ -112,6 +112,11 @@ def _print_human(result: dict[str, Any]) -> None:
             "       Agents: use the MCP tool configure_llm() to set up the LLM "
             "(or set the AUTOINFO_LLM_API_KEY env var)"
         )
+        typer.echo(
+            "       No key anywhere? Probe the 3-step ladder: "
+            "python scripts/agent_ready.py --json "
+            "(harness default -> local OpenAI-compatible endpoint -> ask a human)"
+        )
         typer.echo("       See docs/dev/required-api-keys.md for API key setup")
 
     # --- LLM fallback chain ---

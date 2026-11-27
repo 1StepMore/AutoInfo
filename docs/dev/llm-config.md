@@ -28,6 +28,33 @@ AutoInfo uses LiteLLM under the hood. Standard OpenAI-format providers work.
 3. Environment variable `AUTOINFO_LLM_API_KEY`
 4. Default values (openrouter/deepseek/deepseek-chat)
 
+## No key at all (three-step ladder)
+
+The precedence chain above answers "which config wins"; it does not answer "what if every rung
+is unavailable". That case is the agent/harness ladder (issue #980, implemented in code by
+`scripts/agent_ready.py --json` — it probes and reports every step, no vendor hardcoding):
+
+1. **Harness default model** — the agent runtime/harness's own default model, if it has one
+   (`agent_ready.py` ladder step 1, probe `harness-default`).
+2. **Local OpenAI-compatible endpoint (read-only)** — an endpoint already present on this
+   machine, used read-only: `provider="openai"` + `base_url` + model via `.autoinfo/config.yaml`
+   or `configure_llm()`, the key referenced as `${ENV}` only (BYOK — never store the raw key).
+   Ladder step 2, probe `machine-endpoint`.
+3. **Ask the human** — nothing usable on steps 1–2 ⇒ report `blocked:no-llm-key` to the human in
+   front of the screen with the **base_url + key + model name** you need; whether it is free is
+   their call. Never hardcode a vendor or a free quota. Ladder step 3, probe `ask-human`.
+
+Views of the same ladder: machine — `python scripts/agent_ready.py --json` →
+`checks[llm].ladder` / `blocked:no-llm-key`; human — `autoinfo doctor` →
+`❌ LLM: no API key configured` plus actionable hints; MCP — LLM-required tools return
+`LLM_NOT_CONFIGURED` (ADR-0005 envelope, `actionable` set).
+
+Boundary: this ladder is for **whoever must do judgment work when no key is configured**
+(agents / harnesses / QC batteries). AutoInfo's own extraction pipeline still needs a key
+configured via the precedence chain above — the ladder invents no credentials, and fake/mock
+models are allowed only for chain/contract/coverage testing (`confidence=mock`;
+`docs/dev/cross-audit-evidence.md`).
+
 ## Custom endpoint
 
 Custom OpenAI-compatible endpoints (e.g. OpenCode Go, Ollama, Azure): set

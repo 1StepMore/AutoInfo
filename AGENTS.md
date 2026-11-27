@@ -43,6 +43,7 @@ Status table). CLI mirrors MCP — `--domain X --topic Y` maps 1:1 to tool param
 ## Quick Start & CLI
 
 ```bash
+python scripts/agent_ready.py --json        # machine-verdict self-check (venv/deps/LLM ladder/doc gates)
 python -m autoinfo.mcp.server               # MCP stdio server (agent-facing; never interactive)
 autoinfo init --demo medical-research       # scaffold a demo domain
 autoinfo collect --domain medical-research  # fetch items (live per-source progress lines)
@@ -55,6 +56,13 @@ autoinfo process --domain medical-research  # LLM extraction + quality gates (G4
 MCP client configs committed: `.cursor/mcp.json` · `.opencode/mcp.json` · Claude Desktop per
 `docs/dev/llm-config.md`. CLI: `autoinfo <cmd>` / `python -m autoinfo.cli <cmd>`; the MCP
 server speaks JSON-RPC — never interactive.
+
+## Windows 原生
+
+venv 解释器 `.venv\Scripts\python.exe`（Windows 无 `python3`；激活 `.venv\Scripts\Activate.ps1`）。GNU make
+非原生——等价命令：`install/dev-install`→`pip install -e ".[dev]"` · `test`→`pytest -v` ·
+`lint`→`ruff check src/ tests/ && mypy --platform linux src/` · `validate`→`python scripts/quality_gate.py <dir>` ·
+`doc-check`→`python -m autoinfo.gov check --json` 等；编码/PATH/mypy 已知坑：**`docs/dev/windows-setup.md`**。
 
 ## Architecture Rules
 
@@ -106,10 +114,9 @@ never a dispatch-chain edit.
 
 ### Product QC — 3-Layer Model (issue #194)
 
-- **L0 dead-code gate**（default, blocking）: `make validate DIR=outputs/<domain>`（or
-  `python3 scripts/quality_gate.py <dir>`）— deterministic structural checks（F1 空壳, F2 占位符,
-  F3 双引用, F4 禁词, C1 造假条目, C2 日志泄漏, C3 CJK 残留, C4 截断行, C5 源完整性, C6 叙事接地
-  #192, X1 跨产物实体冲突）. Exit 0/1/2.
+- **L0 dead-code gate**（default, blocking）: `python scripts/quality_gate.py <dir>`（make 别名
+  `make validate DIR=…`）— deterministic structural checks（F1 空壳, F2 占位符, F3 双引用, F4 禁词,
+  C1 造假条目, C2 日志泄漏, C3 CJK 残留, C4 截断行, C5 源完整性, C6 叙事接地 #192, X1 跨产物实体冲突）. Exit 0/1/2.
 - **L1 agent battery**（opt-in `--semantic`）: `scripts/agent_review/battery.py` — L0 不可见的残留
   语义盲点判定；verdict 必带证据；unreachable/unparseable ⇒ **ESCALATE, never PASS**（#195）. Manifest:
   `scripts/agent_review/blindspots.yaml`. 经 `config.llm` 厂商无关（capability-probed structured
@@ -132,7 +139,7 @@ never a dispatch-chain edit.
 | Create Draft from outside 01-Raw | Draft must come from 01-Raw |
 | Delete source or domain config | Human decides what sources/domains to remove |
 | Modify `.autoinfo/config.yaml` directly | Use MCP tools (`add_source`, `add_topic`) |
-| Run `autoinfo doctor` | Use `diagnose_system()` — returns structured health data |
+| Run `autoinfo doctor`（仅 MCP agent 受此限） | MCP agent → `diagnose_system()`（structured health data）；新人/纯 CLI harness → `autoinfo doctor`（面向人）或 `scripts/agent_ready.py --json`（机器判定） |
 
 ## Merging a PR (MUST)
 
@@ -148,23 +155,19 @@ Each rule exists because its absence produced a specific failure (two agents wri
 
 ## Tool Discovery & Response Format
 
-Discovery: `health_check()` → `tools/list` → `list_domains()` → `get_domain_schema(domain)`
-→ `list_available_models()` → `list_output_templates(domain)`. Full catalog: `README.md`（单源）.
-All tools return `{success: true, data}` 或 `{success: false, error: {code, message, actionable}}`
-（ADR-0005）；无缓存项的 `process_collection` → `{status: "noop"}`. Worked patterns:
-`docs/dev/mcp-usage-examples.md`.
+Discovery: `health_check()` → `tools/list` → `list_domains()` → `get_domain_schema(domain)` → `list_available_models()` → `list_output_templates(domain)`. Full catalog: `README.md`（单源）.
+All tools return `{success: true, data}` 或 `{success: false, error: {code, message, actionable}}`（ADR-0005）；无缓存项的 `process_collection` → `{status: "noop"}`. Worked patterns: `docs/dev/mcp-usage-examples.md`.
 
 ## LLM Configuration (essentials)
 
-- **Precedence**: MCP 参数 → `.autoinfo/config.yaml llm.*` → `AUTOINFO_LLM_API_KEY` → 默认（openrouter/deepseek-chat）。
+- **Precedence**: MCP 参数 → `.autoinfo/config.yaml llm.*` → `AUTOINFO_LLM_API_KEY` → 默认（openrouter/deepseek-chat）。**全链不可用** ⇒ 三阶阶梯（`scripts/agent_ready.py --json` 探测）：harness 默认 → 本机 OpenAI 兼容端点（只读）→ 问人（`blocked:no-llm-key`，写清 base_url+key+model，不硬编码厂商）。
 - **Judgment calls**（G4/G5/llm_judge）resolve **config-first**（#195）：`llm.judgment_model` → `llm.model`，无硬编码模型常量。
 - **Fallback chain**：跨端点 fallback 必须携带自己的 `${ENV}` 引用，绝不继承 primary key。
-- Full setup（env 表/`json_mode`/自定义端点/按任务路由）：**`docs/dev/llm-config.md`**。
+- Full setup（env 表/`json_mode`/自定义端点/按任务路由/**无 key 三阶阶梯**）：**`docs/dev/llm-config.md`**。
 
 ## `.omo/` Workspace
 
-`.omo/` = agent-orchestrator workspace（gitignored runtime scratch）。Agent 可**读**它恢复编排上下文；
-永不当作 KB/sources/output，永不从 AutoInfo MCP 工具修改它。
+`.omo/` = agent-orchestrator workspace（gitignored runtime scratch）。Agent 可**读**它恢复编排上下文；永不当作 KB/sources/output，永不从 AutoInfo MCP 工具修改它。
 
 ## Runtime Artifacts vs Source Files
 
@@ -183,15 +186,12 @@ to fix behavior — fix the source. Full per-path table: `docs/dev/repo-map.md`.
 
 ## Status
 
-All counts live in **`README.md` → Status table**（single source of truth; AGENTS.md is pointer-only）.
-Regenerate: `python3 scripts/doc_inventory.py`; `--check` validates against code/CLI. Invariants:
-Architecture Rules above + `docs/dev/acceptance-framework.md` (AC1-AC9).
+All counts live in **`README.md` → Status table**（single source of truth; AGENTS.md is pointer-only）. Regenerate: `python3 scripts/doc_inventory.py`; `--check` validates against code/CLI. Invariants: Architecture Rules above + `docs/dev/acceptance-framework.md` (AC1-AC9).
 
 ## References
 
-- `docs/dev/repo-map.md` — repo layout + runtime boundary · `docs/dev/llm-config.md` — full LLM setup · `docs/dev/harness-run-facts.md` — 运行环境/门禁顺序/缺 key 症状/已知坑 · 能力探针 `scripts/check_deps.py`（能力判定与日期记录在 harness-run-facts「能力判定」节）
-- `docs/dev/workflow-charter.md` — dev process（canonical methodology: `docs/dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md`; ADR-0006）
-- `docs/dev/founder-expectations.md`（D3 index）· `docs/dev/specs/` · `docs/dev/cross-dimensional-catalog.md`（**keystone**）
+- `docs/dev/repo-map.md` — repo layout + runtime boundary · `docs/dev/llm-config.md` — full LLM setup · `docs/dev/windows-setup.md` — Windows 原生（venv/make 等价/编码/坑） · `docs/dev/harness-run-facts.md` — 运行环境/门禁顺序/缺 key 症状/已知坑 · 能力探针 `scripts/check_deps.py`（能力判定与日期记录在 harness-run-facts「能力判定」节）
+- `docs/dev/workflow-charter.md` — dev process（canonical methodology: `docs/dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md`; ADR-0006）· `docs/dev/founder-expectations.md`（D3 index）· `docs/dev/specs/` · `docs/dev/cross-dimensional-catalog.md`（**keystone**）
 - `docs/dev/acceptance-framework.md` — **keystone** acceptance (AC1-AC9) · `docs/adr/` · `docs/glossary.md` · `docs/demo-release-standard.md`
 - `.agents/roles/` 四角色契约 · `.agents/expectations/INDEX.md` 期望入口 · `.agents/audit/INVENTORY.md` 文档地图（AUTO-GENERATED）· `.github/governance-contract.toml`（ADR-0014，`python -m autoinfo.gov` 是唯一治理入口）
 

@@ -46,6 +46,18 @@ def test_doctor_llm_hint_keeps_docs_reference(capsys: pytest.CaptureFixture[str]
     assert "docs/dev/required-api-keys.md" in out
 
 
+def test_doctor_llm_hint_points_at_no_key_ladder(capsys: pytest.CaptureFixture[str]) -> None:
+    """When nothing is configured, point at the machine-verifiable 3-step ladder (#980).
+
+    The hint must name the agent_ready probe so a user with zero keys gets an
+    actionable next step instead of only the key-setup instructions.
+    """
+    _print_human(_result_with_llm_unconfigured())
+    out = capsys.readouterr().out
+    assert "scripts/agent_ready.py --json" in out
+    assert "3-step ladder" in out
+
+
 # ---------------------------------------------------------------------------
 # LLM fallback chain health (issue #290)
 # ---------------------------------------------------------------------------

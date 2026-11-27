@@ -13,9 +13,9 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 
 | Metric | Value |
 |--------|-------|
-| Total files | 163 |
-| Total lines | 41661 |
-| Active files | 131 |
+| Total files | 164 |
+| Total lines | 41774 |
+| Active files | 132 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
@@ -23,7 +23,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Category — adr | 16 files / 995 lines |
 | Category — specs | 12 files / 9958 lines |
 | Category — validation-reports | 42 files / 7072 lines |
-| Category — docs/dev | 45 files / 11711 lines |
+| Category — docs/dev | 46 files / 11824 lines |
 | Category — docs/root | 10 files / 1655 lines |
 
 ## Inventory
@@ -101,7 +101,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/founder-expectations.md` | 461 | docs/dev | active | — |
 | `dev/goals.md` | 37 | docs/dev | active | — |
 | `dev/harness-run-facts.md` | 84 | docs/dev | active | — |
-| `dev/llm-config.md` | 82 | docs/dev | active | — |
+| `dev/llm-config.md` | 109 | docs/dev | active | — |
 | `dev/matrix-ownership.md` | 41 | docs/dev | active | — |
 | `dev/matrix-verdict-policy.md` | 30 | docs/dev | active | — |
 | `dev/mcp-usage-examples.md` | 324 | docs/dev | active | — |
@@ -178,6 +178,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/validation-reports/evidence-2026-08-12/ac5-tutorial-student.md` | 501 | validation-reports | active | — |
 | `dev/validation-reports/final-report-backup-issues-19-38.md` | 62 | validation-reports | active | — |
 | `dev/validation-scenario-contract.md` | 881 | docs/dev | active | — |
+| `dev/windows-setup.md` | 86 | docs/dev | active | — |
 | `dev/workflow-charter.md` | 67 | docs/dev | active | workflow-charter |
 | `dev/七阶段AI开发流程-用CodingAgent交付成品的方法论.md` | 234 | docs/dev | active | methodology |
 | `doc-drift-audit-2026-10-29.md` | 170 | docs/root | active | — |

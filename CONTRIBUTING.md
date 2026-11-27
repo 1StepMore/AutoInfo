@@ -38,14 +38,22 @@ git remote add upstream https://github.com/1StepMore/AutoInfo.git
 
 # 3. Create a virtualenv and install in editable mode with dev extras
 python3 -m venv .venv
+# Windows: py -m venv .venv   (there is no `python3` on PATH)
 source .venv/bin/activate
+# Windows PowerShell: .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
 # 4. Verify the project works
 make test
 make lint
+# Windows: no `make` by default — run the underlying commands directly
+# (pytest -v; ruff check src/ tests/ && mypy --platform linux src/)
 ```
 
+- **Windows native**: GNU make and `python3` are not part of Windows. Activate
+  `.venv\Scripts\Activate.ps1` and call the commands behind the make aliases directly; the
+  full equivalence table, encoding notes (`PYTHONUTF8=1`), and known pitfalls
+  (`mypy --platform linux`) live in [`docs/dev/windows-setup.md`](docs/dev/windows-setup.md).
 - `make test` runs the full suite (`pytest -v`). The suite is roughly 6905
   tests; every test is bounded by pytest-timeout at 180 seconds so a hang
   fails fast instead of stalling the run.

@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.22](https://github.com/1StepMore/AutoInfo/compare/v1.35.21...v1.35.22) (2026-11-27)
+
+
+### Documentation
+
+* **platform:** add Windows-native onboarding and the no-key 3-step ladder ([#980](https://github.com/1StepMore/AutoInfo/issues/980)) ([#981](https://github.com/1StepMore/AutoInfo/issues/981)) ([b016715](https://github.com/1StepMore/AutoInfo/commit/b016715831a9a7c51f1325fa4e5c5f0d6a078351))
+
 ## [1.35.21](https://github.com/1StepMore/AutoInfo/compare/v1.35.20...v1.35.21) (2026-11-26)
 
 

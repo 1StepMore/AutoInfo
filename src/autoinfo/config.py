@@ -420,6 +420,57 @@ def extract_field_name(entry: object) -> str:
     return name if isinstance(name, str) else ""
 
 
+def normalize_extract_fields(
+    entries: object,
+) -> tuple[list[str], dict[str, dict[str, Any]]]:
+    """Split raw ``extract_fields`` entries into names + rich specs (#979).
+
+    Domain YAML may declare ``extract_fields`` in two shapes:
+
+    * plain strings — ``extract_fields: [title, author]``;
+    * rich mappings — ``extract_fields: [{name: title, type: string,
+      description: ..., required: true}]`` (the bundled ``online-video`` demo
+      uses this form).
+
+    ``DomainConfig.extract_fields`` stays ``list[str]`` because every consumer
+    (``llm.extract(item, schema: list[str])``, ``str.join``, hash lookups)
+    depends on names only.  This normalizer enforces that invariant once, at
+    construction time, and returns the rich metadata separately so display and
+    documentation surfaces (``get_domain_schema``, ``domain show``) can still
+    show ``type`` / ``description`` / ``required``.
+
+    Unknown entry types are skipped with a warning rather than raising, so a
+    malformed config stays loadable (backward compatibility).
+    """
+    names: list[str] = []
+    specs: dict[str, dict[str, Any]] = {}
+    if isinstance(entries, str) or not isinstance(entries, (list, tuple)):
+        if entries:
+            logger.warning(
+                "Ignoring extract_fields: expected a list, got %s", type(entries).__name__
+            )
+        return names, specs
+    for entry in entries:
+        if isinstance(entry, str):
+            if entry:
+                names.append(entry)
+            continue
+        if isinstance(entry, dict):
+            name = entry.get("name")
+            if not isinstance(name, str) or not name:
+                logger.warning("Ignoring extract_fields entry without a usable name: %r", entry)
+                continue
+            names.append(name)
+            specs[name] = {k: v for k, v in entry.items() if k != "name"}
+            continue
+        logger.warning(
+            "Ignoring extract_fields entry of unsupported type %s: %r",
+            type(entry).__name__,
+            entry,
+        )
+    return names, specs
+
+
 @dataclass
 class DomainConfig:
     name: str = ""
@@ -428,6 +479,11 @@ class DomainConfig:
     sources: list[SourceConfig] = field(default_factory=list)
     topics: list[TopicConfig] = field(default_factory=list)
     extract_fields: list[str] = field(default_factory=list)
+    #: Rich metadata for ``extract_fields`` entries declared in the mapping form,
+    #: keyed by field name and holding the entry minus ``name`` (``type``,
+    #: ``description``, ``required``, ...).  Display / documentation only — it is
+    #: never fed to the LLM prompt (``llm.extract`` takes names, not specs) (#979).
+    extract_field_specs: dict[str, dict[str, Any]] = field(default_factory=dict)
     search_mode: str = "keyword"  # keyword | hybrid
     webhook_urls: list[str] = field(default_factory=list)
     quality_gates: dict[str, QualityGateConfig] = field(default_factory=dict)
@@ -469,6 +525,15 @@ class DomainConfig:
         """
         if self.ttl_days is None:
             self.ttl_days = DOMAIN_DEFAULT_TTL_DAYS.get(self.name, DEFAULT_TTL_DAYS)
+        # Enforce the ``list[str]`` invariant here rather than at each
+        # construction site: config loading, ``domain import`` and programmatic
+        # callers all funnel through this dataclass (#979).
+        names, discovered_specs = normalize_extract_fields(self.extract_fields)
+        self.extract_fields = names
+        if discovered_specs:
+            merged = dict(discovered_specs)
+            merged.update(self.extract_field_specs)
+            self.extract_field_specs = merged
 
 
 @dataclass
@@ -1638,7 +1703,24 @@ def config_to_dict(config: Config) -> dict[str, Any]:
             ],
         }
         if domain.extract_fields:
-            domain_dict["extract_fields"] = domain.extract_fields
+            # Round-trip the declared shape: fields with rich specs are written
+            # back as ``{name, ...spec}``; plain-string fields stay strings, so a
+            # legacy config is byte-stable across load → save (#979).
+            domain_dict["extract_fields"] = [
+                {
+                    "name": name,
+                    # Specs never carry ``name`` on the load path; strip it here
+                    # too so a programmatic caller cannot hijack the field name.
+                    **{
+                        k: v
+                        for k, v in domain.extract_field_specs[name].items()
+                        if k != "name"
+                    },
+                }
+                if name in domain.extract_field_specs
+                else name
+                for name in domain.extract_fields
+            ]
         if domain.search_mode != "keyword":
             domain_dict["search_mode"] = domain.search_mode
         if not domain.auto_keyword_discovery:

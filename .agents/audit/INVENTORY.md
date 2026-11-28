@@ -14,14 +14,14 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | Metric | Value |
 |--------|-------|
 | Total files | 164 |
-| Total lines | 41774 |
+| Total lines | 41775 |
 | Active files | 132 |
 | Archived files | 32 |
 | Category — archive | 32 files / 9521 lines |
 | Category — known-limitations | 2 files / 352 lines |
 | Category — schemas | 4 files / 397 lines |
 | Category — adr | 16 files / 995 lines |
-| Category — specs | 12 files / 9958 lines |
+| Category — specs | 12 files / 9959 lines |
 | Category — validation-reports | 42 files / 7072 lines |
 | Category — docs/dev | 46 files / 11824 lines |
 | Category — docs/root | 10 files / 1655 lines |
@@ -120,7 +120,7 @@ python3 scripts/doc_inventory.py --check  # cross-doc consistency (exit 0 = clea
 | `dev/specs/data-models.md` | 779 | specs | active | — |
 | `dev/specs/delivery.md` | 1315 | specs | active | — |
 | `dev/specs/end-user-matrix.yaml` | 1926 | specs | active | — |
-| `dev/specs/expectations.md` | 1228 | specs | active | — |
+| `dev/specs/expectations.md` | 1229 | specs | active | — |
 | `dev/specs/market-positioning.md` | 404 | specs | active | market-positioning |
 | `dev/specs/mcp-tools.md` | 126 | specs | active | — |
 | `dev/specs/multi-tenancy-auth.md` | 806 | specs | active | — |

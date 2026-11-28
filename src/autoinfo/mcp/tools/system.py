@@ -360,22 +360,22 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
         "relevance_score": {"type": "number", "description": "Relevance 0-100"},
     }
 
-    # Include any custom extract_fields from the domain config.  Entries may be
-    # plain strings or rich dicts ({"name", "type", "description", "required"});
-    # resolve through ``extract_field_name`` so a dict never hits a hash lookup
-    # (issue #979).
-    for entry in domain_cfg.extract_fields:
-        field_name = extract_field_name(entry)
+    # Include any custom extract_fields from the domain config.  Entries are
+    # normalised to names at load time, so the rich metadata (type / description
+    # / required) comes from ``extract_field_specs`` (#979).
+    for raw_name in domain_cfg.extract_fields:
+        field_name = extract_field_name(raw_name)
         if not field_name or field_name in extract_fields_schema:
             continue
         field_schema: dict[str, Any] = {
             "type": "string",
             "description": field_name.replace("_", " ").title(),
         }
-        if isinstance(entry, dict):
-            field_schema["type"] = entry.get("type") or "string"
-            field_schema["description"] = entry.get("description") or field_schema["description"]
-            field_schema["required"] = bool(entry.get("required", False))
+        spec = domain_cfg.extract_field_specs.get(field_name) or {}
+        if spec:
+            field_schema["type"] = spec.get("type") or "string"
+            field_schema["description"] = spec.get("description") or field_schema["description"]
+            field_schema["required"] = bool(spec.get("required", False))
         extract_fields_schema[field_name] = field_schema
 
     return {

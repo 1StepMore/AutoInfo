@@ -82,6 +82,17 @@ cd <repo>
 
 ## 【活区】当前差距矩阵（2026-10-02 夜间循环）
 <!-- LEDGER:BEGIN gap_snapshot -->
+### 2026-11-27 夜间复跑（在最新 main `efb84b6f` 上）
+
+批跑（02:00，systemd `nightly-gap.service`，网关进程树外）：`ai-collect` **ok**（4275s）、`ai-process` **exit 1**（18 域执行 / 1 域失败 `financial-intelligence` exit 2 / 3 域 `dynamic_below` 跳过：`legal-compliance`、`online-education`、`spanish-learning`）、`ai-output` **ok**（149s）、`nightly_gap` **ok**（11s）。本机 `git fetch` 成功（`c1bf6e2a` → `efb84b6f`）后在最新 main 上重跑 `.venv/bin/python scripts/nightly_gap.py --json-out nightly/gap.json --md-out nightly/gap.md` ⇒ **exit 0 —— 差距归零（21 / 21 域达标）**（`gap_units 0` / `passing_units 21` / `total_units 21`）。
+
+- 产出轴：近 7 天新增 **2097** 条（入库 2271 条）；`FALSE_FRESH` 域 0、`LATE_COLLECT` 域 0；策略跳过源 19 个（`disabled_auto` / `empty_topic` / `app_review_required`，不计覆盖也不计源损坏）。
+- 断言：19 项 / 扫描 81 个文件 / 失败 0。
+- 与 2026-11-23 对照：11-23 判 7 域缺「真产物」（`gap_units 7`）；跑批加入 `ai-output`（`gen_ai_products.py`）步后本轮 **21/21**，同轮在 main 上重跑一次仍为 0 ⇒ 归零可复现。
+- KB 失败台账 14 条（1 条 G0 `source_url` + 13 条 PromotionAdmission 未记原因），落在 `medical-research` / `english-learning` / `financial-intelligence` 三域；不改域级达标读数，逐条位置见 `nightly/gap.md`。
+- 摩擦账本新增 1 条（见下）：`spark-x2.6` 对部分条目返回合规拒绝 ⇒ `financial-intelligence` 批 `exit 2`，**不挡域级 DoD**。
+- **最终裁决仍由 owner 保留**（见【冻结区】）——本文件只记录机器判据的结果，不代表「计划完成」。
+
 ### 2026-11-23 夜间复跑（在最新 main `38aea9c9` 上）
 
 批跑（02:00，systemd `nightly-gap.service`，网关进程树外）：`.venv/bin/python scripts/nightly_gap.py` **exit 1 —— 7 / 21 个域未达标**（`nightly/gap.json`：`gap_units 7` / `passing_units 14` / `total_units 21`）；同轮 `ai-collect` **ok**（3585s），`ai-process` **exit 1**（16 域执行 / 1 域失败 `tech-ai-developer` exit 2 / 5 域 `dynamic_below` 跳过：`language-learning`、`legal-compliance`、`medical-research`、`online-education`、`retail`）。
@@ -222,6 +233,7 @@ cd <repo>
 | 2026-10-02 | 出站 `md2x` 系列本轮无 env-class skip（pandoc/md2pptx/weasyprint/nbformat 均可用），说明 L1 §2.3 记的「nbformat 未声明」已过期 | 否 | 记账（L1 文字由 owner/code profile 改，agent 不动冻结区） |
 | 2026-10-15 | `nightly/gap.json` 里 21 域的 `sources_healthy` 全为 0、`sources_unhealthy` = 源总数，而 `sources_productive` 均 > 0 —— **根因（2026-10-14 已查明）**：`src/autoinfo/status.py:160` 把「最近一次采集 > 7 天」判为 `stale`，各源 `last_run` 实测停在 2026-10-01/02 ⇒ **语料 12+ 天未刷新**；本仓冻结 DoD ① 无新鲜度项，而 L1 §2.1 ① 明写「条目 `collected_at` 在 TTL 内」⇒ **口径分歧** | 否（DoD ① 只用 `runs > 0` 与 `entries ≥ 10`） | 记账；等 owner 裁「TTL 口径 / 是否给跑批加采集步」。另：全机无采集类 timer，夜跑只算差距不产（2026-10-14 记账）**（已过时，2026-10-18 现状：`nightly/gap.json` 21 域 `sources_healthy` 均已 > 0。）** |
 | 2026-10-17 | 10-15 行「等 owner 裁」收口：①「TTL 口径」→ #528 → PR #531（统一 7 天口径，复用 `status.py` `_is_recent`；owner 指令修复并合并）；②「跑批加采集步」不在本仓（e2e-test-suite #172） | 否 | 记账（随 #531 落地） |
+| 2026-11-27 | `openai/spark-x2.6` 对部分条目返回内容合规拒绝（`litellm.BadRequestError: OpenAIException - 非常抱歉…无法提供关于以下内容的答案`）⇒ `financial-intelligence` 处理批 `exit 2`（同轮其它 17 域 exit 0） | 否（该域本轮仍达标：语料 351 / 产物 1 / 断言 0 失败） | 记账，未改代码；若夜间拒绝率继续上升，再评估对该域换档/换源 |
 <!-- LEDGER:END friction_log -->
 
 ---

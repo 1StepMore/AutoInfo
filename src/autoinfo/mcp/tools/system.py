@@ -15,6 +15,7 @@ from mcp.types import Tool
 
 from autoinfo import __version__
 from autoinfo.cli.doctor import calculate_health_score
+from autoinfo.config import extract_field_name
 from autoinfo.mcp import context as mcp_context
 from autoinfo.mcp.errors import ErrorCode, error_response, success_response
 
@@ -352,20 +353,30 @@ def _handle_get_domain_schema(domain: str) -> dict[str, Any]:
     ]
     topics = [{"name": t.name, "keywords": t.keywords} for t in domain_cfg.topics]
 
-    extract_fields_schema: dict[str, dict[str, str]] = {
+    extract_fields_schema: dict[str, dict[str, Any]] = {
         "tl_dr": {"type": "string", "description": "One-sentence summary"},
         "key_points": {"type": "array", "description": "Bullet-point key findings"},
         "entities": {"type": "array", "description": "Extracted entities with types"},
         "relevance_score": {"type": "number", "description": "Relevance 0-100"},
     }
 
-    # Include any custom extract_fields from the domain config
-    for field_name in domain_cfg.extract_fields:
-        if field_name not in extract_fields_schema:
-            extract_fields_schema[field_name] = {
-                "type": "string",
-                "description": field_name.replace("_", " ").title(),
-            }
+    # Include any custom extract_fields from the domain config.  Entries may be
+    # plain strings or rich dicts ({"name", "type", "description", "required"});
+    # resolve through ``extract_field_name`` so a dict never hits a hash lookup
+    # (issue #979).
+    for entry in domain_cfg.extract_fields:
+        field_name = extract_field_name(entry)
+        if not field_name or field_name in extract_fields_schema:
+            continue
+        field_schema: dict[str, Any] = {
+            "type": "string",
+            "description": field_name.replace("_", " ").title(),
+        }
+        if isinstance(entry, dict):
+            field_schema["type"] = entry.get("type") or "string"
+            field_schema["description"] = entry.get("description") or field_schema["description"]
+            field_schema["required"] = bool(entry.get("required", False))
+        extract_fields_schema[field_name] = field_schema
 
     return {
         "domain": domain,

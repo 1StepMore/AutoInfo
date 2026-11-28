@@ -400,6 +400,26 @@ DOMAIN_DEFAULT_TTL_DAYS: dict[str, int] = {
 }
 
 
+def extract_field_name(entry: object) -> str:
+    """Return the field name for a plain-str or rich-dict ``extract_fields`` entry.
+
+    ``extract_fields`` is declared as ``list[str]`` but real domain configs
+    (e.g. the bundled ``online-video`` demo) use a rich format where each entry
+    is a mapping such as ``{"name": ..., "type": ..., "description": ...}``.
+    Consumers that only need the name must resolve it here so a dict entry never
+    reaches a hash lookup or ``str.join`` (issue #979).
+
+    Returns ``""`` when no name can be resolved; callers skip empty names.
+    """
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        name = entry.get("name")
+        return name if isinstance(name, str) else ""
+    name = getattr(entry, "name", None)
+    return name if isinstance(name, str) else ""
+
+
 @dataclass
 class DomainConfig:
     name: str = ""

@@ -176,6 +176,46 @@ class TestGetDomainSchema:
         assert "entities" in fields
         assert "relevance_score" in fields
 
+    def test_rich_dict_extract_fields_do_not_crash(self) -> None:
+        """Issue #979: rich-dict extract_fields must not raise ``unhashable``."""
+        config = {
+            "project": {"name": "Test", "created_at": ""},
+            "llm": {"provider": "openai", "model": "gpt-4o-mini", "api_key": ""},
+            "domains": [
+                {
+                    "name": "rich-domain",
+                    "active": True,
+                    "sources": [],
+                    "topics": [],
+                    "extract_fields": [
+                        {
+                            "name": "title",
+                            "type": "string",
+                            "description": "Video or article title",
+                            "required": True,
+                        },
+                        {
+                            "name": "views",
+                            "type": "number",
+                            "description": "View count or audience reach",
+                            "required": False,
+                        },
+                    ],
+                }
+            ],
+        }
+        with _mock_load_config(config):
+            result = _handle_get_domain_schema(domain="rich-domain")
+
+        assert "error_code" not in result
+        fields = result["extract_fields"]
+        assert fields["title"]["type"] == "string"
+        assert fields["title"]["description"] == "Video or article title"
+        assert fields["title"]["required"] is True
+        assert fields["views"]["type"] == "number"
+        assert fields["views"]["description"] == "View count or audience reach"
+        assert fields["views"]["required"] is False
+
 
 class TestListAvailableModels:
     def test_returns_configured_models(self, tmp_config: Path) -> None:

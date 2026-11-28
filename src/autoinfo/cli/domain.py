@@ -25,6 +25,7 @@ from autoinfo.config import (
     DomainConfig,
     SourceConfig,
     TopicConfig,
+    extract_field_name,
     get_config_path,
     load_config,
     save_config,
@@ -189,7 +190,10 @@ def show(
         kw_str = ", ".join(t.keywords) if t.keywords else "(none)"
         typer.echo(f"  - {t.name} (keywords: {kw_str})")
     if domain_cfg.extract_fields:
-        typer.echo(f"Extract fields: {', '.join(domain_cfg.extract_fields)}")
+        field_names = ", ".join(
+            filter(None, (extract_field_name(f) for f in domain_cfg.extract_fields))
+        )
+        typer.echo(f"Extract fields: {field_names}")
 
 
 @app.command()

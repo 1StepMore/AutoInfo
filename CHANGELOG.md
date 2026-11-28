@@ -2,6 +2,13 @@
 
 All notable changes to the AutoInfo project will be documented in this file.
 
+## [1.35.23](https://github.com/1StepMore/AutoInfo/compare/v1.35.22...v1.35.23) (2026-11-28)
+
+
+### Bug Fixes
+
+* **mcp:** get_domain_schema 容忍富格式 extract_fields ([#983](https://github.com/1StepMore/AutoInfo/issues/983)) ([8751775](https://github.com/1StepMore/AutoInfo/commit/8751775d2a685fe0cca6e65589dee1e1c78e0f6e))
+
 ## [1.35.22](https://github.com/1StepMore/AutoInfo/compare/v1.35.21...v1.35.22) (2026-11-27)
 
 
